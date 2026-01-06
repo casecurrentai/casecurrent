@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { TimelineStepper } from "@/components/marketing/timeline-stepper";
 import { FeatureCard, MetricCard } from "@/components/marketing/feature-card";
@@ -63,7 +63,7 @@ export default function HowItWorksPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
-        <SectionFrame showCorners className="p-4">
+        <SectionFrame variant="brackets" className="p-4">
           <UIFrame title="Intake Flow">
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-lg">
@@ -92,9 +92,10 @@ export default function HowItWorksPage() {
         </SectionFrame>
       </Hero>
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8">
+      <SectionBackground variant="subtle">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Multi-Channel Capture</h2>
               <p className="text-muted-foreground">Meet leads where they are</p>
@@ -112,11 +113,13 @@ export default function HowItWorksPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20 bg-muted/30 relative">
+      <SectionBackground variant="muted">
+        <section className="py-20 relative">
         <DotGridPattern />
         <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame showCorners className="p-8">
+          <SectionFrame variant="crosshairs" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">What Happens Next</h2>
               <p className="text-muted-foreground">The complete journey from inquiry to consultation</p>
@@ -156,13 +159,15 @@ export default function HowItWorksPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
-            <div className="grid lg:grid-cols-2 gap-12 items-center">
-              <div>
-                <h2 className="text-3xl font-bold text-foreground mb-4">Real-Time Analytics</h2>
+      <SectionBackground variant="accent">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="crosshairs" className="p-8">
+              <div className="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                  <h2 className="text-3xl font-bold text-foreground mb-4">Real-Time Analytics</h2>
                 <p className="text-muted-foreground mb-6">
                   Track every step of your intake funnel. See which sources convert best,
                   where leads drop off, and how your team performs.
@@ -209,10 +214,11 @@ export default function HowItWorksPage() {
                   </div>
                 </div>
               </UIFrame>
-            </div>
-          </SectionFrame>
-        </div>
-      </section>
+              </div>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { PageShell } from "@/components/marketing/page-shell";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ export default function DesignAuditPage() {
     <PageShell>
       <div className="py-16">
         <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8 mb-8">
+          <SectionFrame variant="corners" className="p-8 mb-8">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-foreground mb-4">Design Audit Page</h1>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -39,7 +39,7 @@ export default function DesignAuditPage() {
             </div>
           </SectionFrame>
 
-          <SectionFrame showCorners showConnectors className="p-8 mb-8">
+          <SectionFrame variant="brackets" className="p-8 mb-8">
             <h2 className="text-xl font-bold text-foreground mb-6">Marketing Routes with Debug Links</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
               {MARKETING_ROUTES.map((route) => (
@@ -76,7 +76,7 @@ export default function DesignAuditPage() {
             </div>
           </SectionFrame>
 
-          <SectionFrame showCorners className="p-8">
+          <SectionFrame variant="crosshairs" className="p-8">
             <h2 className="text-xl font-bold text-foreground mb-6">Design Signature Checklist</h2>
             <div className="space-y-4">
               {CHECKLIST_ITEMS.map((item) => (

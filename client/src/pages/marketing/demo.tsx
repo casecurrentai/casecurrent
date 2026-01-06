@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,9 +185,10 @@ export default function DemoPage() {
         </Button>
       </Hero>
 
-      <section className="py-20 -mt-10">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8">
+      <SectionBackground variant="subtle">
+        <section className="py-20 -mt-10">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-2xl font-bold text-foreground mb-4">What You'll See</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -209,10 +210,12 @@ export default function DemoPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
+      <SectionBackground variant="muted">
+        <section className="py-16">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-4">Who It's For</h2>
               <p className="text-muted-foreground">CounselTech works for firms across practice areas</p>
@@ -228,10 +231,12 @@ export default function DemoPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-16">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8 max-w-3xl mx-auto">
+      <SectionBackground variant="accent">
+        <section className="py-16">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-8 max-w-3xl mx-auto">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-4">Implementation Timeline</h2>
               <p className="text-muted-foreground">Get started quickly with minimal disruption</p>
@@ -265,10 +270,12 @@ export default function DemoPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20 bg-muted/30" ref={formRef}>
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="max-w-2xl mx-auto p-6">
+      <SectionBackground variant="muted">
+        <section className="py-20" ref={formRef}>
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="max-w-2xl mx-auto p-6">
             <Card>
               <CardContent className="p-8">
                 {isSubmitted ? (
@@ -480,6 +487,7 @@ export default function DemoPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
     </PageShell>
   );
 }

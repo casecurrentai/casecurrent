@@ -24,11 +24,11 @@ export function PageShell({ children }: PageShellProps) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative">
-      <GuillocheUnderlay />
-      
-      <header className="sticky top-0 z-50 bg-background/40 backdrop-blur-sm border-b border-border/50">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
+      <header className="sticky top-0 z-50 border-b border-border/50 overflow-hidden">
+        <GuillocheUnderlay />
+        <div className="relative z-10 bg-background/60 backdrop-blur-sm">
+          <div className="container mx-auto px-6">
+            <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
               <Scale className="h-6 w-6 text-primary" />
               <span className="font-bold text-xl text-foreground">CounselTech</span>
@@ -79,6 +79,7 @@ export function PageShell({ children }: PageShellProps) {
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
+            </div>
           </div>
         </div>
 

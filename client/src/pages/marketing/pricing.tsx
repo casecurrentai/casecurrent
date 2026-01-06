@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -145,9 +145,10 @@ export default function PricingPage() {
         </div>
       </Hero>
 
-      <section className="py-16 -mt-8">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-6">
+      <SectionBackground variant="subtle">
+        <section className="py-16 -mt-8">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-6">
             <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
               <PricingTier
                 name="CounselTech Core"
@@ -180,10 +181,12 @@ export default function PricingPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8 max-w-3xl mx-auto">
+      <SectionBackground variant="muted">
+        <section className="py-16">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="corners" className="p-8 max-w-3xl mx-auto">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground">One-Time Setup</h2>
               <p className="text-3xl font-bold text-primary mt-2">$500–$1,000</p>
@@ -203,12 +206,14 @@ export default function PricingPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-16">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8 max-w-3xl mx-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground">Why Law Firms Choose CounselTech</h2>
+      <SectionBackground variant="accent">
+        <section className="py-16">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="brackets" className="p-8 max-w-3xl mx-auto">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-foreground">Why Law Firms Choose CounselTech</h2>
             </div>
             <ul className="space-y-3">
               {WHY_CHOOSE.map((item) => (
@@ -217,10 +222,11 @@ export default function PricingPage() {
                   <span className="text-foreground">{item}</span>
                 </li>
               ))}
-            </ul>
-          </SectionFrame>
-        </div>
-      </section>
+              </ul>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

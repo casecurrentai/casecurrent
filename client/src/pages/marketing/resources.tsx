@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,10 +77,11 @@ export default function ResourcesPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
       />
 
-      <section className="py-20 -mt-10 relative">
-        <DotGridPattern />
-        <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame showCorners showConnectors className="p-8">
+      <SectionBackground variant="subtle">
+        <section className="py-20 -mt-10 relative">
+          <DotGridPattern />
+          <div className="container mx-auto px-6 relative z-10">
+            <SectionFrame variant="grid" className="p-8">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {BLOG_POSTS.map((post) => (
                 <Card key={post.id} className="hover-elevate cursor-pointer group">
@@ -117,10 +118,12 @@ export default function ResourcesPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8 max-w-2xl mx-auto">
+      <SectionBackground variant="muted">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="minimal" className="p-8 max-w-2xl mx-auto">
             <div className="text-center">
               <h2 className="text-2xl font-bold mb-4">Subscribe to Our Newsletter</h2>
               <p className="text-muted-foreground mb-6">
@@ -141,6 +144,7 @@ export default function ResourcesPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

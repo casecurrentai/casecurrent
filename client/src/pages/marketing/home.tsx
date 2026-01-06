@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { FeatureCard, MetricCard } from "@/components/marketing/feature-card";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame, PhoneFrame } from "@/components/marketing/ui-frame";
 import { HorizontalTimeline } from "@/components/marketing/timeline-stepper";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
@@ -69,7 +69,7 @@ export default function MarketingHomePage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
-        <SectionFrame showCorners className="p-4">
+        <SectionFrame variant="corners" className="p-4">
           <UIFrame title="Dashboard">
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
@@ -85,12 +85,13 @@ export default function MarketingHomePage() {
         </SectionFrame>
       </Hero>
 
-      <section className="py-20 relative">
-        <DotGridPattern />
-        <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame showCorners showConnectors className="p-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-foreground mb-4">Everything Included</h2>
+      <SectionBackground variant="subtle">
+        <section className="py-20 relative">
+          <DotGridPattern />
+          <div className="container mx-auto px-6 relative z-10">
+            <SectionFrame variant="brackets" className="p-8">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-foreground mb-4">Everything Included</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 A complete platform for capturing, qualifying, and converting legal leads
               </p>
@@ -104,26 +105,34 @@ export default function MarketingHomePage() {
                   description={feature.description}
                 />
               ))}
-            </div>
-          </SectionFrame>
-        </div>
-      </section>
+              </div>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-foreground mb-4">How It Works</h2>
-              <p className="text-muted-foreground">From first contact to qualified consultation</p>
-            </div>
-            <HorizontalTimeline steps={HOW_IT_WORKS_STEPS} className="max-w-4xl mx-auto" />
-          </SectionFrame>
-        </div>
-      </section>
+      <BlueprintDivider />
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
+      <SectionBackground variant="muted">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="crosshairs" className="p-8">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-foreground mb-4">How It Works</h2>
+                <p className="text-muted-foreground">From first contact to qualified consultation</p>
+              </div>
+              <HorizontalTimeline steps={HOW_IT_WORKS_STEPS} className="max-w-4xl mx-auto" />
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
+
+      <BlueprintDivider />
+
+      <SectionBackground variant="accent">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="rails" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Client Mobile App</h2>
               <p className="text-muted-foreground">
@@ -202,9 +211,10 @@ export default function MarketingHomePage() {
                 </div>
               </PhoneFrame>
             </div>
-          </SectionFrame>
-        </div>
-      </section>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-20 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

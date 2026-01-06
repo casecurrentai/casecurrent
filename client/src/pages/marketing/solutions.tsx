@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { FeatureCard } from "@/components/marketing/feature-card";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -126,9 +126,10 @@ export default function SolutionsPage() {
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8">
+      <SectionBackground variant="subtle">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="rails" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Practice Areas</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -165,11 +166,13 @@ export default function SolutionsPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20 bg-muted/30 relative">
+      <SectionBackground variant="muted">
+        <section className="py-20 relative">
         <DotGridPattern />
         <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame showCorners className="p-8">
+          <SectionFrame variant="grid" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Operational Outcomes</h2>
               <p className="text-muted-foreground">
@@ -189,12 +192,14 @@ export default function SolutionsPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-foreground mb-4">Integrations</h2>
+      <SectionBackground variant="accent">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="rails" className="p-8">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-foreground mb-4">Integrations</h2>
               <p className="text-muted-foreground">
                 Connect CounselTech to your existing tools
               </p>
@@ -223,10 +228,11 @@ export default function SolutionsPage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          </SectionFrame>
-        </div>
-      </section>
+              </div>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

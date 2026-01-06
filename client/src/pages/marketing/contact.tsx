@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,9 +74,10 @@ export default function ContactPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
       />
 
-      <section className="py-20 -mt-10">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8 max-w-5xl mx-auto">
+      <SectionBackground variant="subtle">
+        <section className="py-20 -mt-10">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="corners" className="p-8 max-w-5xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12">
               <div>
                 <h2 className="text-2xl font-bold text-foreground mb-6">Get in Touch</h2>
@@ -207,6 +208,7 @@ export default function ContactPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
     </PageShell>
   );
 }

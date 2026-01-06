@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { TrustList, SecurityCard } from "@/components/marketing/trust-list";
-import { SectionFrame } from "@/components/marketing/section-frame";
+import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { Card, CardContent } from "@/components/ui/card";
@@ -77,12 +77,13 @@ export default function SecurityPage() {
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners showConnectors className="p-8">
-            <div className="grid lg:grid-cols-2 gap-12">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
+      <SectionBackground variant="subtle">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="crosshairs" className="p-8">
+              <div className="grid lg:grid-cols-2 gap-12">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
                 <TrustList items={TRUST_ITEMS} />
               </div>
               <UIFrame title="Security Overview">
@@ -96,15 +97,17 @@ export default function SecurityPage() {
                   ))}
                 </div>
               </UIFrame>
-            </div>
-          </SectionFrame>
-        </div>
-      </section>
+              </div>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
-      <section className="py-20 bg-muted/30 relative">
+      <SectionBackground variant="muted">
+        <section className="py-20 relative">
         <DotGridPattern />
         <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame showCorners className="p-8">
+          <SectionFrame variant="minimal" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Unrelenting Security</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -146,12 +149,14 @@ export default function SecurityPage() {
           </SectionFrame>
         </div>
       </section>
+    </SectionBackground>
 
-      <section className="py-20">
-        <div className="container mx-auto px-6">
-          <SectionFrame showCorners className="p-8">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-4">Compliance Status</h2>
+      <SectionBackground variant="accent">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <SectionFrame variant="crosshairs" className="p-8">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-foreground mb-4">Compliance Status</h2>
               <p className="text-muted-foreground">
                 Our commitment to meeting industry standards
               </p>
@@ -184,10 +189,11 @@ export default function SecurityPage() {
                   </Badge>
                 </CardContent>
               </Card>
-            </div>
-          </SectionFrame>
-        </div>
-      </section>
+              </div>
+            </SectionFrame>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
