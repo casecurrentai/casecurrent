@@ -32,19 +32,19 @@ export function PricingCard({
       "h-full relative",
       highlighted && "border-primary shadow-lg",
       className
-    )}>
+    )} data-testid={`card-pricing-${name.toLowerCase()}`}>
       {highlighted && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded-full">
           Most Popular
         </div>
       )}
       <CardHeader className="pb-4">
-        <h3 className="text-xl font-bold text-foreground">{name}</h3>
+        <h3 className="text-xl font-bold text-foreground" data-testid={`text-pricing-name-${name.toLowerCase()}`}>{name}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <span className="text-4xl font-bold text-foreground">{price}</span>
+          <span className="text-4xl font-bold text-foreground" data-testid={`text-pricing-price-${name.toLowerCase()}`}>{price}</span>
           {period && <span className="text-muted-foreground">{period}</span>}
         </div>
         <ul className="space-y-3">

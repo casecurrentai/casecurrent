@@ -6,9 +6,8 @@ import { useState } from "react";
 import { GuillocheUnderlay } from "./guilloche-pattern";
 
 const NAV_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/how-it-works", label: "How It Works" },
-  { href: "/solutions", label: "Solutions" },
+  { href: "/how-it-works", label: "Product" },
+  { href: "/solutions", label: "Integrations" },
   { href: "/security", label: "Security" },
   { href: "/pricing", label: "Pricing" },
   { href: "/resources", label: "Resources" },
@@ -31,7 +30,7 @@ export function PageShell({ children }: PageShellProps) {
         <div className="relative z-10 h-full bg-background/30 backdrop-blur-sm">
           <div className="container mx-auto px-6 h-full">
             <div className="flex items-center justify-between h-full">
-              <Link href="/" className="flex items-center gap-2">
+              <Link href="/" className="flex items-center gap-2" data-testid="link-logo">
                 <Scale className="h-6 w-6 text-primary" />
                 <span className="font-bold text-xl text-foreground">CounselTech</span>
               </Link>
@@ -97,6 +96,7 @@ export function PageShell({ children }: PageShellProps) {
                       location === link.href && "bg-muted"
                     )}
                     onClick={() => setMobileMenuOpen(false)}
+                    data-testid={`link-mobile-nav-${link.label.toLowerCase().replace(/\s+/g, '-')}`}
                   >
                     {link.label}
                   </Button>
@@ -104,17 +104,17 @@ export function PageShell({ children }: PageShellProps) {
               ))}
               <div className="pt-4 space-y-2">
                 <Link href="/login">
-                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)} data-testid="link-mobile-nav-login">
                     Sign In
                   </Button>
                 </Link>
                 <Link href="/contact">
-                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)} data-testid="link-mobile-nav-contact">
                     Contact Sales
                   </Button>
                 </Link>
                 <Link href="/demo">
-                  <Button className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                  <Button className="w-full" onClick={() => setMobileMenuOpen(false)} data-testid="link-mobile-nav-demo">
                     Book a Demo
                   </Button>
                 </Link>
@@ -141,18 +141,18 @@ export function PageShell({ children }: PageShellProps) {
             <div>
               <h4 className="font-semibold text-foreground mb-3">Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link href="/how-it-works" className="text-muted-foreground hover:text-foreground">How It Works</Link></li>
-                <li><Link href="/solutions" className="text-muted-foreground hover:text-foreground">Solutions</Link></li>
-                <li><Link href="/pricing" className="text-muted-foreground hover:text-foreground">Pricing</Link></li>
-                <li><Link href="/security" className="text-muted-foreground hover:text-foreground">Security</Link></li>
+                <li><Link href="/how-it-works" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-how-it-works">How It Works</Link></li>
+                <li><Link href="/solutions" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-solutions">Solutions</Link></li>
+                <li><Link href="/pricing" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-pricing">Pricing</Link></li>
+                <li><Link href="/security" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-security">Security</Link></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-foreground mb-3">Resources</h4>
               <ul className="space-y-2 text-sm">
-                <li><Link href="/resources" className="text-muted-foreground hover:text-foreground">Blog</Link></li>
-                <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact Sales</Link></li>
-                <li><Link href="/demo" className="text-muted-foreground hover:text-foreground">Book a Demo</Link></li>
+                <li><Link href="/resources" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-resources">Blog</Link></li>
+                <li><Link href="/contact" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-contact">Contact Sales</Link></li>
+                <li><Link href="/demo" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-demo">Book a Demo</Link></li>
               </ul>
             </div>
             <div>

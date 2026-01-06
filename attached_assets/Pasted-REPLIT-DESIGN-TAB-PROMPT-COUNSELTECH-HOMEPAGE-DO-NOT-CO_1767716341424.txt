@@ -1,0 +1,152 @@
+REPLIT DESIGN TAB PROMPT — COUNSELTECH HOMEPAGE (DO NOT COPY CASEFLOOD.AI)
+
+GOAL
+Design a superior, enterprise-grade homepage for CounselTech. It must feel like calm, trustworthy legal-tech software: control, governance, clarity, and predictability — while still promising measurable revenue outcomes. The page should be original and not resemble caseflood.ai’s layout, components, or visual style. Do not use stocky “hype” design. Make it software-grade, airy, and highly scannable.
+
+BRAND POSITIONING
+CounselTech is an AI-powered intake and lead capture platform for law firms. It answers calls and processes voicemails 24/7, qualifies leads using the firm’s rules, and routes outcomes instantly (book consults, warm transfer urgent matters, or follow-up sequences). It syncs structured intake summaries to Clio/MyCase/LeadDocket and/or sends data via secure webhooks.
+
+TONE
+Professional, precise, confident. Avoid exaggerated claims. Use language that signals boundaries and governance (disclaimers, audit logs, routing rules). Promise measurable outcomes without sounding like a get-rich scheme.
+
+GLOBAL VISUAL STYLE
+- Clean enterprise legal-tech aesthetic: generous whitespace, strong hierarchy, minimal clutter.
+- Modern grotesk type (Inter/Geist-like), crisp headings, readable body text.
+- Color: deep navy + near-white with a restrained accent (one accent color only). High contrast, accessible.
+- Use subtle hairline dividers, soft shadows, consistent rounded corners (12–16px).
+- Add “AI blueprint” micro-details: small wireframe callouts and thin annotation labels pointing to UI elements (very subtle).
+- NO busy gradients, no neon, no crypto vibes.
+
+SIGNATURE DESIGN ELEMENT (REQUIRED)
+Create a subtle guilloché underlay pattern that appears behind the top navigation and hero section only:
+- Tone-on-tone (very low contrast).
+- Feels like security/precision, not decoration.
+- Fades out by mid-scroll.
+- Optional slight parallax drift on scroll (extremely subtle).
+This guilloché should become a recognizable CounselTech signature element across the site.
+
+PAGE STRUCTURE (HOMEPAGE)
+
+1) STICKY TOP NAV
+- Left: CounselTech wordmark (text-based is fine).
+- Nav links: Product, How it Works, Integrations, Security, Pricing, Resources
+- Right: primary CTA button “Book a demo”
+- Secondary CTA link “Listen to a real intake” (opens modal)
+
+2) HERO (ABOVE THE FOLD) — LEFT COPY + RIGHT PRODUCT VIGNETTE
+Hero must communicate: control + outcome.
+H1: “Never miss a case-worthy call again.”
+Subhead: “CounselTech answers calls and voicemails 24/7, qualifies leads with your criteria, and routes outcomes instantly—so your team spends time on cases, not callbacks.”
+Primary CTA: “Book a demo”
+Secondary CTA: “Listen to a real intake”
+
+Add a “Trust Strip” under CTAs with 3 compact items:
+- “Disclaimers enforced automatically”
+- “Configurable routing + warm transfer rules”
+- “Recording + structured intake summary”
+
+Right side: a realistic product vignette (NOT stock photos):
+- A “Call in progress” card with a waveform + timer.
+- A short transcript snippet.
+- A “Lead created” panel showing extracted fields: Name, Phone, Practice Area, Urgency, Notes.
+- An “Outcome” badge: “Consult booked” / “Warm transfer” / “Follow-up scheduled”.
+Include subtle blueprint-style callout labels like: “Firm script”, “Routing rules”, “Audit log event”.
+
+3) PROOF BAR (CLEAN, NOT HYPE)
+A slim bar with:
+- “Works with: Clio • MyCase • LeadDocket • Webhooks”
+- Optional small monochrome “Trusted by forward-looking firms” with logo placeholders (do not invent real logos).
+
+4) OUTCOMES (MEASURABLE, BELIEVABLE)
+Section title: “Outcomes you can measure in week one.”
+Three large KPI cards (no fake numbers unless placeholders clearly marked):
+Card 1: “Fewer missed opportunities” — “Every inbound is captured, tagged, and queued.”
+Card 2: “Faster speed-to-lead” — “Voicemails become structured intakes in minutes, not hours.”
+Card 3: “More consistent conversion” — “Standardized questions + follow-up automation + consult booking.”
+Use subtle line chart ghosts behind card content (very faint).
+
+5) “LISTEN TO A REAL INTAKE” DEMO (CREDIBILITY DEVICE)
+Create a section with a button that opens a modal.
+Modal layout:
+- Left: waveform player + transcript
+- Right: “Extracted Intake” lead card that updates/highlights fields from the transcript
+Copy:
+Header: “Hear exactly what your callers experience.”
+Sub: “Professional, calm, and configured to your script, disclaimers, and routing rules.”
+
+6) HOW IT WORKS (3 STEPS, SCANNABLE)
+Title: “Ring → qualified intake → routed outcome”
+Step 1: “Capture” — “Answer live calls, return missed calls, and process voicemails automatically.”
+Step 2: “Qualify” — “Ask your questions. Flag urgency. Filter by criteria.”
+Step 3: “Route & Sync” — “Book consults, warm transfer urgent matters, and sync the summary.”
+Use a horizontal stepper with thin node connectors and mini UI thumbnails.
+
+7) FEATURE GRID (2x3 CARDS)
+Six cards with short headers + one sentence each:
+- “24/7 Intake Coverage” — Calls, voicemails, web inquiries.
+- “Consult Booking” — Calendar rules + confirmations.
+- “Warm Transfer for Urgent Matters” — Escalation paths.
+- “Automated Follow-Up” — Text/email sequences for non-converted leads.
+- “Lead Intelligence Dashboard” — Summaries, priorities, conversion analytics.
+- “Integrations + Webhooks” — Push to systems securely.
+
+8) GOVERNANCE / SECURITY (YOUR DIFFERENTIATOR)
+This section must feel like enterprise control, not marketing.
+Title: “Built for real firms with real risk.”
+Bullets:
+- “Disclaimers enforced on every intake”
+- “Configurable recording + consent language”
+- “Role-based access controls”
+- “Audit trail of every action and outcome”
+- “Data retention rules that match your firm”
+Visual: a “Policy & Routing” control panel mock + a tiny audit log snippet (timestamped events).
+
+9) BEFORE / AFTER (CLEAN COMPARISON, NO DRAMA)
+Two-column comparison with short lines (no paragraphs).
+Header: “Standardize intake without adding headcount.”
+Left: “Without CounselTech”
+- Missed calls after-hours
+- Inconsistent intake quality
+- Slow voicemail follow-up
+- Unstructured lead data
+Right: “With CounselTech”
+- 24/7 capture + routing
+- Standardized intake every time
+- Summaries delivered instantly
+- Analytics your marketing can use
+
+10) PRICING (SIMPLE TIERS, CLEAR VALUE)
+Three pricing cards: Starter, Growth, Enterprise
+Add “Monthly/Annual” toggle.
+Starter: best for solo/new firms, includes 24/7 intake + voicemail + summaries + basic routing.
+Growth: adds follow-up + consult booking + integrations.
+Enterprise: adds advanced governance + custom dashboards + security controls.
+Note under pricing: “Implementation support included.”
+
+11) ONBOARDING TIMELINE (PROJECT-PLAN FEEL)
+Title: “Live in days, not months.”
+Step A: “Strategy Call (45 min)” — scripts, routing, success metrics.
+Step B: “Implementation (3–6 days)” — integrations, testing, launch checklist.
+Step C: “Go-Live + Optimization” — weekly tuning based on outcomes.
+Visual: a clean timeline with deliverables, not hype.
+
+12) TESTIMONIALS (CURATED, MINIMAL)
+3 testimonial cards with placeholders only (do not invent real names).
+Each includes: firm type + one outcome placeholder.
+Header: “Firms don’t need more calls. They need more signed matters.”
+
+13) FINAL CTA (STRONG, CALM)
+Dark section with faint guilloché echo in background.
+Headline: “Ready to stop losing cases while you sleep?”
+Sub: “See exactly how CounselTech handles your calls—script, disclaimers, routing, and integrations included.”
+Buttons: “Book a demo” and “Listen to a real intake”
+
+IMPLEMENTATION NOTES
+- Make spacing generous. Use a consistent max-width container and rhythm.
+- Ensure mobile responsiveness: hero stacks, cards become single-column, nav collapses.
+- Keep animations minimal and professional (micro-interactions only).
+- Do not copy any text, layout, or unique phrasing from caseflood.ai.
+- Output a complete homepage with all sections above, including the guilloché signature element.
+
+DELIVERABLE
+Generate the full homepage design and copy as a complete implementation in the project, with clean components and consistent styling.
