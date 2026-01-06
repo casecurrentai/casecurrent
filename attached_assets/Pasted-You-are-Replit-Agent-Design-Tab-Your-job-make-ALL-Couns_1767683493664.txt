@@ -1,0 +1,116 @@
+You are Replit Agent (Design Tab). Your job: make ALL CounselTech marketing pages + the CounselTech client mobile app match the current CounselTech.net visual system EXACTLY (typography, spacing, wireframe “AI blueprint” callouts, button styles, and overall polish). Do not invent a new aesthetic.
+
+NON-NEGOTIABLE: MATCH THE EXISTING COUNSELTECH.NET UI
+1) Typography must match CounselTech.net exactly.
+   - Do NOT guess the font.
+   - Identify the exact font family/weights by inspecting CounselTech.net computed styles (DevTools) and/or pulling the font import from its CSS.
+   - Apply the same font stack across:
+     - Marketing website (all routes)
+     - Mobile app (all screens)
+   - Match heading sizes, letter spacing, and weight hierarchy.
+
+2) Spacing/layout must match CounselTech.net:
+   - Same max width container, section padding, gutters, card spacing, and vertical rhythm.
+   - Same soft shadows, border radii, and line separators.
+
+SIGNATURE DESIGN ELEMENT (NEW, BUT MUST FEEL NATIVE TO COUNSELTECH.NET)
+Add a subtle guilloche underlay BEHIND the top navigation / top app bar:
+- Implement as a very light linework pattern (SVG or CSS background).
+- Confined to navbar/top-bar area only (not the full page).
+- Opacity ~3–6%, thin strokes, slightly softened; fade out downward (mask/gradient).
+- Must not reduce contrast/legibility.
+- No animation required; respect prefers-reduced-motion.
+
+THE “WIREFRAME AI ELEMENTS” THAT MUST EXIST EVERYWHERE
+CounselTech.net has a blueprint / wireframe annotation feel that highlights sections. Replicate it consistently:
+- Use thin 1px lines, corner brackets, subtle nodes/dots, and faint measurement/connector lines.
+- These wireframe accents should:
+  - Outline/anchor feature cards
+  - Point at key UI blocks (steps, grids, dashboards)
+  - Appear as subtle overlays, never noisy
+- Keep them extremely light (low opacity) so content remains primary.
+
+COLOR + UI TOKENS (DERIVE FROM SITE, DON’T GUESS)
+- Pull primary brand blue, hover blue, background tint, border color, text colors from CounselTech.net.
+- Implement as CSS variables (or Tailwind tokens) and reuse across web + mobile app.
+- Buttons must match: same radius, padding, font weight, shadow, hover states.
+
+MARKETING WEBSITE: APPLY TO ALL ROUTES
+Routes include at minimum:
+- /
+- /solutions
+- /how-it-works
+- /security
+- /pricing
+- /resources (+ any subpages)
+Global components:
+- Navbar with guilloche underlay + same link spacing as CounselTech.net
+- Primary CTA: “Book a Demo” (same styling)
+- Secondary links: “Sign in” etc.
+- Footer with the same column layout and type hierarchy as CounselTech.net
+
+PAGE STRUCTURE MUST MATCH COUNSELTECH.NET CONTENT
+Preserve the existing information architecture and copy for:
+- /solutions (AI Voice Agent, Smart Qualification, Instant Follow-up, Everything included grid, CTA)
+- /how-it-works (3-step flow + “What happens next” timeline + CTA)
+Do not rewrite the page content. Only improve layout fidelity to the existing CounselTech.net styling system.
+
+MOBILE APP: MUST LOOK LIKE COUNSELTECH, NOT A GENERIC TEMPLATE
+Design a client mobile app that feels like CounselTech.net translated to mobile:
+
+App-wide:
+- Same font stack as the marketing site (exact match).
+- Same blue/neutral palette tokens.
+- Same card style (radius/shadow/border).
+- Top app bar uses the guilloche underlay (subtle), just like the website navbar.
+- Use the same wireframe/blueprint callout motifs lightly in the background of dashboards and key analytics sections.
+
+Critical UI fix (known issue):
+- The top app bar MUST NOT overlap/cover the rounded corners of the first analytics cards below it.
+- Add correct safe-area padding + vertical spacing so cards sit cleanly below the header (no collision).
+
+Mobile app navigation:
+- Bottom tab bar (5 tabs):
+  1) Dashboard
+  2) Leads
+  3) Calls
+  4) Automations
+  5) Settings
+
+Key screens (design + layout, consistent with CounselTech.net):
+1) Dashboard
+   - “Today” summary cards (Missed calls, New leads, Qualified, Booked consults, Response time)
+   - Simple charts (line/bar) with clean axes and the same UI style as the website
+   - “Live Status” pill/badge styling consistent with marketing site
+
+2) Leads
+   - List with strong hierarchy: lead name, status badge, case type, score, timestamp
+   - Filter chips (All / New / Qualified / Signed / Disqualified)
+   - Lead detail screen:
+     - Summary panel (score, urgency, conflict check result)
+     - Transcript snippet
+     - Timeline of events (call → score → follow-up → appointment)
+     - Primary action button style identical to “Book a Demo” style (adapted for app actions)
+
+3) Calls
+   - Call log list with icons, duration, transcript availability
+   - Call detail:
+     - Audio player (if present), transcript, extracted fields, routing outcome
+     - “Create task / Send follow-up / Assign” actions
+
+4) Automations
+   - Simple toggles + status indicators
+   - “Webhook / Zapier-style” integration tiles (clean, enterprise)
+   - Logs list: timestamped events, success/failure
+
+5) Settings
+   - Organization profile, team members, roles, notification prefs
+   - Security section styled like the marketing “Security” page (trust cues, clean lists)
+
+DELIVERABLES
+- Update/standardize the entire marketing site to match CounselTech.net typography + spacing + wireframe elements.
+- Apply the guilloche navbar/top-bar underlay across marketing + mobile app.
+- Produce a cohesive design system (tokens + components) shared by web + mobile so everything feels like one product family.
+
+QUALITY BAR
+If any element looks “template-y” or not like CounselTech.net, revise it until it matches. The goal is visual continuity: a user should instantly recognize the app as CounselTech from the typography and blueprint/wireframe motifs alone.

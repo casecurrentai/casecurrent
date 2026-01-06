@@ -1,0 +1,537 @@
+REPLIT AGENT MASTER PROMPT (MERGE-READY) — COUNSELTECH V1
+Goal: Build a production-grade MVP for “CounselTech” (AI-powered intake + lead capture for law firms) PLUS the “self-improving system” features (experimentation + explainable scoring + compliance regression tests).
+
+YOU MUST FOLLOW THIS PROMPT AS THE SOURCE OF TRUTH.
+Do NOT ask me to write code. Implement everything.
+Use checkpoints frequently. Keep the app running after each milestone.
+
+===========================================================
+A) REQUIRED PROJECT CONTENTS
+===========================================================
+This Repl must contain:
+
+1) Backend API
+- Use Fastify + TypeScript (preferred) OR Express + TypeScript.
+- Expose REST API under /v1.
+- Generate OpenAPI docs (Swagger UI) from route schemas.
+- Implement minimal RBAC auth for a single organization (MVP):
+  roles: owner/admin/staff/viewer.
+
+2) Web dashboard
+- Next.js (App Router) + TypeScript.
+- Authenticated pages: leads, lead detail, tasks, notifications, settings.
+- Admin settings UI for practice areas, question sets, webhooks, AI configs, phone numbers.
+- Must run in Replit.
+
+3) Database
+- Postgres (Replit Postgres/Neon if available).
+- Prisma ORM + Prisma Migrate.
+- IMPORTANT: Generate migrations deliberately; do NOT use ad-hoc “db push”.
+
+4) Jobs
+- Background job system:
+  - Use BullMQ + Redis if available; otherwise implement a DB-backed jobs table + worker loop.
+- Jobs must persist outputs into calls.transcript_text, calls.ai_summary, intakes.answers, qualifications, and experimentation metrics.
+
+5) Tests
+- Minimal API smoke tests (at least: create lead, fetch lead, complete intake, run qualification).
+- Add smoke test for experimentation assignment and policy test runner.
+
+6) Documentation
+- Clean README with “Run in Replit” steps + environment variables.
+
+===========================================================
+B) PRODUCT SUMMARY
+===========================================================
+CounselTech captures inbound phone/SMS/web leads, creates structured intakes, runs qualification scoring, sends notifications, and emits outbound webhooks (Zapier-style).
+
+Additionally, CounselTech V1 must include “self-improving” capabilities:
+1) Experimentation Engine (A/B testing) for intake scripts and follow-up sequences.
+2) Explainable scoring (DecisionTrace-like) stored in qualifications.reasons JSON.
+3) Compliance Regression Harness (“Policy Tests”) that runs scripted test cases to ensure:
+   - disclaimers are delivered
+   - no legal advice is given
+   - escalation rules trigger correctly
+and stores pass/fail history.
+
+===========================================================
+C) ARCHITECTURAL RULES
+===========================================================
+1) Multi-tenant-ready by design:
+- Every record is scoped by org_id.
+- For MVP, create one org at seed time, but keep org_id everywhere and enforce it in queries.
+
+2) Prisma models MUST match the schema below (tables and fields).
+- You may ADD tables ONLY if explicitly described in section F (Self-Improving Additions).
+- Use Prisma Migrate migrations.
+
+3) Security/RBAC:
+- Auth: email/password (MVP ok) + JWT sessions for API.
+- Enforce RBAC in API routes.
+- Ensure org scoping is enforced everywhere.
+
+4) Idempotency & auditing:
+- Telephony webhooks must be safe to retry.
+- Audit logs must be written for:
+  - lead create/update
+  - intake updates/completion
+  - qualification run/override
+  - webhook endpoint CRUD
+  - message send
+  - experiment CRUD and assignment
+  - policy test runs
+
+===========================================================
+D) DATABASE SCHEMA (IMPLEMENT AS PRISMA MODELS, POSTGRES)
+===========================================================
+
+BASE TABLES (DO NOT CHANGE FIELD NAMES)
+
+- organizations:
+  id, name, slug, status, timezone, created_at, updated_at
+
+- users:
+  id, org_id, email, name, role, status, password_hash, created_at, updated_at
+
+- contacts:
+  id, org_id, name, primary_phone, primary_email, created_at, updated_at
+
+- practice_areas:
+  id, org_id, name, active, created_at, updated_at
+
+- ai_configs:
+  id, org_id (unique),
+  voice_greeting,
+  disclaimer_text,
+  tone_profile(json),
+  handoff_rules(json),
+  qualification_rules(json),
+  created_at, updated_at
+
+- intake_question_sets:
+  id, org_id, practice_area_id(nullable),
+  name, version,
+  schema(json),
+  active,
+  created_at, updated_at
+
+- phone_numbers:
+  id, org_id, label, e164(unique), provider, provider_sid,
+  inbound_enabled, after_hours_enabled,
+  routing(json),
+  created_at, updated_at
+
+- leads:
+  id, org_id, contact_id(FK),
+  source, status, priority,
+  practice_area_id(nullable),
+  incident_date(nullable),
+  incident_location(nullable),
+  summary(nullable),
+  created_at, updated_at
+
+- interactions:
+  id, org_id, lead_id,
+  channel(call/sms/webchat),
+  status,
+  started_at,
+  ended_at(nullable),
+  metadata(json),
+  created_at, updated_at
+
+- calls:
+  id, org_id, lead_id, interaction_id(unique),
+  phone_number_id,
+  direction,
+  provider,
+  provider_call_id,
+  from_e164, to_e164,
+  started_at, ended_at,
+  duration_seconds,
+  recording_url,
+  transcript_text,
+  transcript_json,
+  ai_summary,
+  ai_flags(json),
+  created_at, updated_at
+
+- messages:
+  id, org_id, lead_id, interaction_id,
+  direction,
+  channel(sms/webchat),
+  provider,
+  provider_message_id,
+  from, to,
+  body,
+  created_at
+
+- intakes:
+  id, org_id, lead_id(unique),
+  practice_area_id(nullable),
+  question_set_id(nullable),
+  answers(json),
+  completion_status(partial/complete),
+  completed_at(nullable),
+  created_at, updated_at
+
+- qualifications:
+  id, org_id, lead_id(unique),
+  score(0-100),
+  disposition(accept/review/decline),
+  reasons(json),
+  confidence(0-100),
+  created_at, updated_at
+
+- tasks:
+  id, org_id, lead_id,
+  assigned_user_id(nullable),
+  type, status,
+  due_at(nullable),
+  notes(nullable),
+  created_at, updated_at
+
+- notifications:
+  id, org_id, user_id,
+  lead_id(nullable),
+  type, title, body,
+  channels(text[]),
+  read_at(nullable),
+  created_at
+
+- outgoing_webhook_endpoints:
+  id, org_id,
+  url, secret,
+  events(text[]),
+  active,
+  created_at, updated_at
+
+- outgoing_webhook_deliveries:
+  id, org_id,
+  endpoint_id,
+  event_type,
+  payload(json),
+  status,
+  attempt_count,
+  last_attempt_at,
+  response_code,
+  response_body,
+  created_at
+
+- audit_logs:
+  id, org_id,
+  actor_user_id(nullable),
+  actor_type(user/system/ai),
+  action,
+  entity_type,
+  entity_id,
+  details(json),
+  created_at
+
+===========================================================
+E) API ENDPOINTS (REST, /v1)
+===========================================================
+
+Auth/Org:
+- POST /v1/auth/register (MVP ok)
+- POST /v1/auth/login
+- GET  /v1/me
+- GET  /v1/org
+- PATCH /v1/org
+
+Contacts:
+- GET  /v1/contacts?q=
+- POST /v1/contacts
+- GET  /v1/contacts/:id
+- GET  /v1/contacts/:id/leads
+
+Leads:
+- GET  /v1/leads?status=&priority=&practice_area_id=&q=&from=&to=
+- POST /v1/leads (accept contact_id OR create contact on the fly)
+- GET  /v1/leads/:id
+- PATCH /v1/leads/:id
+
+Interactions:
+- POST /v1/interactions
+- GET  /v1/leads/:id/interactions
+
+Calls & Messages:
+- GET  /v1/calls?lead_id=&from=&to=&q=
+- GET  /v1/calls/:id
+- GET  /v1/messages?lead_id=&interaction_id=
+- POST /v1/messages/send
+
+Intake:
+- GET   /v1/leads/:id/intake
+- POST  /v1/leads/:id/intake/init
+- PATCH /v1/leads/:id/intake
+- POST  /v1/leads/:id/intake/complete
+
+Qualification:
+- GET   /v1/leads/:id/qualification
+- POST  /v1/leads/:id/qualification/run
+- PATCH /v1/leads/:id/qualification (human override)
+
+Tasks/Notifications:
+- CRUD basics for tasks
+- GET  /v1/notifications
+- POST /v1/notifications/:id/read (or PATCH read_at)
+
+Webhooks:
+- CRUD webhook endpoints
+- Emit events:
+  lead.created, lead.updated, intake.completed, lead.qualified, call.completed
+- Sign outgoing webhooks with HMAC SHA256 in header: X-CT-Signature
+- Record deliveries and retry on failure (simple retry policy acceptable)
+
+Telephony webhook stubs (implement routes + persistence; no need for real Twilio credentials yet):
+- POST /v1/telephony/twilio/voice
+  - create/attach lead + interaction + call (idempotent by provider_call_id)
+  - return simple TwiML placeholder
+- POST /v1/telephony/twilio/status
+- POST /v1/telephony/twilio/recording
+- POST /v1/telephony/twilio/sms
+
+===========================================================
+F) SELF-IMPROVING SYSTEM ADDITIONS (MUST INCLUDE)
+===========================================================
+Add the following NEW tables (Prisma models + migrations). These enable measurable, continuous improvement and compliance stability.
+
+1) Experimentation Engine (Conversion Lab)
+Tables:
+- experiments:
+  id, org_id,
+  name, description,
+  status(draft/running/paused/ended),
+  kind(intake_script/sms_sequence/qualification_threshold),
+  variants(json),
+  allocation(json),
+  started_at(nullable), ended_at(nullable),
+  created_at, updated_at
+
+- experiment_assignments:
+  id, org_id,
+  experiment_id,
+  lead_id,
+  variant_key,
+  assigned_at,
+  UNIQUE(org_id, experiment_id, lead_id)
+
+- experiment_metrics_daily:
+  id, org_id,
+  experiment_id,
+  date,
+  metrics(json),
+  created_at,
+  UNIQUE(org_id, experiment_id, date)
+
+API:
+- CRUD experiments:
+  GET /v1/experiments
+  POST /v1/experiments
+  GET /v1/experiments/:id
+  PATCH /v1/experiments/:id
+  POST /v1/experiments/:id/start
+  POST /v1/experiments/:id/pause
+  POST /v1/experiments/:id/end
+
+- Assignment + reporting:
+  POST /v1/experiments/:id/assign  (assign for a lead; returns variant)
+  GET  /v1/experiments/:id/assignments?lead_id=
+  GET  /v1/experiments/:id/report   (returns metrics and outcomes)
+
+Rules:
+- When a lead is created, if there is a running experiment of relevant kind, assign the lead deterministically (hash lead_id) or randomly respecting allocation.
+- Store assignment in experiment_assignments.
+- For SMS sequence experiments, selecting a sequence affects which templates/cadence are used when sending follow-ups.
+- For intake script experiments, selecting a variant affects what greeting/disclaimer text is used in TwiML placeholders and in the web intake greeting.
+
+Metrics to compute (daily aggregation acceptable):
+- leads_created
+- contact_rate (has any outbound + subsequent inbound response)
+- booked_rate (leads status changed to booked)
+- signed_rate (leads status changed to signed)
+- median_time_to_first_response
+- qualification_accept_rate
+
+2) Explainable Qualification (DecisionTrace within qualifications.reasons JSON)
+Do NOT add a new table; extend the JSON contract in qualifications.reasons.
+
+When /v1/leads/:id/qualification/run runs, it MUST set:
+qualifications.reasons = {
+  "score_factors": [
+    {"name": string, "weight": number, "evidence": string, "evidence_quote": string|null}
+  ],
+  "missing_fields": [string],
+  "disqualifiers": [string],
+  "routing": {"practice_area_id": string|null, "notes": string|null},
+  "model": {"provider": string, "model": string, "version": string|null},
+  "explanations": [string]
+}
+
+The system MUST show these reasons in the dashboard lead detail page.
+
+3) Compliance Regression Harness (Policy Tests)
+Tables:
+- policy_test_suites:
+  id, org_id,
+  name,
+  description(nullable),
+  test_cases(json),   // array of test cases with transcript inputs + expected assertions
+  active(boolean),
+  created_at, updated_at
+
+- policy_test_runs:
+  id, org_id,
+  suite_id,
+  run_at,
+  results(json),   // per-test pass/fail + details
+  pass(boolean),
+  created_at
+
+API:
+- GET  /v1/policy-tests/suites
+- POST /v1/policy-tests/suites
+- GET  /v1/policy-tests/suites/:id
+- PATCH /v1/policy-tests/suites/:id
+- POST /v1/policy-tests/suites/:id/run
+- GET  /v1/policy-tests/runs?suite_id=
+
+Behavior:
+- Implement default suite seeded with at least 6 test cases:
+  - disclaimer is present early
+  - no legal advice phrasing
+  - emergency language triggers escalation flag
+  - conflict check prompts for parties
+  - consent language for SMS follow-up
+  - after-hours behavior differs from business hours
+- The run endpoint executes checks against the AI outputs (or stub outputs) and stores results.
+- Show latest run status and history in dashboard.
+
+4) Follow-up sequences (minimal V1)
+Implement “sequence templates” inside ai_configs or a new minimal table (preferred):
+- followup_sequences:
+  id, org_id, name, active,
+  steps(json) // [{delay_minutes, channel, template}]
+  created_at, updated_at
+
+API:
+- GET/POST/PATCH /v1/followups/sequences
+- POST /v1/leads/:id/followups/trigger (creates messages/tasks over time via job system)
+
+===========================================================
+G) AI JOBS (STUB OK, BUT MUST PERSIST OUTPUTS)
+===========================================================
+Implement as background jobs:
+
+- transcription:
+  input: call recording or placeholder audio
+  output: calls.transcript_text and calls.transcript_json
+
+- summarization:
+  output: calls.ai_summary and calls.ai_flags(json) (e.g., {"emergency": false, "needs_transfer": true})
+
+- intake extraction:
+  output: intakes.answers(json), completion_status(partial or complete), and leads.summary if empty
+
+- qualification scoring:
+  output: qualifications row and updates lead priority/disposition/status
+  MUST populate qualifications.reasons with explainable factors/missing/disqualifiers
+
+If real OpenAI keys aren’t available, stub jobs with deterministic fake outputs while keeping the exact data flow.
+
+===========================================================
+H) WEB DASHBOARD (NEXT.JS)
+===========================================================
+Pages:
+- /login
+- /leads (filters, search, status)
+- /leads/:id
+  - contact + lead fields
+  - interactions timeline
+  - latest call transcript/summary
+  - intake answers (JSON viewer)
+  - qualification (score + reasons)
+  - experiment assignments + variant
+  - tasks + create/complete
+  - notifications for lead
+- /settings
+  - org settings
+  - practice areas CRUD
+  - intake question sets CRUD (raw JSON editor ok)
+  - ai config editor (greeting/disclaimer/tone/handoff/qualification rules)
+  - phone numbers CRUD
+  - follow-up sequences CRUD
+  - outgoing webhooks CRUD
+  - policy test suites + runs
+  - experiments CRUD + report page
+
+===========================================================
+I) ACCEPTANCE CRITERIA (“DONE”)
+===========================================================
+1) I can create a lead via API and see it in the dashboard.
+2) Completing an intake runs qualification and updates lead priority/disposition.
+3) Outgoing webhook deliveries are recorded and retry on failure.
+4) All tables have org_id scoping and basic RBAC enforced.
+5) Prisma migrations exist and seed creates:
+   - an org
+   - owner user
+   - sample practice area
+   - sample question set
+   - default ai_config
+   - default follow-up sequence
+   - default policy test suite
+6) Self-improving requirements:
+   - An active experiment assigns variants to new leads and records assignments.
+   - Experiment report endpoint returns computed metrics.
+   - Policy test suite can be run; results are stored and visible.
+   - Qualification reasons show score_factors/missing_fields/disqualifiers.
+
+===========================================================
+J) MILESTONE / CHECKPOINT BUILD ORDER (MANDATORY)
+===========================================================
+Before coding: output a build plan with checkpoints.
+
+Build order:
+Checkpoint 1: Repo setup, env, Prisma + Postgres connection, base migrations, seed org+owner.
+Checkpoint 2: Auth (register/login/me) + RBAC middleware + OpenAPI docs live.
+Checkpoint 3: Core CRUD (contacts/leads) + dashboard login + leads list page.
+Checkpoint 4: Lead detail page (interactions, intake, qualification placeholders).
+Checkpoint 5: Telephony webhook stubs persisting interactions + calls.
+Checkpoint 6: Job system + AI job stubs persisting transcript/summary/intake/qualification.
+Checkpoint 7: Webhooks (endpoints + deliveries + retry).
+Checkpoint 8: Self-improving features:
+  - experiments + assignments + report
+  - policy tests suite + run + history UI
+  - follow-up sequences + trigger + scheduled messages
+Checkpoint 9: Tests + README polish.
+
+After each checkpoint:
+- Run the app, run relevant tests, ensure no breaking errors, and create a Replit checkpoint.
+
+===========================================================
+K) MOBILE APP (SEPARATE REPL, EXPO)
+===========================================================
+After backend is stable, build an Expo React Native app that connects to the existing CounselTech API.
+
+Requirements:
+- Login screen (email/password) calling the API.
+- After login, show:
+  1) Leads list (status filter + search)
+  2) Lead detail screen: summary, contact, qualification, intake completion status, latest call summary
+  3) Tasks list + mark complete
+  4) Notifications list + mark read
+- Configure API base URL via an environment variable.
+- Use a typed API client module and keep request/response types centralized.
+- Include sensible loading + error states.
+- Add a push notification stub screen (do not implement full push provider; just scaffolding and permissions check).
+- Deliver a README with how to set base URL and run on iOS/Android via Expo.
+
+===========================================================
+FIRST RESPONSE REQUIREMENT
+===========================================================
+Before writing code, you must respond with:
+1) Architecture overview (folders for api and web, job runner, prisma, openapi)
+2) Prisma model list (including additions)
+3) Endpoint list (including new experimentation, policy tests, follow-ups)
+4) Checkpoint plan (as above) with what will be verified after each checkpoint
+Then begin implementation in Build mode.
