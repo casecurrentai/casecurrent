@@ -12,7 +12,7 @@ export function SectionFrame({
   children,
   className,
   showCorners = true,
-  showConnectors = false,
+  showConnectors = true,
 }: SectionFrameProps) {
   const [debugFrame, setDebugFrame] = useState(false);
   
@@ -23,9 +23,9 @@ export function SectionFrame({
     }
   }, []);
 
-  const cornerBorderColor = debugFrame ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.2)";
-  const connectorBgColor = debugFrame ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.2)";
-  const cornerSize = debugFrame ? 32 : 24;
+  const cornerBorderColor = debugFrame ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.35)";
+  const connectorBgColor = debugFrame ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.25)";
+  const cornerSize = debugFrame ? 40 : 28;
   const borderWidth = debugFrame ? 4 : 2;
 
   return (

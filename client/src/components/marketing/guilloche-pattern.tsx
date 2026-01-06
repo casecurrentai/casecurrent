@@ -72,7 +72,7 @@ export function GuillocheUnderlay() {
   const debugPattern = searchParams.get("debugPattern") === "1";
   const debugFrame = searchParams.get("debugFrame") === "1";
   
-  const baseOpacity = debugPattern ? 0.6 : 0.05;
+  const baseOpacity = debugPattern ? 0.6 : 0.18;
   
   return (
     <div 
@@ -88,7 +88,7 @@ export function GuillocheUnderlay() {
       <svg
         className="absolute inset-0 w-full h-full text-primary"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ opacity: baseOpacity, filter: debugPattern ? "none" : "blur(0.3px)" }}
+        style={{ opacity: baseOpacity }}
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>
@@ -135,7 +135,7 @@ export function GuillocheUnderlay() {
       <svg
         className="absolute inset-0 w-full h-full text-muted-foreground"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ opacity: baseOpacity * 0.5 }}
+        style={{ opacity: baseOpacity * 0.6 }}
       >
         <defs>
           <pattern

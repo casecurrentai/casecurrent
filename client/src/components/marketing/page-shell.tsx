@@ -26,7 +26,7 @@ export function PageShell({ children }: PageShellProps) {
     <div className="min-h-screen bg-background flex flex-col relative">
       <GuillocheUnderlay />
       
-      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+      <header className="sticky top-0 z-50 bg-background/40 backdrop-blur-sm border-b border-border/50">
         <div className="container mx-auto px-6">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
