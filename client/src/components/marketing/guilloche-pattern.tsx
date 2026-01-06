@@ -69,12 +69,21 @@ export function DotGridPattern() {
 export function GuillocheUnderlay() {
   const [location] = useLocation();
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const debugMode = searchParams.get("debugPattern") === "1";
+  const debugPattern = searchParams.get("debugPattern") === "1";
+  const debugFrame = searchParams.get("debugFrame") === "1";
   
-  const baseOpacity = debugMode ? 0.25 : 0.04;
+  const baseOpacity = debugPattern ? 0.35 : 0.04;
   
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
+    <div 
+      className="absolute inset-0 overflow-hidden pointer-events-none" 
+      style={{ 
+        zIndex: 0,
+        outline: debugFrame ? "3px dashed hsl(var(--primary))" : "none",
+        outlineOffset: "-3px",
+      }}
+      data-testid="guilloche-underlay-container"
+    >
       <svg
         className="absolute inset-0 w-full h-full text-primary"
         xmlns="http://www.w3.org/2000/svg"

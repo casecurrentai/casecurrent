@@ -268,7 +268,7 @@ export default function DemoPage() {
 
       <section className="py-20 bg-muted/30" ref={formRef}>
         <div className="container mx-auto px-6">
-          <div className="max-w-2xl mx-auto">
+          <SectionFrame showCorners showConnectors className="max-w-2xl mx-auto p-6">
             <Card>
               <CardContent className="p-8">
                 {isSubmitted ? (
@@ -477,7 +477,7 @@ export default function DemoPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
+          </SectionFrame>
         </div>
       </section>
     </PageShell>
