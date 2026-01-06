@@ -15,13 +15,18 @@ datasource db {
 // ============================================
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  status    String   @default("active")
-  timezone  String   @default("America/New_York")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid())
+  name                  String
+  slug                  String    @unique
+  status                String    @default("active")
+  timezone              String    @default("America/New_York")
+  onboardingStatus      String    @default("not_started") @map("onboarding_status") // not_started, in_progress, complete
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
+  subscriptionStatus    String    @default("manual") @map("subscription_status") // trial, active, past_due, canceled, manual
+  planTier              String?   @map("plan_tier") // core, pro, elite
+  primaryPhoneNumberId  String?   @map("primary_phone_number_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   users                      User[]
   contacts                   Contact[]
@@ -40,20 +45,23 @@ model Organization {
   outgoingWebhookEndpoints   OutgoingWebhookEndpoint[]
   outgoingWebhookDeliveries  OutgoingWebhookDelivery[]
   auditLogs                  AuditLog[]
+  userInvites                UserInvite[]
+  orgHealthSnapshots         OrgHealthSnapshot[]
 
   @@map("organizations")
 }
 
 model User {
-  id           String   @id @default(uuid())
-  orgId        String   @map("org_id")
+  id           String    @id @default(uuid())
+  orgId        String    @map("org_id")
   email        String
   name         String
-  role         String   @default("staff")
-  status       String   @default("active")
-  passwordHash String   @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  role         String    @default("staff")
+  status       String    @default("active")
+  passwordHash String    @map("password_hash")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   tasks         Task[]
@@ -62,6 +70,41 @@ model User {
 
   @@unique([orgId, email])
   @@map("users")
+}
+
+// ============================================
+// USER INVITES (for concierge onboarding)
+// ============================================
+
+model UserInvite {
+  id         String    @id @default(uuid())
+  orgId      String    @map("org_id")
+  email      String
+  role       String    @default("owner")
+  token      String    @unique
+  expiresAt  DateTime  @map("expires_at")
+  acceptedAt DateTime? @map("accepted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("user_invites")
+}
+
+// ============================================
+// ORG HEALTH SNAPSHOTS (for platform admin monitoring)
+// ============================================
+
+model OrgHealthSnapshot {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  snapshotAt DateTime @map("snapshot_at")
+  metrics    Json     // {leads_24h, calls_24h, messages_24h, webhook_failures_24h, jobs_pending, jobs_failed_24h}
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_health_snapshots")
 }
 
 // ============================================

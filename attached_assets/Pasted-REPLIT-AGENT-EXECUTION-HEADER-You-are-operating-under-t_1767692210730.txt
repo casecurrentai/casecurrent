@@ -1,0 +1,186 @@
+REPLIT AGENT EXECUTION HEADER
+You are operating under the CounselTech V1 CONSTITUTION already provided.
+Implement ONLY the single checkpoint specified in this message.
+Do NOT start CP5. Stop immediately after completing this checkpoint.
+After completion you MUST create a Replit checkpoint named exactly: cp4_8-provisioning-setup-wizard
+========================================================
+
+CHECKPOINT 4.8 — PLATFORM ADMIN + FIRM PROVISIONING + SETUP WIZARD (CONCIERGE ONBOARDING)
+Create a Replit checkpoint named exactly: cp4_8-provisioning-setup-wizard
+
+Goal:
+Make CounselTech sellable for the first 5–10 firms via concierge onboarding.
+This checkpoint adds:
+1) A platform admin area (you) to create firms + owner users and monitor org health.
+2) A firm setup wizard (the firm admin) to complete the one-time setup without touching the database.
+3) Basic “operator visibility” so you can support firms (ingestion + job + webhook health signals).
+
+Scope constraints:
+- Do NOT implement CP5 telephony ingestion routes here (that comes next).
+- Do NOT implement Stripe/billing.
+- You may add minimal new DB fields/tables ONLY as specified below.
+- You may add routes/pages needed for provisioning and setup only.
+
+========================================================
+A) DATA MODEL CHANGES (PRISMA MIGRATIONS REQUIRED)
+========================================================
+
+1) organizations: ADD fields (keep existing fields intact)
+- onboarding_status: enum('not_started','in_progress','complete') default 'not_started'
+- onboarding_completed_at: datetime nullable
+- subscription_status: enum('trial','active','past_due','canceled','manual') default 'manual'
+- plan_tier: enum('core','pro','elite') nullable
+- primary_phone_number_id: FK to phone_numbers nullable
+
+2) users: ADD fields
+- last_login_at: datetime nullable
+
+3) NEW TABLE: user_invites (for concierge invites / password setup)
+- id, org_id
+- email, role
+- token (unique)
+- expires_at
+- accepted_at nullable
+- created_at
+
+4) NEW TABLE: org_health_snapshots (lightweight metrics so you can support)
+- id, org_id
+- snapshot_at
+- metrics(json)  // e.g., {leads_24h, calls_24h, messages_24h, webhook_failures_24h, jobs_pending, jobs_failed_24h}
+- created_at
+
+Notes:
+- If you already have a marketing submissions table, leave it unchanged.
+- Do NOT build complex analytics; snapshots can be computed on-demand or as a cron-like job.
+
+========================================================
+B) PLATFORM ADMIN MODE (YOU)
+========================================================
+
+Platform Admin access:
+- Add a PLATFORM_ADMIN_EMAILS env var (comma-separated).
+- If the logged-in user email is in PLATFORM_ADMIN_EMAILS, they can access /admin routes.
+- Log every admin action in audit_logs (actor_type=user, include target org_id in details.json).
+
+Admin Web Pages (Next.js):
+1) /admin/orgs
+- list organizations (search by name/slug)
+- columns: org name, slug, onboarding_status, subscription_status, created_at
+- button: “Create Firm”
+
+2) /admin/orgs/new
+- form fields: org name, slug, timezone, plan_tier (core/pro/elite), subscription_status (manual/trial/active)
+- owner user fields: owner name, owner email
+- on submit:
+  - create organization
+  - create owner user with role=owner and a temporary password OR create invite (preferred)
+  - create default rows required for setup wizard:
+    - ai_configs row for org (default greeting/disclaimer placeholders)
+    - at least one practice_area row (inactive ok)
+    - (optional) one default intake_question_set template per practice area (can be minimal placeholders)
+
+3) /admin/orgs/[id]
+- org details + quick actions:
+  - “Generate invite link” (creates user_invites token)
+  - “Impersonate org admin” (read-only impersonation is acceptable for MVP OR full impersonation with explicit warning modal)
+  - “View health” section (latest org_health_snapshots + quick computed metrics)
+- MUST show audit-friendly banner when impersonating and write audit_log entry.
+
+Admin API endpoints (under /v1/admin, platform-admin only):
+- GET /v1/admin/orgs
+- POST /v1/admin/orgs
+- GET /v1/admin/orgs/:id
+- POST /v1/admin/orgs/:id/invites
+- POST /v1/admin/orgs/:id/impersonate (returns a short-lived impersonation token scoped to that org)
+
+Rules:
+- Impersonation token must be short-lived and clearly marked in JWT claims.
+- Every admin action must write audit_logs.
+
+========================================================
+C) FIRM SETUP WIZARD (ORG OWNER/ADMIN)
+========================================================
+
+Wizard entry:
+- After first login (or invite acceptance), if org.onboarding_status != 'complete', redirect to /setup.
+
+Pages:
+- /setup (stepper UI with progress)
+Steps (must persist to DB on each step):
+1) Firm Basics
+   - org name, timezone
+2) Business Hours + After-Hours behavior
+   - store into organizations or ai_configs.handoff_rules JSON
+3) Practice Areas
+   - enable/disable: PI, Criminal Defense, Family Law, Immigration
+   - implement via practice_areas.active per org
+4) Phone Numbers
+   - allow adding one or more phone_numbers records:
+     label, e164, after_hours_enabled, routing(json minimal)
+   - allow selecting a primary number (org.primary_phone_number_id)
+   - include a “Webhook URLs” display block (placeholders if CP5 not done yet)
+5) AI Voice + Disclaimers
+   - edit ai_configs.voice_greeting and ai_configs.disclaimer_text
+   - tone_profile(json) can be simple (friendly/professional)
+6) Intake Logic
+   - select active intake_question_set per practice area
+   - allow raw JSON editor for question_set.schema (safe validation: must be valid JSON)
+7) Follow-up Sequence Defaults
+   - if follow-up sequences exist later, select defaults; for now store minimal config in ai_configs or create placeholder
+8) Review & Complete
+   - show summary of settings
+   - mark org.onboarding_status='complete' and set onboarding_completed_at
+
+Rules:
+- This wizard must work without any telephony integration present yet.
+- It must be safe: validate E.164 phone format, validate JSON editors, prevent blank required fields.
+- Write audit_logs for all persisted changes.
+
+========================================================
+D) INVITE ACCEPTANCE / PASSWORD SETUP (NO BILLING)
+========================================================
+
+Implement invite flow:
+- /invite/[token]
+  - validates token not expired/accepted
+  - allows setting password and name
+  - creates/updates user, sets accepted_at
+  - logs in and redirects to /setup
+
+API endpoints:
+- GET /v1/invites/:token
+- POST /v1/invites/:token/accept
+
+========================================================
+E) ORG HEALTH (LIGHTWEIGHT BUT USEFUL)
+========================================================
+
+Implement an org health summary:
+- For now, compute simple metrics via DB queries:
+  - leads created last 24h
+  - interactions last 24h
+  - calls last 24h (will be 0 until CP5)
+  - webhook failures last 24h (from outgoing_webhook_deliveries)
+  - pending/failed jobs (if jobs table exists, else 0)
+- Store into org_health_snapshots on demand when viewing admin org page (or via a small job).
+
+========================================================
+F) VERIFICATION REQUIREMENTS
+========================================================
+
+You must verify before stopping:
+1) Platform admin gating works (only PLATFORM_ADMIN_EMAILS can access /admin).
+2) Create Firm flow works:
+   - creates org + owner user OR invite
+   - creates ai_configs and minimal defaults
+3) Invite acceptance works and routes new user to /setup.
+4) Setup wizard persists settings and marks onboarding complete.
+5) Admin org page can view the org and (optionally) impersonate with audit logging.
+
+After implementation:
+- List commands run
+- List migrations created
+- List files changed
+- Confirm CP5 telephony is NOT implemented yet
+- Create Replit checkpoint: cp4_8-provisioning-setup-wizard
+Then STOP.
