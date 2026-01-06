@@ -569,6 +569,48 @@ export async function registerRoutes(
   // WEBHOOK ENDPOINTS CRUD
   // ============================================
 
+  /**
+   * @openapi
+   * /v1/webhooks:
+   *   get:
+   *     summary: List webhook endpoints
+   *     tags: [Webhooks]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of webhook endpoints
+   *   post:
+   *     summary: Create webhook endpoint
+   *     tags: [Webhooks]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               url:
+   *                 type: string
+   *               events:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *     responses:
+   *       201:
+   *         description: Created webhook endpoint with secret
+   * /v1/webhook-deliveries:
+   *   get:
+   *     summary: Get webhook delivery history
+   *     tags: [Webhooks]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of webhook deliveries
+   */
   // GET /v1/webhooks - List webhook endpoints
   app.get("/v1/webhooks", authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
@@ -4322,6 +4364,40 @@ export async function registerRoutes(
     return variants[index];
   }
 
+  /**
+   * @openapi
+   * /v1/experiments:
+   *   get:
+   *     summary: List experiments
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of experiments
+   *   post:
+   *     summary: Create experiment
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *               kind:
+   *                 type: string
+   *                 enum: [intake_script, qualification_rules, follow_up_timing]
+   *               config:
+   *                 type: object
+   *     responses:
+   *       201:
+   *         description: Created experiment
+   */
   // GET /v1/experiments - List experiments
   app.get("/v1/experiments", authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
@@ -4723,6 +4799,67 @@ export async function registerRoutes(
   // POLICY TESTS API (Compliance Regression)
   // ============================================
 
+  /**
+   * @openapi
+   * /v1/policy-tests/suites:
+   *   get:
+   *     summary: List policy test suites
+   *     tags: [Policy Tests]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of test suites
+   *   post:
+   *     summary: Create policy test suite
+   *     tags: [Policy Tests]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Created test suite
+   * /v1/policy-tests/suites/{id}/run:
+   *   post:
+   *     summary: Run policy test suite
+   *     tags: [Policy Tests]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Test run results
+   * /v1/policy-tests/runs:
+   *   get:
+   *     summary: Get policy test run history
+   *     tags: [Policy Tests]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of test runs
+   * /v1/followup-sequences:
+   *   get:
+   *     summary: List follow-up sequences
+   *     tags: [Follow-up]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of follow-up sequences
+   *   post:
+   *     summary: Create follow-up sequence
+   *     tags: [Follow-up]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Created follow-up sequence
+   */
   // GET /v1/policy-tests/suites - List suites
   app.get("/v1/policy-tests/suites", authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
