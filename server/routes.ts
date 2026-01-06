@@ -3006,7 +3006,7 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId: user.orgId,
-          actorUserId: user.id,
+          actorUserId: user.userId,
           actorType: "user",
           action: "intake_initialized",
           entityType: "intake",
@@ -3080,7 +3080,7 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId: user.orgId,
-          actorUserId: user.id,
+          actorUserId: user.userId,
           actorType: "user",
           action: "intake_updated",
           entityType: "intake",
@@ -3145,7 +3145,7 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId: user.orgId,
-          actorUserId: user.id,
+          actorUserId: user.userId,
           actorType: "user",
           action: "intake_completed",
           entityType: "intake",
@@ -3172,6 +3172,621 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Complete intake error:", error);
       res.status(500).json({ error: "Failed to complete intake" });
+    }
+  });
+
+  // ============================================
+  // AI PIPELINE & QUALIFICATION (Checkpoint 7)
+  // ============================================
+
+  // AI Job Stub: Generate qualification reasons with required JSON contract
+  function generateQualificationReasons(lead: any, intake: any, calls: any[]) {
+    const scoreFactors: Array<{
+      name: string;
+      weight: number;
+      evidence: string;
+      evidence_quote: string | null;
+    }> = [];
+    const missingFields: string[] = [];
+    const disqualifiers: string[] = [];
+
+    let totalScore = 0;
+    let maxScore = 0;
+
+    // Factor 1: Contact information completeness
+    const hasPhone = !!lead.contact?.primaryPhone;
+    const hasEmail = !!lead.contact?.primaryEmail;
+    const contactWeight = 20;
+    maxScore += contactWeight;
+    if (hasPhone && hasEmail) {
+      totalScore += contactWeight;
+      scoreFactors.push({
+        name: "Contact Information",
+        weight: contactWeight,
+        evidence: "Both phone and email provided",
+        evidence_quote: null,
+      });
+    } else if (hasPhone || hasEmail) {
+      totalScore += contactWeight / 2;
+      scoreFactors.push({
+        name: "Contact Information",
+        weight: contactWeight / 2,
+        evidence: hasPhone ? "Phone number provided" : "Email provided",
+        evidence_quote: null,
+      });
+      missingFields.push(hasPhone ? "email" : "phone");
+    } else {
+      missingFields.push("phone", "email");
+    }
+
+    // Factor 2: Practice area assignment
+    const practiceAreaWeight = 15;
+    maxScore += practiceAreaWeight;
+    if (lead.practiceAreaId) {
+      totalScore += practiceAreaWeight;
+      scoreFactors.push({
+        name: "Practice Area",
+        weight: practiceAreaWeight,
+        evidence: `Assigned to practice area: ${lead.practiceArea?.name || "Unknown"}`,
+        evidence_quote: null,
+      });
+    } else {
+      missingFields.push("practice_area");
+    }
+
+    // Factor 3: Intake completion
+    const intakeWeight = 25;
+    maxScore += intakeWeight;
+    if (intake?.completionStatus === "complete") {
+      totalScore += intakeWeight;
+      const answerCount = Object.keys(intake.answers || {}).length;
+      scoreFactors.push({
+        name: "Intake Completed",
+        weight: intakeWeight,
+        evidence: `Intake form completed with ${answerCount} answers`,
+        evidence_quote: null,
+      });
+    } else if (intake?.completionStatus === "partial") {
+      totalScore += intakeWeight / 2;
+      scoreFactors.push({
+        name: "Intake In Progress",
+        weight: intakeWeight / 2,
+        evidence: "Intake started but not completed",
+        evidence_quote: null,
+      });
+      missingFields.push("completed_intake");
+    } else {
+      missingFields.push("intake");
+    }
+
+    // Factor 4: Incident information
+    const incidentWeight = 20;
+    maxScore += incidentWeight;
+    if (lead.incidentDate && lead.incidentLocation) {
+      totalScore += incidentWeight;
+      scoreFactors.push({
+        name: "Incident Details",
+        weight: incidentWeight,
+        evidence: `Incident on ${new Date(lead.incidentDate).toLocaleDateString()} at ${lead.incidentLocation}`,
+        evidence_quote: null,
+      });
+    } else if (lead.incidentDate || lead.incidentLocation) {
+      totalScore += incidentWeight / 2;
+      scoreFactors.push({
+        name: "Partial Incident Details",
+        weight: incidentWeight / 2,
+        evidence: lead.incidentDate ? "Incident date provided" : "Incident location provided",
+        evidence_quote: null,
+      });
+      missingFields.push(lead.incidentDate ? "incident_location" : "incident_date");
+    } else {
+      missingFields.push("incident_date", "incident_location");
+    }
+
+    // Factor 5: Communication history
+    const commWeight = 20;
+    maxScore += commWeight;
+    if (calls.length > 0) {
+      const hasRecording = calls.some((c) => c.recordingUrl);
+      const hasTranscript = calls.some((c) => c.transcriptText);
+      let evidence = `${calls.length} call(s) on record`;
+      let score = commWeight / 2;
+      if (hasTranscript) {
+        evidence += ", transcripts available";
+        score = commWeight;
+      } else if (hasRecording) {
+        evidence += ", recordings available";
+        score = (commWeight * 3) / 4;
+      }
+      totalScore += score;
+      scoreFactors.push({
+        name: "Communication History",
+        weight: score,
+        evidence,
+        evidence_quote: hasTranscript ? calls.find((c) => c.transcriptText)?.transcriptText?.substring(0, 100) || null : null,
+      });
+    }
+
+    // Calculate final score (0-100)
+    const finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+    // Determine disposition
+    let disposition: "accept" | "review" | "decline" = "review";
+    if (finalScore >= 70 && missingFields.length <= 2 && disqualifiers.length === 0) {
+      disposition = "accept";
+    } else if (finalScore < 30 || disqualifiers.length > 0) {
+      disposition = "decline";
+    }
+
+    // Calculate confidence (based on data completeness)
+    const confidence = Math.min(100, Math.round((scoreFactors.length / 5) * 100));
+
+    const reasons = {
+      score_factors: scoreFactors,
+      missing_fields: missingFields,
+      disqualifiers,
+      routing: {
+        practice_area_id: lead.practiceAreaId || null,
+        notes: disposition === "accept" ? "Ready for attorney review" : disposition === "decline" ? "Insufficient information" : "Needs additional screening",
+      },
+      model: {
+        provider: "stub",
+        model: "qualification-v1",
+        version: "1.0.0",
+      },
+      explanations: [
+        `Lead scored ${finalScore}/100 based on ${scoreFactors.length} evaluation factors.`,
+        missingFields.length > 0 ? `Missing information: ${missingFields.join(", ")}.` : "All required information provided.",
+        disqualifiers.length > 0 ? `Disqualification reasons: ${disqualifiers.join(", ")}.` : "",
+      ].filter(Boolean),
+    };
+
+    return { score: finalScore, disposition, confidence, reasons };
+  }
+
+  // GET /v1/leads/:id/qualification - Get qualification for a lead
+  app.get("/v1/leads/:id/qualification", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id: leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const qualification = await prisma.qualification.findUnique({
+        where: { leadId },
+      });
+
+      if (!qualification) {
+        return res.json({ exists: false, qualification: null });
+      }
+
+      res.json({ exists: true, qualification });
+    } catch (error) {
+      console.error("Get qualification error:", error);
+      res.status(500).json({ error: "Failed to get qualification" });
+    }
+  });
+
+  // POST /v1/leads/:id/qualification/run - Run AI qualification
+  app.post("/v1/leads/:id/qualification/run", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id: leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: {
+          contact: true,
+          practiceArea: true,
+        },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Fetch intake for this lead
+      const intake = await prisma.intake.findUnique({
+        where: { leadId },
+      });
+
+      // Fetch calls for this lead
+      const calls = await prisma.call.findMany({
+        where: { leadId },
+      });
+
+      // Run AI qualification stub
+      const { score, disposition, confidence, reasons } = generateQualificationReasons(lead, intake, calls);
+
+      // Upsert qualification
+      const qualification = await prisma.qualification.upsert({
+        where: { leadId },
+        update: {
+          score,
+          disposition,
+          confidence,
+          reasons,
+        },
+        create: {
+          orgId: user.orgId,
+          leadId,
+          score,
+          disposition,
+          confidence,
+          reasons,
+        },
+      });
+
+      // Update lead status based on qualification
+      if (disposition === "accept" && lead.status === "new") {
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: { status: "qualified" },
+        });
+      } else if (disposition === "decline" && lead.status === "new") {
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: { status: "unqualified" },
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "qualification_run",
+          entityType: "qualification",
+          entityId: qualification.id,
+          details: {
+            leadId,
+            score,
+            disposition,
+            confidence,
+            factorCount: reasons.score_factors.length,
+          },
+        },
+      });
+
+      // Log AI pipeline job stub
+      console.log(`[AI PIPELINE STUB] qualification.run for lead ${leadId}, score: ${score}, disposition: ${disposition}`);
+
+      res.json(qualification);
+    } catch (error) {
+      console.error("Run qualification error:", error);
+      res.status(500).json({ error: "Failed to run qualification" });
+    }
+  });
+
+  // PATCH /v1/leads/:id/qualification - Human override
+  app.patch("/v1/leads/:id/qualification", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id: leadId } = req.params;
+      const { score, disposition, reasons } = req.body;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const existingQualification = await prisma.qualification.findUnique({
+        where: { leadId },
+      });
+
+      if (!existingQualification) {
+        return res.status(404).json({ error: "Qualification not found. Run qualification first." });
+      }
+
+      const updateData: any = {};
+      if (score !== undefined) updateData.score = score;
+      if (disposition !== undefined) updateData.disposition = disposition;
+      if (reasons !== undefined) {
+        // Merge human override into existing reasons
+        const existingReasons = (existingQualification.reasons as any) || {};
+        updateData.reasons = {
+          ...existingReasons,
+          ...reasons,
+          explanations: [
+            ...(existingReasons.explanations || []),
+            `Human override by ${user.email} at ${new Date().toISOString()}`,
+          ],
+        };
+      }
+
+      const qualification = await prisma.qualification.update({
+        where: { leadId },
+        data: updateData,
+      });
+
+      // Update lead status if disposition changed
+      if (disposition) {
+        let newStatus = lead.status;
+        if (disposition === "accept") newStatus = "qualified";
+        else if (disposition === "decline") newStatus = "unqualified";
+
+        if (newStatus !== lead.status) {
+          await prisma.lead.update({
+            where: { id: leadId },
+            data: { status: newStatus },
+          });
+        }
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "qualification_override",
+          entityType: "qualification",
+          entityId: qualification.id,
+          details: {
+            leadId,
+            updatedFields: Object.keys(updateData),
+            newDisposition: disposition,
+          },
+        },
+      });
+
+      res.json(qualification);
+    } catch (error) {
+      console.error("Override qualification error:", error);
+      res.status(500).json({ error: "Failed to override qualification" });
+    }
+  });
+
+  // AI Job Stubs for future implementation
+  // These would be triggered by a job queue in production
+
+  // Stub: Transcription job
+  app.post("/v1/ai/transcribe/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { callId } = req.params;
+
+      const call = await prisma.call.findFirst({
+        where: { id: callId, orgId: user.orgId },
+      });
+
+      if (!call) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      if (!call.recordingUrl) {
+        return res.status(400).json({ error: "No recording URL available" });
+      }
+
+      // Stub: In production, this would call a transcription service
+      const stubTranscript = `[STUB TRANSCRIPT] This is a simulated transcript for call ${callId}. In production, this would be generated from the recording at ${call.recordingUrl}.`;
+
+      await prisma.call.update({
+        where: { id: callId },
+        data: {
+          transcriptText: stubTranscript,
+          transcriptJson: {
+            segments: [{ start: 0, end: 60, text: stubTranscript, speaker: "unknown" }],
+            provider: "stub",
+            model: "transcription-v1",
+            processedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "ai.transcribe.stub",
+          entityType: "call",
+          entityId: callId,
+          details: { provider: "stub", model: "transcription-v1" },
+        },
+      });
+
+      console.log(`[AI PIPELINE STUB] transcription completed for call ${callId}`);
+      res.json({ success: true, message: "Transcription stub completed" });
+    } catch (error) {
+      console.error("Transcription error:", error);
+      res.status(500).json({ error: "Failed to transcribe" });
+    }
+  });
+
+  // Stub: Summarization job
+  app.post("/v1/ai/summarize/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { callId } = req.params;
+
+      const call = await prisma.call.findFirst({
+        where: { id: callId, orgId: user.orgId },
+      });
+
+      if (!call) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      if (!call.transcriptText) {
+        return res.status(400).json({ error: "No transcript available. Run transcription first." });
+      }
+
+      // Stub: In production, this would call an LLM for summarization
+      const stubSummary = `[STUB SUMMARY] Call summary for ${callId}. Caller discussed their case. Key points extracted from transcript.`;
+
+      await prisma.call.update({
+        where: { id: callId },
+        data: {
+          aiSummary: stubSummary,
+          aiFlags: {
+            urgency: "medium",
+            sentiment: "neutral",
+            keyTopics: ["case discussion", "initial contact"],
+            provider: "stub",
+            model: "summarization-v1",
+            processedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "ai.summarize.stub",
+          entityType: "call",
+          entityId: callId,
+          details: { provider: "stub", model: "summarization-v1" },
+        },
+      });
+
+      console.log(`[AI PIPELINE STUB] summarization completed for call ${callId}`);
+      res.json({ success: true, message: "Summarization stub completed" });
+    } catch (error) {
+      console.error("Summarization error:", error);
+      res.status(500).json({ error: "Failed to summarize" });
+    }
+  });
+
+  // Stub: Intake extraction job
+  app.post("/v1/ai/extract/:leadId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Get calls with transcripts for this lead
+      const calls = await prisma.call.findMany({
+        where: { leadId, transcriptText: { not: null } },
+      });
+
+      if (calls.length === 0) {
+        return res.status(400).json({ error: "No transcripts available for extraction" });
+      }
+
+      // Stub: In production, this would use an LLM to extract structured data
+      const extractedAnswers = {
+        extracted_from_calls: true,
+        call_count: calls.length,
+        ai_extracted: {
+          contact_reason: "Legal consultation requested",
+          urgency_level: "medium",
+          extraction_date: new Date().toISOString(),
+        },
+      };
+
+      // Merge into existing intake answers
+      const intake = await prisma.intake.findUnique({ where: { leadId } });
+      if (intake) {
+        const existingAnswers = (intake.answers as Record<string, any>) || {};
+        await prisma.intake.update({
+          where: { leadId },
+          data: {
+            answers: { ...existingAnswers, ...extractedAnswers },
+          },
+        });
+      }
+
+      // Update lead summary if empty
+      if (!lead.summary) {
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            summary: `[AI EXTRACTED] Lead from ${calls.length} call(s). Contact reason: Legal consultation requested.`,
+          },
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "ai.extract.stub",
+          entityType: "lead",
+          entityId: leadId,
+          details: { provider: "stub", callCount: calls.length },
+        },
+      });
+
+      console.log(`[AI PIPELINE STUB] extraction completed for lead ${leadId}`);
+      res.json({ success: true, message: "Extraction stub completed", extractedAnswers });
+    } catch (error) {
+      console.error("Extraction error:", error);
+      res.status(500).json({ error: "Failed to extract" });
+    }
+  });
+
+  // Stub: AI scoring job (runs qualification scoring using shared helper)
+  app.post("/v1/ai/score/:leadId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: {
+          contact: true,
+          practiceArea: true,
+        },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Fetch intake for this lead
+      const intake = await prisma.intake.findUnique({
+        where: { leadId },
+      });
+
+      // Fetch calls for this lead
+      const calls = await prisma.call.findMany({
+        where: { leadId },
+      });
+
+      // Use shared scoring helper (same as qualification run)
+      const { score, disposition, confidence, reasons } = generateQualificationReasons(lead, intake, calls);
+
+      // Audit log with consistent entityType/entityId
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "ai.score.stub",
+          entityType: "lead",
+          entityId: leadId,
+          details: { score, disposition, confidence },
+        },
+      });
+
+      console.log(`[AI PIPELINE STUB] scoring completed for lead ${leadId}: score=${score}, disposition=${disposition}`);
+      res.json({
+        success: true,
+        message: "Scoring stub completed",
+        result: { score, disposition, confidence, reasons },
+      });
+    } catch (error) {
+      console.error("Scoring error:", error);
+      res.status(500).json({ error: "Failed to score" });
     }
   });
 

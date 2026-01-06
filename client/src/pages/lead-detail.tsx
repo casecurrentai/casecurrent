@@ -30,6 +30,10 @@ import {
   Save,
   CheckCheck,
   Loader2,
+  Zap,
+  AlertTriangle,
+  Info,
+  Target,
 } from "lucide-react";
 
 interface Contact {
@@ -106,6 +110,38 @@ interface Intake {
 interface IntakeResponse {
   exists: boolean;
   intake: Intake | null;
+}
+
+interface ScoreFactor {
+  name: string;
+  weight: number;
+  evidence: string;
+  evidence_quote: string | null;
+}
+
+interface QualificationReasons {
+  score_factors: ScoreFactor[];
+  missing_fields: string[];
+  disqualifiers: string[];
+  routing: { practice_area_id: string | null; notes: string | null };
+  model: { provider: string; model: string; version: string | null };
+  explanations: string[];
+}
+
+interface Qualification {
+  id: string;
+  leadId: string;
+  score: number;
+  disposition: string;
+  confidence: number;
+  reasons: QualificationReasons | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface QualificationResponse {
+  exists: boolean;
+  qualification: Qualification | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -537,6 +573,241 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
   );
 }
 
+function QualificationPanel({ leadId, token }: { leadId: string; token: string }) {
+  const { toast } = useToast();
+
+  const { data: qualResponse, isLoading } = useQuery<QualificationResponse>({
+    queryKey: ["/v1/leads", leadId, "qualification"],
+    queryFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/qualification`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch qualification");
+      return res.json();
+    },
+  });
+
+  const runMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/qualification/run`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to run qualification");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId, "qualification"] });
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId] });
+      toast({ title: "Qualification completed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const getDispositionColor = (disposition: string) => {
+    switch (disposition) {
+      case "accept":
+        return "bg-green-500 text-white dark:bg-green-600";
+      case "decline":
+        return "bg-destructive text-destructive-foreground";
+      default:
+        return "bg-yellow-500 text-white dark:bg-yellow-600";
+    }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 70) return "text-green-600 dark:text-green-400";
+    if (score >= 40) return "text-yellow-600 dark:text-yellow-400";
+    return "text-red-600 dark:text-red-400";
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="h-40" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!qualResponse?.exists) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <Target className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground mb-4">No qualification run for this lead</p>
+          <Button
+            onClick={() => runMutation.mutate()}
+            disabled={runMutation.isPending}
+            data-testid="button-run-qualification"
+          >
+            {runMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Zap className="h-4 w-4 mr-2" />
+            Run AI Qualification
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const qual = qualResponse.qualification!;
+  const reasons = qual.reasons || {
+    score_factors: [],
+    missing_fields: [],
+    disqualifiers: [],
+    routing: { practice_area_id: null, notes: null },
+    model: { provider: "unknown", model: "unknown", version: null },
+    explanations: [],
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            AI Qualification
+          </CardTitle>
+          <Badge className={getDispositionColor(qual.disposition)} data-testid="badge-disposition">
+            {qual.disposition}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Last updated: {new Date(qual.updatedAt).toLocaleString()}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Score</p>
+            <p className={`text-2xl font-bold ${getScoreColor(qual.score)}`} data-testid="text-score">
+              {qual.score}/100
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Confidence</p>
+            <p className="text-2xl font-bold" data-testid="text-confidence">
+              {qual.confidence}%
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Disposition</p>
+            <p className="text-lg font-semibold capitalize">{qual.disposition}</p>
+          </div>
+        </div>
+
+        {reasons.score_factors.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium flex items-center gap-1">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Score Factors
+            </h4>
+            <div className="space-y-2">
+              {reasons.score_factors.map((factor, idx) => (
+                <div key={idx} className="bg-muted p-2 rounded-md text-sm" data-testid={`factor-${idx}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{factor.name}</span>
+                    <Badge variant="outline" className="text-xs">+{factor.weight}</Badge>
+                  </div>
+                  <p className="text-muted-foreground mt-1">{factor.evidence}</p>
+                  {factor.evidence_quote && (
+                    <p className="text-xs text-muted-foreground mt-1 italic">
+                      "{factor.evidence_quote}..."
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {reasons.missing_fields.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium flex items-center gap-1">
+              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              Missing Information
+            </h4>
+            <div className="flex flex-wrap gap-1">
+              {reasons.missing_fields.map((field, idx) => (
+                <Badge key={idx} variant="secondary" className="text-xs" data-testid={`missing-${idx}`}>
+                  {field.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {reasons.disqualifiers.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium flex items-center gap-1 text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              Disqualifiers
+            </h4>
+            <div className="space-y-1">
+              {reasons.disqualifiers.map((dq, idx) => (
+                <p key={idx} className="text-sm text-destructive" data-testid={`disqualifier-${idx}`}>{dq}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {reasons.explanations.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium flex items-center gap-1">
+              <Info className="h-4 w-4 text-blue-500" />
+              AI Explanation
+            </h4>
+            <div className="text-sm text-muted-foreground space-y-1">
+              {reasons.explanations.map((exp, idx) => (
+                <p key={idx} data-testid={`explanation-${idx}`}>{exp}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {reasons.routing && (reasons.routing.practice_area_id || reasons.routing.notes) && (
+          <div className="space-y-1">
+            <h4 className="text-sm font-medium">Routing</h4>
+            {reasons.routing.practice_area_id && (
+              <p className="text-sm text-muted-foreground">Practice Area ID: {reasons.routing.practice_area_id}</p>
+            )}
+            {reasons.routing.notes && (
+              <p className="text-sm text-muted-foreground">Notes: {reasons.routing.notes}</p>
+            )}
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground" data-testid="text-model">
+          Model: {reasons.model.provider}/{reasons.model.model}{reasons.model.version ? ` v${reasons.model.version}` : ""}
+        </p>
+
+        <div className="pt-2 border-t">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => runMutation.mutate()}
+            disabled={runMutation.isPending}
+            data-testid="button-rerun-qualification"
+          >
+            {runMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Zap className="h-4 w-4 mr-2" />
+            Re-run Qualification
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function LeadDetailPage() {
   const [, params] = useRoute("/leads/:id");
   const { token } = useAuth();
@@ -717,7 +988,7 @@ export default function LeadDetailPage() {
               <IntakePanel leadId={leadId!} token={token!} />
             </TabsContent>
             <TabsContent value="qualification" className="mt-4">
-              <PlaceholderPanel icon={CheckCircle} title="Qualification score and reasons will appear here" />
+              <QualificationPanel leadId={leadId!} token={token!} />
             </TabsContent>
             <TabsContent value="tasks" className="mt-4">
               <PlaceholderPanel icon={FileText} title="Tasks and follow-ups will appear here" />

@@ -112,6 +112,32 @@ Public marketing pages built into the Vite React client:
 - **Audit Logging**: All intake operations logged (init, update, complete)
 - **UI Components**: IntakePanel with JSON editor, init/save/complete buttons
 
+### AI Pipeline & Qualification (Checkpoint 7)
+
+- **Qualification Endpoints**:
+  - GET /v1/leads/:id/qualification - Retrieve qualification
+  - POST /v1/leads/:id/qualification/run - Run AI qualification
+  - PATCH /v1/leads/:id/qualification - Human override
+- **AI Job Stubs** (inline for V1, job queue ready):
+  - POST /v1/ai/transcribe/:callId - Transcription stub
+  - POST /v1/ai/summarize/:callId - Summarization stub
+  - POST /v1/ai/extract/:leadId - Intake extraction stub
+  - POST /v1/ai/score/:leadId - Qualification scoring stub
+- **Qualification Reasons JSON Contract**:
+  ```json
+  {
+    "score_factors": [{"name": string, "weight": number, "evidence": string, "evidence_quote": string|null}],
+    "missing_fields": [string],
+    "disqualifiers": [string],
+    "routing": {"practice_area_id": string|null, "notes": string|null},
+    "model": {"provider": string, "model": string, "version": string|null},
+    "explanations": [string]
+  }
+  ```
+- **Scoring Factors**: Contact info (20), Practice area (15), Intake completion (25), Incident details (20), Communication history (20)
+- **Disposition Logic**: accept (score >= 70, <= 2 missing), decline (score < 30 or disqualifiers), review (default)
+- **UI Components**: QualificationPanel showing score, disposition, confidence, score_factors, missing_fields, disqualifiers, explanations
+
 ### Monorepo Structure
 
 ```
