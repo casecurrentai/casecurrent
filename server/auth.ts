@@ -4,7 +4,11 @@ import type { Request, Response, NextFunction } from "express";
 import { prisma } from "./db";
 import type { Prisma } from "../apps/api/src/generated/prisma";
 
-const JWT_SECRET = process.env.JWT_SECRET || "development-secret-change-in-production";
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required");
+}
+
+const JWT_SECRET: string = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = "7d";
 
 export interface TokenPayload {
