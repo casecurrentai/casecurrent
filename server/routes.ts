@@ -427,6 +427,556 @@ export async function registerRoutes(
     }
   );
 
+  // ============================================
+  // WEBHOOK EVENT STUBS
+  // ============================================
+  async function emitWebhookEvent(orgId: string, eventType: string, payload: Record<string, unknown>) {
+    console.log(`[WEBHOOK STUB] org=${orgId} event=${eventType}`, JSON.stringify(payload).slice(0, 200));
+  }
+
+  // ============================================
+  // CONTACTS ENDPOINTS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/contacts:
+   *   get:
+   *     summary: List contacts with optional search
+   *     tags: [Contacts]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: q
+   *         in: query
+   *         description: Search query (name, phone, email)
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: List of contacts
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ContactList'
+   */
+  app.get("/v1/contacts", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const q = req.query.q as string | undefined;
+
+      const where: { orgId: string; OR?: Array<Record<string, unknown>> } = { orgId };
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { primaryPhone: { contains: q } },
+          { primaryEmail: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      const [contacts, total] = await Promise.all([
+        prisma.contact.findMany({ where, orderBy: { createdAt: "desc" }, take: 100 }),
+        prisma.contact.count({ where }),
+      ]);
+
+      res.json({ contacts, total });
+    } catch (error) {
+      console.error("List contacts error:", error);
+      res.status(500).json({ error: "Failed to list contacts" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/contacts:
+   *   post:
+   *     summary: Create a new contact (staff+ only)
+   *     tags: [Contacts]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateContactRequest'
+   *     responses:
+   *       201:
+   *         description: Contact created
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Contact'
+   *       403:
+   *         description: Insufficient permissions
+   */
+  app.post(
+    "/v1/contacts",
+    authMiddleware,
+    requireMinRole("staff"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { name, primaryPhone, primaryEmail } = req.body;
+
+        if (!name) {
+          return res.status(400).json({ error: "Name is required" });
+        }
+
+        const contact = await prisma.contact.create({
+          data: {
+            orgId,
+            name,
+            primaryPhone: primaryPhone || null,
+            primaryEmail: primaryEmail || null,
+          },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "create", "contact", contact.id, {
+          name,
+          timestamp: new Date().toISOString(),
+        });
+
+        await emitWebhookEvent(orgId, "contact.created", { contactId: contact.id, name });
+
+        res.status(201).json(contact);
+      } catch (error) {
+        console.error("Create contact error:", error);
+        res.status(500).json({ error: "Failed to create contact" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/contacts/{id}:
+   *   get:
+   *     summary: Get contact by ID
+   *     tags: [Contacts]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Contact details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Contact'
+   *       404:
+   *         description: Contact not found
+   */
+  app.get("/v1/contacts/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const contact = await prisma.contact.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+
+      res.json(contact);
+    } catch (error) {
+      console.error("Get contact error:", error);
+      res.status(500).json({ error: "Failed to get contact" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/contacts/{id}/leads:
+   *   get:
+   *     summary: Get leads for a contact
+   *     tags: [Contacts]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Leads for the contact
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/LeadList'
+   *       404:
+   *         description: Contact not found
+   */
+  app.get("/v1/contacts/:id/leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const contact = await prisma.contact.findFirst({ where: { id, orgId } });
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+
+      const leads = await prisma.lead.findMany({
+        where: { contactId: id, orgId },
+        include: { contact: true, practiceArea: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      res.json({ leads, total: leads.length });
+    } catch (error) {
+      console.error("Get contact leads error:", error);
+      res.status(500).json({ error: "Failed to get contact leads" });
+    }
+  });
+
+  // ============================================
+  // LEADS ENDPOINTS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/leads:
+   *   get:
+   *     summary: List leads with filters
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: status
+   *         in: query
+   *         schema:
+   *           type: string
+   *       - name: priority
+   *         in: query
+   *         schema:
+   *           type: string
+   *       - name: practice_area_id
+   *         in: query
+   *         schema:
+   *           type: string
+   *       - name: q
+   *         in: query
+   *         description: Search query
+   *         schema:
+   *           type: string
+   *       - name: from
+   *         in: query
+   *         description: From date (ISO)
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - name: to
+   *         in: query
+   *         description: To date (ISO)
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *     responses:
+   *       200:
+   *         description: List of leads
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/LeadList'
+   */
+  app.get("/v1/leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { status, priority, practice_area_id, q, from, to } = req.query;
+
+      const where: Record<string, unknown> = { orgId };
+
+      if (status) where.status = status;
+      if (priority) where.priority = priority;
+      if (practice_area_id) where.practiceAreaId = practice_area_id;
+
+      if (from || to) {
+        where.createdAt = {};
+        if (from) (where.createdAt as Record<string, unknown>).gte = new Date(from as string);
+        if (to) (where.createdAt as Record<string, unknown>).lte = new Date(to as string);
+      }
+
+      if (q) {
+        where.OR = [
+          { summary: { contains: q, mode: "insensitive" } },
+          { incidentLocation: { contains: q, mode: "insensitive" } },
+          { contact: { is: { name: { contains: q, mode: "insensitive" } } } },
+        ];
+      }
+
+      const [leads, total] = await Promise.all([
+        prisma.lead.findMany({
+          where,
+          include: { contact: true, practiceArea: true },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
+        prisma.lead.count({ where }),
+      ]);
+
+      res.json({ leads, total });
+    } catch (error) {
+      console.error("List leads error:", error);
+      res.status(500).json({ error: "Failed to list leads" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads:
+   *   post:
+   *     summary: Create a new lead (staff+ only)
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateLeadRequest'
+   *     responses:
+   *       201:
+   *         description: Lead created
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Lead'
+   *       400:
+   *         description: Validation error
+   *       403:
+   *         description: Insufficient permissions
+   */
+  app.post(
+    "/v1/leads",
+    authMiddleware,
+    requireMinRole("staff"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const {
+          contactId,
+          contactName,
+          contactPhone,
+          contactEmail,
+          source,
+          status,
+          priority,
+          practiceAreaId,
+          incidentDate,
+          incidentLocation,
+          summary,
+        } = req.body;
+
+        if (!source) {
+          return res.status(400).json({ error: "Source is required" });
+        }
+
+        let finalContactId = contactId;
+
+        if (!contactId && contactName) {
+          const newContact = await prisma.contact.create({
+            data: {
+              orgId,
+              name: contactName,
+              primaryPhone: contactPhone || null,
+              primaryEmail: contactEmail || null,
+            },
+          });
+          finalContactId = newContact.id;
+
+          await createAuditLog(orgId, req.user!.userId, "user", "create", "contact", newContact.id, {
+            name: contactName,
+            createdViaLead: true,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        if (!finalContactId) {
+          return res.status(400).json({ error: "Either contactId or contactName is required" });
+        }
+
+        const existingContact = await prisma.contact.findFirst({
+          where: { id: finalContactId, orgId },
+        });
+
+        if (!existingContact) {
+          return res.status(400).json({ error: "Contact not found in your organization" });
+        }
+
+        const lead = await prisma.lead.create({
+          data: {
+            orgId,
+            contactId: finalContactId,
+            source,
+            status: status || "new",
+            priority: priority || "medium",
+            practiceAreaId: practiceAreaId || null,
+            incidentDate: incidentDate ? new Date(incidentDate) : null,
+            incidentLocation: incidentLocation || null,
+            summary: summary || null,
+          },
+          include: { contact: true, practiceArea: true },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "create", "lead", lead.id, {
+          source,
+          contactId: finalContactId,
+          timestamp: new Date().toISOString(),
+        });
+
+        await emitWebhookEvent(orgId, "lead.created", {
+          leadId: lead.id,
+          contactId: finalContactId,
+          source,
+          status: lead.status,
+        });
+
+        res.status(201).json(lead);
+      } catch (error) {
+        console.error("Create lead error:", error);
+        res.status(500).json({ error: "Failed to create lead" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/leads/{id}:
+   *   get:
+   *     summary: Get lead by ID
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Lead details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Lead'
+   *       404:
+   *         description: Lead not found
+   */
+  app.get("/v1/leads/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id, orgId },
+        include: { contact: true, practiceArea: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      res.json(lead);
+    } catch (error) {
+      console.error("Get lead error:", error);
+      res.status(500).json({ error: "Failed to get lead" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}:
+   *   patch:
+   *     summary: Update lead (staff+ only)
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/UpdateLeadRequest'
+   *     responses:
+   *       200:
+   *         description: Lead updated
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Lead'
+   *       403:
+   *         description: Insufficient permissions
+   *       404:
+   *         description: Lead not found
+   */
+  app.patch(
+    "/v1/leads/:id",
+    authMiddleware,
+    requireMinRole("staff"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
+        const { status, priority, practiceAreaId, incidentDate, incidentLocation, summary } = req.body;
+
+        const existingLead = await prisma.lead.findFirst({ where: { id, orgId } });
+        if (!existingLead) {
+          return res.status(404).json({ error: "Lead not found" });
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (status !== undefined) updateData.status = status;
+        if (priority !== undefined) updateData.priority = priority;
+        if (practiceAreaId !== undefined) updateData.practiceAreaId = practiceAreaId || null;
+        if (incidentDate !== undefined) updateData.incidentDate = incidentDate ? new Date(incidentDate) : null;
+        if (incidentLocation !== undefined) updateData.incidentLocation = incidentLocation || null;
+        if (summary !== undefined) updateData.summary = summary || null;
+
+        if (Object.keys(updateData).length === 0) {
+          return res.status(400).json({ error: "No valid fields to update" });
+        }
+
+        const lead = await prisma.lead.update({
+          where: { id },
+          data: updateData,
+          include: { contact: true, practiceArea: true },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update", "lead", id, {
+          changes: updateData,
+          timestamp: new Date().toISOString(),
+        });
+
+        await emitWebhookEvent(orgId, "lead.updated", {
+          leadId: id,
+          changes: updateData,
+        });
+
+        res.json(lead);
+      } catch (error) {
+        console.error("Update lead error:", error);
+        res.status(500).json({ error: "Failed to update lead" });
+      }
+    }
+  );
+
   // Root API info endpoint
   /**
    * @openapi
