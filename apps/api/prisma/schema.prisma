@@ -1,14 +1,408 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// CounselTech Database Schema
+// All tables are scoped by org_id for multi-tenancy
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ORGANIZATION & USERS
+// ============================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  status    String   @default("active")
+  timezone  String   @default("America/New_York")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                      User[]
+  contacts                   Contact[]
+  practiceAreas              PracticeArea[]
+  aiConfig                   AiConfig?
+  intakeQuestionSets         IntakeQuestionSet[]
+  phoneNumbers               PhoneNumber[]
+  leads                      Lead[]
+  interactions               Interaction[]
+  calls                      Call[]
+  messages                   Message[]
+  intakes                    Intake[]
+  qualifications             Qualification[]
+  tasks                      Task[]
+  notifications              Notification[]
+  outgoingWebhookEndpoints   OutgoingWebhookEndpoint[]
+  outgoingWebhookDeliveries  OutgoingWebhookDelivery[]
+  auditLogs                  AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  orgId        String   @map("org_id")
+  email        String
+  name         String
+  role         String   @default("staff")
+  status       String   @default("active")
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@unique([orgId, email])
+  @@map("users")
+}
+
+// ============================================
+// CONTACTS & LEADS
+// ============================================
+
+model Contact {
+  id           String   @id @default(uuid())
+  orgId        String   @map("org_id")
+  name         String
+  primaryPhone String?  @map("primary_phone")
+  primaryEmail String?  @map("primary_email")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  leads        Lead[]
+
+  @@map("contacts")
+}
+
+model PracticeArea {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  intakeQuestionSets IntakeQuestionSet[]
+  leads              Lead[]
+  intakes            Intake[]
+
+  @@map("practice_areas")
+}
+
+model Lead {
+  id               String    @id @default(uuid())
+  orgId            String    @map("org_id")
+  contactId        String    @map("contact_id")
+  source           String
+  status           String    @default("new")
+  priority         String    @default("medium")
+  practiceAreaId   String?   @map("practice_area_id")
+  incidentDate     DateTime? @map("incident_date")
+  incidentLocation String?   @map("incident_location")
+  summary          String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact       Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  practiceArea  PracticeArea?  @relation(fields: [practiceAreaId], references: [id])
+  interactions  Interaction[]
+  calls         Call[]
+  messages      Message[]
+  intake        Intake?
+  qualification Qualification?
+  tasks         Task[]
+  notifications Notification[]
+
+  @@map("leads")
+}
+
+// ============================================
+// AI CONFIGURATION
+// ============================================
+
+model AiConfig {
+  id                 String   @id @default(uuid())
+  orgId              String   @unique @map("org_id")
+  voiceGreeting      String?  @map("voice_greeting")
+  disclaimerText     String?  @map("disclaimer_text")
+  toneProfile        Json?    @map("tone_profile")
+  handoffRules       Json?    @map("handoff_rules")
+  qualificationRules Json?    @map("qualification_rules")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("ai_configs")
+}
+
+model IntakeQuestionSet {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  practiceAreaId String?  @map("practice_area_id")
+  name           String
+  version        Int      @default(1)
+  schema         Json
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  practiceArea PracticeArea? @relation(fields: [practiceAreaId], references: [id])
+  intakes      Intake[]
+
+  @@map("intake_question_sets")
+}
+
+// ============================================
+// TELEPHONY
+// ============================================
+
+model PhoneNumber {
+  id               String   @id @default(uuid())
+  orgId            String   @map("org_id")
+  label            String
+  e164             String   @unique
+  provider         String
+  providerSid      String?  @map("provider_sid")
+  inboundEnabled   Boolean  @default(true) @map("inbound_enabled")
+  afterHoursEnabled Boolean @default(false) @map("after_hours_enabled")
+  routing          Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calls        Call[]
+
+  @@map("phone_numbers")
+}
+
+// ============================================
+// INTERACTIONS, CALLS, MESSAGES
+// ============================================
+
+model Interaction {
+  id        String    @id @default(uuid())
+  orgId     String    @map("org_id")
+  leadId    String    @map("lead_id")
+  channel   String    // call, sms, webchat
+  status    String    @default("active")
+  startedAt DateTime  @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  metadata  Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  call         Call?
+  messages     Message[]
+
+  @@map("interactions")
+}
+
+model Call {
+  id              String    @id @default(uuid())
+  orgId           String    @map("org_id")
+  leadId          String    @map("lead_id")
+  interactionId   String    @unique @map("interaction_id")
+  phoneNumberId   String    @map("phone_number_id")
+  direction       String    // inbound, outbound
+  provider        String
+  providerCallId  String    @map("provider_call_id")
+  fromE164        String    @map("from_e164")
+  toE164          String    @map("to_e164")
+  startedAt       DateTime  @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  durationSeconds Int?      @map("duration_seconds")
+  recordingUrl    String?   @map("recording_url")
+  transcriptText  String?   @map("transcript_text")
+  transcriptJson  Json?     @map("transcript_json")
+  aiSummary       String?   @map("ai_summary")
+  aiFlags         Json?     @map("ai_flags")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  interaction  Interaction  @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+  phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id])
+
+  @@map("calls")
+}
+
+model Message {
+  id                String   @id @default(uuid())
+  orgId             String   @map("org_id")
+  leadId            String   @map("lead_id")
+  interactionId     String   @map("interaction_id")
+  direction         String   // inbound, outbound
+  channel           String   // sms, webchat
+  provider          String
+  providerMessageId String?  @map("provider_message_id")
+  from              String
+  to                String
+  body              String
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  interaction  Interaction  @relation(fields: [interactionId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ============================================
+// INTAKE & QUALIFICATION
+// ============================================
+
+model Intake {
+  id               String    @id @default(uuid())
+  orgId            String    @map("org_id")
+  leadId           String    @unique @map("lead_id")
+  practiceAreaId   String?   @map("practice_area_id")
+  questionSetId    String?   @map("question_set_id")
+  answers          Json?
+  completionStatus String    @default("partial") @map("completion_status")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  practiceArea PracticeArea?      @relation(fields: [practiceAreaId], references: [id])
+  questionSet  IntakeQuestionSet? @relation(fields: [questionSetId], references: [id])
+
+  @@map("intakes")
+}
+
+model Qualification {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  leadId      String   @unique @map("lead_id")
+  score       Int      @default(0) // 0-100
+  disposition String   @default("review") // accept, review, decline
+  reasons     Json?    // DecisionTrace structure
+  confidence  Int      @default(0) // 0-100
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("qualifications")
+}
+
+// ============================================
+// TASKS & NOTIFICATIONS
+// ============================================
+
+model Task {
+  id             String    @id @default(uuid())
+  orgId          String    @map("org_id")
+  leadId         String    @map("lead_id")
+  assignedUserId String?   @map("assigned_user_id")
+  type           String
+  status         String    @default("pending")
+  dueAt          DateTime? @map("due_at")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUser User?        @relation(fields: [assignedUserId], references: [id])
+
+  @@map("tasks")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  orgId     String    @map("org_id")
+  userId    String    @map("user_id")
+  leadId    String?   @map("lead_id")
+  type      String
+  title     String
+  body      String
+  channels  String[]
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead         Lead?        @relation(fields: [leadId], references: [id])
+
+  @@map("notifications")
+}
+
+// ============================================
+// WEBHOOKS
+// ============================================
+
+model OutgoingWebhookEndpoint {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  url       String
+  secret    String
+  events    String[]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deliveries   OutgoingWebhookDelivery[]
+
+  @@map("outgoing_webhook_endpoints")
+}
+
+model OutgoingWebhookDelivery {
+  id            String    @id @default(uuid())
+  orgId         String    @map("org_id")
+  endpointId    String    @map("endpoint_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  status        String    @default("pending")
+  attemptCount  Int       @default(0) @map("attempt_count")
+  lastAttemptAt DateTime? @map("last_attempt_at")
+  responseCode  Int?      @map("response_code")
+  responseBody  String?   @map("response_body")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  organization Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  endpoint     OutgoingWebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@map("outgoing_webhook_deliveries")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  actorUserId String?  @map("actor_user_id")
+  actorType   String   @map("actor_type") // user, system, ai
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  details     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_logs")
 }
