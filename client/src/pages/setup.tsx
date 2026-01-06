@@ -105,6 +105,10 @@ export default function SetupWizardPage() {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [helpOpen, setHelpOpen] = useState(false);
+  
+  // Allow revisiting setup with ?edit=true query parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const isEditMode = urlParams.get("edit") === "true";
 
   const [basics, setBasics] = useState({ name: "", timezone: "America/New_York" });
   const [businessHours, setBusinessHours] = useState({
@@ -160,10 +164,11 @@ export default function SetupWizardPage() {
   }, [setupData]);
 
   useEffect(() => {
-    if (setupData?.onboardingStatus === "complete") {
+    // Only redirect if onboarding is complete AND not in edit mode
+    if (setupData?.onboardingStatus === "complete" && !isEditMode) {
       setLocation("/leads");
     }
-  }, [setupData, setLocation]);
+  }, [setupData, setLocation, isEditMode]);
 
   const saveMutation = useMutation({
     mutationFn: async ({ endpoint, data }: { endpoint: string; data: any }) => {
