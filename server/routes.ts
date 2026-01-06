@@ -9,7 +9,12 @@ import {
   comparePassword,
   authMiddleware,
   requireMinRole,
+  requirePlatformAdmin,
   createAuditLog,
+  createPlatformAdminAuditLog,
+  generateInviteToken,
+  generateImpersonationToken,
+  isPlatformAdmin,
   type AuthenticatedRequest,
 } from "./auth";
 
@@ -1296,6 +1301,1067 @@ export async function registerRoutes(
       version: "1.0.0",
     });
   });
+
+  // ============================================
+  // PLATFORM ADMIN ROUTES
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/admin/orgs:
+   *   get:
+   *     summary: List all organizations (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: search
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: List of organizations
+   */
+  app.get(
+    "/v1/admin/orgs",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { search } = req.query;
+
+        const orgs = await prisma.organization.findMany({
+          where: search
+            ? {
+                OR: [
+                  { name: { contains: search as string, mode: "insensitive" } },
+                  { slug: { contains: search as string, mode: "insensitive" } },
+                ],
+              }
+            : undefined,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          include: {
+            _count: { select: { users: true, leads: true } },
+          },
+        });
+
+        res.json({ organizations: orgs });
+      } catch (error) {
+        console.error("Admin list orgs error:", error);
+        res.status(500).json({ error: "Failed to list organizations" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/orgs:
+   *   post:
+   *     summary: Create a new organization with owner (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Organization created
+   */
+  app.post(
+    "/v1/admin/orgs",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const {
+          orgName,
+          slug: customSlug,
+          timezone,
+          planTier,
+          subscriptionStatus,
+          ownerName,
+          ownerEmail,
+          createInvite,
+        } = req.body;
+
+        if (!orgName || !ownerName || !ownerEmail) {
+          return res.status(400).json({
+            error: "Required fields: orgName, ownerName, ownerEmail",
+          });
+        }
+
+        const slug = customSlug || slugify(orgName);
+
+        const existingOrg = await prisma.organization.findUnique({
+          where: { slug },
+        });
+        if (existingOrg) {
+          return res.status(400).json({ error: "Organization slug already exists" });
+        }
+
+        const org = await prisma.organization.create({
+          data: {
+            name: orgName,
+            slug,
+            timezone: timezone || "America/New_York",
+            planTier: planTier || "core",
+            subscriptionStatus: subscriptionStatus || "manual",
+            onboardingStatus: "not_started",
+          },
+        });
+
+        await prisma.aiConfig.create({
+          data: {
+            orgId: org.id,
+            voiceGreeting: "Hello, thank you for calling. How may I assist you today?",
+            disclaimerText: "This call may be recorded for quality assurance purposes.",
+            toneProfile: { style: "professional" },
+            handoffRules: { businessHours: { start: "09:00", end: "17:00" } },
+          },
+        });
+
+        const defaultPracticeAreas = [
+          "Personal Injury",
+          "Criminal Defense",
+          "Family Law",
+          "Immigration",
+        ];
+        for (const paName of defaultPracticeAreas) {
+          await prisma.practiceArea.create({
+            data: { orgId: org.id, name: paName, active: false },
+          });
+        }
+
+        let user = null;
+        let invite = null;
+
+        if (createInvite) {
+          const token = generateInviteToken();
+          invite = await prisma.userInvite.create({
+            data: {
+              orgId: org.id,
+              email: ownerEmail.toLowerCase().trim(),
+              role: "owner",
+              token,
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            },
+          });
+        } else {
+          const tempPassword = generateInviteToken().substring(0, 16);
+          const passwordHash = await hashPassword(tempPassword);
+          user = await prisma.user.create({
+            data: {
+              orgId: org.id,
+              email: ownerEmail.toLowerCase().trim(),
+              name: ownerName,
+              role: "owner",
+              passwordHash,
+            },
+          });
+        }
+
+        await createPlatformAdminAuditLog(
+          org.id,
+          req.user!.userId,
+          "create_organization",
+          "organization",
+          org.id,
+          { orgName, ownerEmail, createdInvite: !!createInvite }
+        );
+
+        res.status(201).json({
+          organization: org,
+          user: user ? { id: user.id, email: user.email } : null,
+          invite: invite ? { id: invite.id, token: invite.token } : null,
+        });
+      } catch (error) {
+        console.error("Admin create org error:", error);
+        res.status(500).json({ error: "Failed to create organization" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/orgs/{id}:
+   *   get:
+   *     summary: Get organization details (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Organization details
+   */
+  app.get(
+    "/v1/admin/orgs/:id",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+
+        const org = await prisma.organization.findUnique({
+          where: { id },
+          include: {
+            users: { select: { id: true, email: true, name: true, role: true, status: true } },
+            aiConfig: true,
+            practiceAreas: true,
+            phoneNumbers: true,
+            _count: { select: { leads: true, calls: true, messages: true } },
+          },
+        });
+
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const recentHealth = await prisma.orgHealthSnapshot.findFirst({
+          where: { orgId: id },
+          orderBy: { snapshotAt: "desc" },
+        });
+
+        res.json({ organization: org, health: recentHealth });
+      } catch (error) {
+        console.error("Admin get org error:", error);
+        res.status(500).json({ error: "Failed to get organization" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/orgs/{id}/invites:
+   *   post:
+   *     summary: Create invite for organization (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Invite created
+   */
+  app.post(
+    "/v1/admin/orgs/:id/invites",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+        const { email, role } = req.body;
+
+        if (!email) {
+          return res.status(400).json({ error: "Email required" });
+        }
+
+        const org = await prisma.organization.findUnique({ where: { id } });
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const token = generateInviteToken();
+        const invite = await prisma.userInvite.create({
+          data: {
+            orgId: id,
+            email: email.toLowerCase().trim(),
+            role: role || "owner",
+            token,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        });
+
+        await createPlatformAdminAuditLog(
+          id,
+          req.user!.userId,
+          "create_invite",
+          "user_invite",
+          invite.id,
+          { email, role: role || "owner" }
+        );
+
+        res.status(201).json({ invite: { id: invite.id, token: invite.token, expiresAt: invite.expiresAt } });
+      } catch (error) {
+        console.error("Admin create invite error:", error);
+        res.status(500).json({ error: "Failed to create invite" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/orgs/{id}/impersonate:
+   *   post:
+   *     summary: Generate impersonation token for organization (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Impersonation token
+   */
+  app.post(
+    "/v1/admin/orgs/:id/impersonate",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+
+        const org = await prisma.organization.findUnique({ where: { id } });
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const token = generateImpersonationToken(
+          req.user!.userId,
+          req.user!.email,
+          id
+        );
+
+        await createPlatformAdminAuditLog(
+          id,
+          req.user!.userId,
+          "impersonate_org",
+          "organization",
+          id,
+          { orgName: org.name }
+        );
+
+        res.json({
+          token,
+          organization: { id: org.id, name: org.name, slug: org.slug },
+          expiresIn: "1h",
+          warning: "This is an impersonation token. All actions will be logged.",
+        });
+      } catch (error) {
+        console.error("Admin impersonate error:", error);
+        res.status(500).json({ error: "Failed to create impersonation token" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/orgs/{id}/health:
+   *   post:
+   *     summary: Compute and store org health snapshot (platform admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Health snapshot
+   */
+  app.post(
+    "/v1/admin/orgs/:id/health",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+
+        const org = await prisma.organization.findUnique({ where: { id } });
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const now = new Date();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        const [leads24h, calls24h, messages24h, webhookFailures24h] = await Promise.all([
+          prisma.lead.count({ where: { orgId: id, createdAt: { gte: last24h } } }),
+          prisma.call.count({ where: { orgId: id, createdAt: { gte: last24h } } }),
+          prisma.message.count({ where: { orgId: id, createdAt: { gte: last24h } } }),
+          prisma.outgoingWebhookDelivery.count({
+            where: {
+              orgId: id,
+              createdAt: { gte: last24h },
+              status: { in: ["failed", "error"] },
+            },
+          }),
+        ]);
+
+        const metrics = {
+          leads_24h: leads24h,
+          calls_24h: calls24h,
+          messages_24h: messages24h,
+          webhook_failures_24h: webhookFailures24h,
+          jobs_pending: 0,
+          jobs_failed_24h: 0,
+        };
+
+        const snapshot = await prisma.orgHealthSnapshot.create({
+          data: {
+            orgId: id,
+            snapshotAt: now,
+            metrics,
+          },
+        });
+
+        res.json({ snapshot });
+      } catch (error) {
+        console.error("Admin health snapshot error:", error);
+        res.status(500).json({ error: "Failed to compute health snapshot" });
+      }
+    }
+  );
+
+  // ============================================
+  // INVITE ACCEPTANCE ROUTES (PUBLIC)
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/invites/{token}:
+   *   get:
+   *     summary: Get invite details by token
+   *     tags: [Invites]
+   *     responses:
+   *       200:
+   *         description: Invite details
+   */
+  app.get("/v1/invites/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      const invite = await prisma.userInvite.findUnique({
+        where: { token },
+        include: { organization: { select: { id: true, name: true, slug: true } } },
+      });
+
+      if (!invite) {
+        return res.status(404).json({ error: "Invite not found" });
+      }
+
+      if (invite.acceptedAt) {
+        return res.status(400).json({ error: "Invite already accepted" });
+      }
+
+      if (invite.expiresAt < new Date()) {
+        return res.status(400).json({ error: "Invite has expired" });
+      }
+
+      res.json({
+        invite: {
+          id: invite.id,
+          email: invite.email,
+          role: invite.role,
+          expiresAt: invite.expiresAt,
+          organization: invite.organization,
+        },
+      });
+    } catch (error) {
+      console.error("Get invite error:", error);
+      res.status(500).json({ error: "Failed to get invite" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/invites/{token}/accept:
+   *   post:
+   *     summary: Accept invite and create user
+   *     tags: [Invites]
+   *     responses:
+   *       200:
+   *         description: Invite accepted, user created
+   */
+  app.post("/v1/invites/:token/accept", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { name, password } = req.body;
+
+      if (!name || !password) {
+        return res.status(400).json({ error: "Name and password required" });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+
+      const invite = await prisma.userInvite.findUnique({
+        where: { token },
+        include: { organization: true },
+      });
+
+      if (!invite) {
+        return res.status(404).json({ error: "Invite not found" });
+      }
+
+      if (invite.acceptedAt) {
+        return res.status(400).json({ error: "Invite already accepted" });
+      }
+
+      if (invite.expiresAt < new Date()) {
+        return res.status(400).json({ error: "Invite has expired" });
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: { orgId: invite.orgId, email: invite.email },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({ error: "User already exists for this organization" });
+      }
+
+      const passwordHash = await hashPassword(password);
+      const user = await prisma.user.create({
+        data: {
+          orgId: invite.orgId,
+          email: invite.email,
+          name,
+          role: invite.role,
+          passwordHash,
+          lastLoginAt: new Date(),
+        },
+      });
+
+      await prisma.userInvite.update({
+        where: { id: invite.id },
+        data: { acceptedAt: new Date() },
+      });
+
+      await createAuditLog(
+        invite.orgId,
+        user.id,
+        "user",
+        "accept_invite",
+        "user",
+        user.id,
+        { inviteId: invite.id }
+      );
+
+      const authToken = generateToken({
+        userId: user.id,
+        orgId: invite.orgId,
+        email: user.email,
+        role: user.role,
+      });
+
+      res.json({
+        token: authToken,
+        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        organization: {
+          id: invite.organization.id,
+          name: invite.organization.name,
+          slug: invite.organization.slug,
+          onboardingStatus: invite.organization.onboardingStatus,
+        },
+      });
+    } catch (error) {
+      console.error("Accept invite error:", error);
+      res.status(500).json({ error: "Failed to accept invite" });
+    }
+  });
+
+  // ============================================
+  // SETUP WIZARD ROUTES (AUTHENTICATED ORG OWNER/ADMIN)
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/setup/status:
+   *   get:
+   *     summary: Get setup wizard status
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Setup status
+   */
+  app.get(
+    "/v1/setup/status",
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const org = await prisma.organization.findUnique({
+          where: { id: req.user!.orgId },
+          include: {
+            aiConfig: true,
+            practiceAreas: true,
+            phoneNumbers: true,
+            intakeQuestionSets: true,
+          },
+        });
+
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        res.json({
+          onboardingStatus: org.onboardingStatus,
+          onboardingCompletedAt: org.onboardingCompletedAt,
+          organization: org,
+        });
+      } catch (error) {
+        console.error("Get setup status error:", error);
+        res.status(500).json({ error: "Failed to get setup status" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/basics:
+   *   patch:
+   *     summary: Update firm basics (step 1)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Basics updated
+   */
+  app.patch(
+    "/v1/setup/basics",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { name, timezone } = req.body;
+        const orgId = req.user!.orgId;
+
+        const updateData: Record<string, unknown> = {};
+        if (name) updateData.name = name;
+        if (timezone) updateData.timezone = timezone;
+        if (Object.keys(updateData).length === 0) {
+          return res.status(400).json({ error: "No fields to update" });
+        }
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: {
+            ...updateData,
+            onboardingStatus: "in_progress",
+          },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_basics", "organization", orgId, updateData);
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update basics error:", error);
+        res.status(500).json({ error: "Failed to update basics" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/business-hours:
+   *   patch:
+   *     summary: Update business hours (step 2)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Business hours updated
+   */
+  app.patch(
+    "/v1/setup/business-hours",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { businessHours, afterHoursBehavior } = req.body;
+        const orgId = req.user!.orgId;
+
+        await prisma.aiConfig.upsert({
+          where: { orgId },
+          update: {
+            handoffRules: { businessHours, afterHoursBehavior },
+          },
+          create: {
+            orgId,
+            handoffRules: { businessHours, afterHoursBehavior },
+          },
+        });
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onboardingStatus: "in_progress" },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_business_hours", "ai_config", orgId, { businessHours });
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update business hours error:", error);
+        res.status(500).json({ error: "Failed to update business hours" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/practice-areas:
+   *   patch:
+   *     summary: Update practice areas (step 3)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Practice areas updated
+   */
+  app.patch(
+    "/v1/setup/practice-areas",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { practiceAreas } = req.body;
+        const orgId = req.user!.orgId;
+
+        if (!practiceAreas || !Array.isArray(practiceAreas)) {
+          return res.status(400).json({ error: "practiceAreas array required" });
+        }
+
+        for (const pa of practiceAreas) {
+          if (pa.id) {
+            await prisma.practiceArea.update({
+              where: { id: pa.id },
+              data: { active: pa.active },
+            });
+          }
+        }
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onboardingStatus: "in_progress" },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_practice_areas", "organization", orgId, { count: practiceAreas.length });
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update practice areas error:", error);
+        res.status(500).json({ error: "Failed to update practice areas" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/phone-numbers:
+   *   post:
+   *     summary: Add phone number (step 4)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Phone number added
+   */
+  app.post(
+    "/v1/setup/phone-numbers",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { label, e164, afterHoursEnabled, routing, isPrimary } = req.body;
+        const orgId = req.user!.orgId;
+
+        if (!label || !e164) {
+          return res.status(400).json({ error: "Label and e164 required" });
+        }
+
+        const e164Regex = /^\+[1-9]\d{1,14}$/;
+        if (!e164Regex.test(e164)) {
+          return res.status(400).json({ error: "Invalid E.164 phone number format" });
+        }
+
+        const existingPhone = await prisma.phoneNumber.findUnique({ where: { e164 } });
+        if (existingPhone) {
+          return res.status(400).json({ error: "Phone number already registered" });
+        }
+
+        const phone = await prisma.phoneNumber.create({
+          data: {
+            orgId,
+            label,
+            e164,
+            provider: "manual",
+            afterHoursEnabled: afterHoursEnabled || false,
+            routing: routing || {},
+          },
+        });
+
+        if (isPrimary) {
+          await prisma.organization.update({
+            where: { id: orgId },
+            data: { primaryPhoneNumberId: phone.id, onboardingStatus: "in_progress" },
+          });
+        }
+
+        await createAuditLog(orgId, req.user!.userId, "user", "add_phone_number", "phone_number", phone.id, { label, e164 });
+
+        res.status(201).json({ phoneNumber: phone });
+      } catch (error) {
+        console.error("Add phone number error:", error);
+        res.status(500).json({ error: "Failed to add phone number" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/ai-config:
+   *   patch:
+   *     summary: Update AI voice config (step 5)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: AI config updated
+   */
+  app.patch(
+    "/v1/setup/ai-config",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { voiceGreeting, disclaimerText, toneProfile } = req.body;
+        const orgId = req.user!.orgId;
+
+        await prisma.aiConfig.upsert({
+          where: { orgId },
+          update: {
+            voiceGreeting,
+            disclaimerText,
+            toneProfile,
+          },
+          create: {
+            orgId,
+            voiceGreeting,
+            disclaimerText,
+            toneProfile,
+          },
+        });
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onboardingStatus: "in_progress" },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_ai_config", "ai_config", orgId, {});
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update AI config error:", error);
+        res.status(500).json({ error: "Failed to update AI config" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/intake-logic:
+   *   patch:
+   *     summary: Update intake question sets (step 6)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Intake logic updated
+   */
+  app.patch(
+    "/v1/setup/intake-logic",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { questionSets } = req.body;
+        const orgId = req.user!.orgId;
+
+        if (!questionSets || !Array.isArray(questionSets)) {
+          return res.status(400).json({ error: "questionSets array required" });
+        }
+
+        for (const qs of questionSets) {
+          if (qs.schema) {
+            try {
+              if (typeof qs.schema === "string") {
+                JSON.parse(qs.schema);
+              }
+            } catch {
+              return res.status(400).json({ error: "Invalid JSON in question set schema" });
+            }
+          }
+
+          if (qs.id) {
+            await prisma.intakeQuestionSet.update({
+              where: { id: qs.id },
+              data: {
+                active: qs.active,
+                schema: typeof qs.schema === "string" ? JSON.parse(qs.schema) : qs.schema,
+              },
+            });
+          } else if (qs.name && qs.practiceAreaId) {
+            await prisma.intakeQuestionSet.create({
+              data: {
+                orgId,
+                practiceAreaId: qs.practiceAreaId,
+                name: qs.name,
+                schema: typeof qs.schema === "string" ? JSON.parse(qs.schema) : qs.schema || {},
+                active: qs.active !== false,
+              },
+            });
+          }
+        }
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onboardingStatus: "in_progress" },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_intake_logic", "intake_question_set", orgId, {});
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update intake logic error:", error);
+        res.status(500).json({ error: "Failed to update intake logic" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/follow-up:
+   *   patch:
+   *     summary: Update follow-up config (step 7)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Follow-up config updated
+   */
+  app.patch(
+    "/v1/setup/follow-up",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { followUpConfig } = req.body;
+        const orgId = req.user!.orgId;
+
+        await prisma.aiConfig.upsert({
+          where: { orgId },
+          update: {
+            qualificationRules: { followUp: followUpConfig },
+          },
+          create: {
+            orgId,
+            qualificationRules: { followUp: followUpConfig },
+          },
+        });
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onboardingStatus: "in_progress" },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "update_follow_up", "ai_config", orgId, {});
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Update follow-up error:", error);
+        res.status(500).json({ error: "Failed to update follow-up config" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/setup/complete:
+   *   post:
+   *     summary: Mark setup as complete (step 8)
+   *     tags: [Setup]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Setup completed
+   */
+  app.post(
+    "/v1/setup/complete",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: {
+            onboardingStatus: "complete",
+            onboardingCompletedAt: new Date(),
+          },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "complete_onboarding", "organization", orgId, {});
+
+        res.json({ success: true, message: "Onboarding completed successfully" });
+      } catch (error) {
+        console.error("Complete setup error:", error);
+        res.status(500).json({ error: "Failed to complete setup" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/auth/me:
+   *   get:
+   *     summary: Get current user info
+   *     tags: [Authentication]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Current user info
+   */
+  app.get(
+    "/v1/auth/me",
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: req.user!.userId },
+          include: { organization: true },
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+          organization: {
+            id: user.organization.id,
+            name: user.organization.name,
+            slug: user.organization.slug,
+            onboardingStatus: user.organization.onboardingStatus,
+          },
+          isPlatformAdmin: isPlatformAdmin(user.email),
+          isImpersonating: req.user?.isImpersonating || false,
+        });
+      } catch (error) {
+        console.error("Get me error:", error);
+        res.status(500).json({ error: "Failed to get user info" });
+      }
+    }
+  );
 
   return httpServer;
 }

@@ -12,6 +12,7 @@ interface Organization {
   id: string;
   name: string;
   slug: string;
+  onboardingStatus?: string;
 }
 
 interface AuthContextType {
@@ -19,8 +20,11 @@ interface AuthContextType {
   organization: Organization | null;
   token: string | null;
   isLoading: boolean;
+  isPlatformAdmin: boolean;
+  isImpersonating: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  setAuthFromToken: (token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -32,6 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -46,13 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function fetchMe(authToken: string) {
     try {
-      const res = await fetch("/v1/me", {
+      const res = await fetch("/v1/auth/me", {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
         setOrganization(data.organization);
+        setIsPlatformAdmin(data.isPlatformAdmin || false);
+        setIsImpersonating(data.isImpersonating || false);
       } else {
         localStorage.removeItem(TOKEN_KEY);
         setToken(null);
@@ -82,7 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.token);
     setUser(data.user);
     setOrganization(data.organization);
-    setLocation("/leads");
+    
+    if (data.organization?.onboardingStatus !== "complete") {
+      setLocation("/setup");
+    } else {
+      setLocation("/leads");
+    }
+  }
+
+  async function setAuthFromToken(newToken: string) {
+    localStorage.setItem(TOKEN_KEY, newToken);
+    setToken(newToken);
+    await fetchMe(newToken);
   }
 
   function logout() {
@@ -90,11 +109,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     setOrganization(null);
+    setIsPlatformAdmin(false);
+    setIsImpersonating(false);
     setLocation("/login");
   }
 
   return (
-    <AuthContext.Provider value={{ user, organization, token, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      organization, 
+      token, 
+      isLoading, 
+      isPlatformAdmin, 
+      isImpersonating, 
+      login, 
+      logout,
+      setAuthFromToken 
+    }}>
       {children}
     </AuthContext.Provider>
   );

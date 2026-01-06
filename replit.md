@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 - **Database Adapter**: `@prisma/adapter-pg` for PostgreSQL driver adapter
 - **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, and AI configuration
 
-### Database Tables (19 total)
+### Database Tables (21 total)
 
 - **Core**: organizations, users, contacts
 - **Practice**: practice_areas, intake_question_sets, ai_configs
@@ -48,6 +48,7 @@ Preferred communication style: Simple, everyday language.
 - **Webhooks**: outgoing_webhook_endpoints, outgoing_webhook_deliveries
 - **Audit**: audit_logs
 - **Marketing**: marketing_contact_submissions
+- **Platform Admin**: user_invites, org_health_snapshots
 
 ### Marketing Site (Checkpoint 4.5)
 
@@ -61,9 +62,22 @@ Public marketing pages built into the Vite React client:
 
 ### Authentication & Authorization
 
-- **Planned RBAC**: Minimal role-based access control for single organization MVP
+- **RBAC**: Role-based access control with JWT tokens
 - **Roles**: owner, admin, staff, viewer
+- **Platform Admin**: Identified by PLATFORM_ADMIN_EMAILS env var (comma-separated list)
 - **Session Management**: Express session with connect-pg-simple for PostgreSQL session storage
+- **Impersonation**: Platform admins can impersonate any org with 1-hour tokens (fully audited)
+
+### Platform Admin System (Checkpoint 5)
+
+- **Admin Access**: Controlled by PLATFORM_ADMIN_EMAILS environment variable
+- **Firm Provisioning**: Create orgs with owner via invite link or temporary password
+- **Invite System**: 7-day expiration, token-based, creates user on acceptance
+- **Impersonation**: Generate time-limited tokens to act as any organization (logged in audit_logs)
+- **Health Snapshots**: Compute and store metrics (leads, calls, webhook failures in last 24h)
+- **Admin Routes**: `/v1/admin/orgs`, `/v1/admin/orgs/:id`, `/v1/admin/orgs/:id/invites`, `/v1/admin/orgs/:id/impersonate`, `/v1/admin/orgs/:id/health`
+- **Setup Wizard**: 8-step onboarding (Firm Basics, Business Hours, Practice Areas, Phone Numbers, AI Voice, Intake Logic, Follow-up, Review)
+- **Frontend Pages**: `/admin/orgs`, `/admin/orgs/new`, `/admin/orgs/:id`, `/setup`, `/invite/:token`
 
 ### Monorepo Structure
 
