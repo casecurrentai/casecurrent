@@ -433,11 +433,505 @@ export async function registerRoutes(
   );
 
   // ============================================
-  // WEBHOOK EVENT STUBS
+  // WEBHOOK SYSTEM (Checkpoint 8)
   // ============================================
-  async function emitWebhookEvent(orgId: string, eventType: string, payload: Record<string, unknown>) {
-    console.log(`[WEBHOOK STUB] org=${orgId} event=${eventType}`, JSON.stringify(payload).slice(0, 200));
+
+  // Generate HMAC SHA256 signature for webhook payloads
+  function signWebhookPayload(payload: string, secret: string): string {
+    return crypto.createHmac("sha256", secret).update(payload).digest("hex");
   }
+
+  // Attempt to deliver a webhook with retry logic
+  async function attemptWebhookDelivery(deliveryId: string): Promise<void> {
+    const delivery = await prisma.outgoingWebhookDelivery.findUnique({
+      where: { id: deliveryId },
+      include: { endpoint: true },
+    });
+
+    if (!delivery || !delivery.endpoint || !delivery.endpoint.active) {
+      console.log(`[WEBHOOK] Skipping delivery ${deliveryId} - not found or endpoint inactive`);
+      return;
+    }
+
+    const MAX_ATTEMPTS = 3;
+    const BACKOFF_MS = [1000, 5000, 15000]; // 1s, 5s, 15s
+
+    if (delivery.attemptCount >= MAX_ATTEMPTS) {
+      await prisma.outgoingWebhookDelivery.update({
+        where: { id: deliveryId },
+        data: { status: "failed" },
+      });
+      console.log(`[WEBHOOK] Delivery ${deliveryId} failed after ${MAX_ATTEMPTS} attempts`);
+      return;
+    }
+
+    const payloadStr = JSON.stringify(delivery.payload);
+    const signature = signWebhookPayload(payloadStr, delivery.endpoint.secret);
+
+    try {
+      const response = await fetch(delivery.endpoint.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CT-Signature": signature,
+          "X-CT-Event": delivery.eventType,
+          "X-CT-Delivery-ID": deliveryId,
+        },
+        body: payloadStr,
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+
+      const responseBody = await response.text().catch(() => "");
+
+      await prisma.outgoingWebhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          attemptCount: delivery.attemptCount + 1,
+          lastAttemptAt: new Date(),
+          responseCode: response.status,
+          responseBody: responseBody.slice(0, 1000),
+          status: response.ok ? "delivered" : "pending",
+        },
+      });
+
+      if (response.ok) {
+        console.log(`[WEBHOOK] Delivery ${deliveryId} succeeded (status ${response.status})`);
+      } else {
+        console.log(`[WEBHOOK] Delivery ${deliveryId} failed with status ${response.status}, will retry`);
+        // Schedule retry with backoff
+        const backoffDelay = BACKOFF_MS[delivery.attemptCount] || 15000;
+        setTimeout(() => attemptWebhookDelivery(deliveryId), backoffDelay);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      await prisma.outgoingWebhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          attemptCount: delivery.attemptCount + 1,
+          lastAttemptAt: new Date(),
+          responseBody: `Error: ${errorMessage}`,
+          status: "pending",
+        },
+      });
+      console.log(`[WEBHOOK] Delivery ${deliveryId} error: ${errorMessage}, will retry`);
+      // Schedule retry with backoff
+      const backoffDelay = BACKOFF_MS[delivery.attemptCount] || 15000;
+      setTimeout(() => attemptWebhookDelivery(deliveryId), backoffDelay);
+    }
+  }
+
+  // Emit webhook event to all matching endpoints
+  async function emitWebhookEvent(orgId: string, eventType: string, payload: Record<string, unknown>) {
+    try {
+      // Find all active endpoints that subscribe to this event
+      const endpoints = await prisma.outgoingWebhookEndpoint.findMany({
+        where: {
+          orgId,
+          active: true,
+          events: { has: eventType },
+        },
+      });
+
+      if (endpoints.length === 0) {
+        console.log(`[WEBHOOK] No endpoints for org=${orgId} event=${eventType}`);
+        return;
+      }
+
+      // Create delivery records for each endpoint
+      for (const endpoint of endpoints) {
+        const delivery = await prisma.outgoingWebhookDelivery.create({
+          data: {
+            orgId,
+            endpointId: endpoint.id,
+            eventType,
+            payload: {
+              event: eventType,
+              timestamp: new Date().toISOString(),
+              data: payload,
+            },
+            status: "pending",
+            attemptCount: 0,
+          },
+        });
+
+        console.log(`[WEBHOOK] Created delivery ${delivery.id} for event ${eventType}`);
+        
+        // Attempt delivery immediately (async, non-blocking)
+        setImmediate(() => attemptWebhookDelivery(delivery.id));
+      }
+    } catch (error) {
+      console.error("[WEBHOOK] Error emitting event:", error);
+    }
+  }
+
+  // ============================================
+  // WEBHOOK ENDPOINTS CRUD
+  // ============================================
+
+  // GET /v1/webhooks - List webhook endpoints
+  app.get("/v1/webhooks", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const endpoints = await prisma.outgoingWebhookEndpoint.findMany({
+        where: { orgId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
+          // Exclude secret from response for security
+        },
+      });
+      res.json(endpoints);
+    } catch (error) {
+      console.error("List webhooks error:", error);
+      res.status(500).json({ error: "Failed to list webhooks" });
+    }
+  });
+
+  // POST /v1/webhooks - Create webhook endpoint
+  app.post("/v1/webhooks", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { url, events } = req.body;
+
+      if (!url || !events || !Array.isArray(events)) {
+        return res.status(400).json({ error: "url and events array required" });
+      }
+
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+
+      // Generate secure random secret
+      const secret = crypto.randomBytes(32).toString("hex");
+
+      const endpoint = await prisma.outgoingWebhookEndpoint.create({
+        data: {
+          orgId,
+          url,
+          secret,
+          events,
+          active: true,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "webhook.create",
+          entityType: "webhook_endpoint",
+          entityId: endpoint.id,
+          details: { url, events },
+        },
+      });
+
+      // Return endpoint with secret (only on creation)
+      res.status(201).json({
+        id: endpoint.id,
+        url: endpoint.url,
+        secret: endpoint.secret, // Only expose secret on creation
+        events: endpoint.events,
+        active: endpoint.active,
+        createdAt: endpoint.createdAt,
+      });
+    } catch (error) {
+      console.error("Create webhook error:", error);
+      res.status(500).json({ error: "Failed to create webhook" });
+    }
+  });
+
+  // GET /v1/webhooks/:id - Get webhook endpoint (without secret)
+  app.get("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const endpoint = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!endpoint) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      res.json(endpoint);
+    } catch (error) {
+      console.error("Get webhook error:", error);
+      res.status(500).json({ error: "Failed to get webhook" });
+    }
+  });
+
+  // PATCH /v1/webhooks/:id - Update webhook endpoint
+  app.patch("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const { url, events, active } = req.body;
+
+      const existing = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      const updateData: { url?: string; events?: string[]; active?: boolean } = {};
+      if (url !== undefined) {
+        try {
+          new URL(url);
+          updateData.url = url;
+        } catch {
+          return res.status(400).json({ error: "Invalid URL format" });
+        }
+      }
+      if (events !== undefined && Array.isArray(events)) updateData.events = events;
+      if (active !== undefined) updateData.active = active;
+
+      const endpoint = await prisma.outgoingWebhookEndpoint.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "webhook.update",
+          entityType: "webhook_endpoint",
+          entityId: id,
+          details: { changes: updateData },
+        },
+      });
+
+      res.json(endpoint);
+    } catch (error) {
+      console.error("Update webhook error:", error);
+      res.status(500).json({ error: "Failed to update webhook" });
+    }
+  });
+
+  // DELETE /v1/webhooks/:id - Delete webhook endpoint
+  app.delete("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      await prisma.outgoingWebhookEndpoint.delete({ where: { id } });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "webhook.delete",
+          entityType: "webhook_endpoint",
+          entityId: id,
+          details: { url: existing.url },
+        },
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete webhook error:", error);
+      res.status(500).json({ error: "Failed to delete webhook" });
+    }
+  });
+
+  // POST /v1/webhooks/:id/rotate-secret - Rotate webhook secret
+  app.post("/v1/webhooks/:id/rotate-secret", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      const newSecret = crypto.randomBytes(32).toString("hex");
+
+      await prisma.outgoingWebhookEndpoint.update({
+        where: { id },
+        data: { secret: newSecret },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "webhook.rotate_secret",
+          entityType: "webhook_endpoint",
+          entityId: id,
+          details: { rotatedAt: new Date().toISOString() },
+        },
+      });
+
+      res.json({ secret: newSecret });
+    } catch (error) {
+      console.error("Rotate webhook secret error:", error);
+      res.status(500).json({ error: "Failed to rotate secret" });
+    }
+  });
+
+  // GET /v1/webhooks/:id/deliveries - Get recent deliveries for an endpoint
+  app.get("/v1/webhooks/:id/deliveries", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+      const endpoint = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!endpoint) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      const deliveries = await prisma.outgoingWebhookDelivery.findMany({
+        where: { endpointId: id },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          id: true,
+          eventType: true,
+          status: true,
+          attemptCount: true,
+          lastAttemptAt: true,
+          responseCode: true,
+          createdAt: true,
+        },
+      });
+
+      res.json(deliveries);
+    } catch (error) {
+      console.error("Get webhook deliveries error:", error);
+      res.status(500).json({ error: "Failed to get deliveries" });
+    }
+  });
+
+  // GET /v1/webhook-deliveries - Get all recent deliveries for the org
+  app.get("/v1/webhook-deliveries", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+      const deliveries = await prisma.outgoingWebhookDelivery.findMany({
+        where: { orgId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: {
+          endpoint: {
+            select: { url: true },
+          },
+        },
+      });
+
+      res.json(deliveries.map(d => ({
+        id: d.id,
+        endpointId: d.endpointId,
+        endpointUrl: d.endpoint.url,
+        eventType: d.eventType,
+        status: d.status,
+        attemptCount: d.attemptCount,
+        lastAttemptAt: d.lastAttemptAt,
+        responseCode: d.responseCode,
+        createdAt: d.createdAt,
+      })));
+    } catch (error) {
+      console.error("Get all deliveries error:", error);
+      res.status(500).json({ error: "Failed to get deliveries" });
+    }
+  });
+
+  // POST /v1/webhooks/:id/test - Send a test webhook
+  app.post("/v1/webhooks/:id/test", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const endpoint = await prisma.outgoingWebhookEndpoint.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!endpoint) {
+        return res.status(404).json({ error: "Webhook endpoint not found" });
+      }
+
+      // Create a test delivery
+      const delivery = await prisma.outgoingWebhookDelivery.create({
+        data: {
+          orgId,
+          endpointId: id,
+          eventType: "test.ping",
+          payload: {
+            event: "test.ping",
+            timestamp: new Date().toISOString(),
+            data: { message: "Test webhook from CounselTech" },
+          },
+          status: "pending",
+          attemptCount: 0,
+        },
+      });
+
+      // Attempt delivery immediately
+      await attemptWebhookDelivery(delivery.id);
+
+      // Fetch updated delivery
+      const result = await prisma.outgoingWebhookDelivery.findUnique({
+        where: { id: delivery.id },
+      });
+
+      res.json({
+        deliveryId: delivery.id,
+        status: result?.status,
+        responseCode: result?.responseCode,
+        responseBody: result?.responseBody?.slice(0, 500),
+      });
+    } catch (error) {
+      console.error("Test webhook error:", error);
+      res.status(500).json({ error: "Failed to test webhook" });
+    }
+  });
 
   // ============================================
   // CONTACTS ENDPOINTS
@@ -2686,6 +3180,17 @@ export async function registerRoutes(
         },
       });
 
+      // Emit call.completed webhook when call ends
+      if (CallStatus === "completed") {
+        await emitWebhookEvent(call.orgId, "call.completed", {
+          callId: call.id,
+          leadId: call.leadId,
+          direction: call.direction,
+          durationSeconds: updateData.durationSeconds || 0,
+          status: CallStatus,
+        });
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error("Twilio status webhook error:", error);
@@ -3157,9 +3662,13 @@ export async function registerRoutes(
         },
       });
 
-      // Webhook stub - record that event should be emitted
-      // In production, this would call the webhook delivery system
-      console.log(`[WEBHOOK STUB] intake.completed event for intake ${intake.id}, lead ${leadId}`);
+      // Emit intake.completed webhook
+      await emitWebhookEvent(user.orgId, "intake.completed", {
+        intakeId: intake.id,
+        leadId,
+        answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
+        completedAt: intake.completedAt,
+      });
 
       res.json({
         ...intake,
@@ -3454,8 +3963,16 @@ export async function registerRoutes(
         },
       });
 
-      // Log AI pipeline job stub
-      console.log(`[AI PIPELINE STUB] qualification.run for lead ${leadId}, score: ${score}, disposition: ${disposition}`);
+      // Emit lead.qualified webhook
+      await emitWebhookEvent(user.orgId, "lead.qualified", {
+        leadId,
+        qualificationId: qualification.id,
+        score,
+        disposition,
+        confidence,
+      });
+
+      console.log(`[AI PIPELINE] qualification.run for lead ${leadId}, score: ${score}, disposition: ${disposition}`);
 
       res.json(qualification);
     } catch (error) {

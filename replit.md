@@ -138,6 +138,32 @@ Public marketing pages built into the Vite React client:
 - **Disposition Logic**: accept (score >= 70, <= 2 missing), decline (score < 30 or disqualifiers), review (default)
 - **UI Components**: QualificationPanel showing score, disposition, confidence, score_factors, missing_fields, disqualifiers, explanations
 
+### Webhook System (Checkpoint 8)
+
+- **Webhook Endpoints CRUD**:
+  - GET /v1/webhooks - List endpoints (secrets excluded)
+  - POST /v1/webhooks - Create endpoint (returns secret only on creation)
+  - GET /v1/webhooks/:id - Get endpoint details
+  - PATCH /v1/webhooks/:id - Update endpoint (url, events, active)
+  - DELETE /v1/webhooks/:id - Delete endpoint
+  - POST /v1/webhooks/:id/rotate-secret - Rotate signing secret
+  - GET /v1/webhooks/:id/deliveries - Get endpoint delivery history
+  - GET /v1/webhook-deliveries - Get all org delivery history
+  - POST /v1/webhooks/:id/test - Send test webhook
+- **Delivery System**:
+  - Records outgoing_webhook_deliveries with status tracking
+  - Retry logic: 3 attempts with exponential backoff (1s, 5s, 15s)
+  - HMAC SHA256 signing with X-CT-Signature header
+  - 10-second timeout per delivery attempt
+- **Events Emitted**:
+  - lead.created, lead.updated, lead.qualified
+  - intake.completed, call.completed, contact.created
+- **Security**:
+  - Secrets generated with crypto.randomBytes(32)
+  - Secrets only exposed on creation and rotation
+  - Secrets never logged or returned in list/get responses
+- **UI**: /settings/webhooks page for endpoint management and delivery logs
+
 ### Monorepo Structure
 
 ```

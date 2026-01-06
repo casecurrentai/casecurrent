@@ -14,6 +14,7 @@ import AdminOrgsNewPage from "@/pages/admin/orgs-new";
 import AdminOrgDetailPage from "@/pages/admin/org-detail";
 import SetupWizardPage from "@/pages/setup";
 import InviteAcceptPage from "@/pages/invite";
+import WebhooksPage from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
@@ -130,6 +131,13 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <LeadDetailPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings/webhooks">
+        <ProtectedRoute>
+          <AppLayout>
+            <WebhooksPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>
