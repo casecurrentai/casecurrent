@@ -35,9 +35,9 @@ Preferred communication style: Simple, everyday language.
 - **Migrations**: Prisma Migrate (`/apps/api/prisma/migrations` directory)
 - **Prisma Config**: `/apps/api/prisma.config.ts` for Prisma 7 configuration
 - **Database Adapter**: `@prisma/adapter-pg` for PostgreSQL driver adapter
-- **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, and AI configuration
+- **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, AI configuration, default policy test suite (6 cases), and default follow-up sequence (3-step SMS)
 
-### Database Tables (21 total)
+### Database Tables (27 total)
 
 - **Core**: organizations, users, contacts
 - **Practice**: practice_areas, intake_question_sets, ai_configs
@@ -49,6 +49,7 @@ Preferred communication style: Simple, everyday language.
 - **Audit**: audit_logs
 - **Marketing**: marketing_contact_submissions
 - **Platform Admin**: user_invites, org_health_snapshots
+- **Self-Improving**: experiments, experiment_assignments, experiment_metrics_daily, policy_test_suites, policy_test_runs, followup_sequences
 
 ### Marketing Site (Checkpoint 4.5)
 
@@ -163,6 +164,61 @@ Public marketing pages built into the Vite React client:
   - Secrets only exposed on creation and rotation
   - Secrets never logged or returned in list/get responses
 - **UI**: /settings/webhooks page for endpoint management and delivery logs
+
+### Self-Improving System (Checkpoint 9)
+
+- **Experiments API (A/B Testing)**:
+  - GET /v1/experiments - List experiments
+  - POST /v1/experiments - Create experiment (kind: intake_script, qualification_rules, follow_up_timing)
+  - GET /v1/experiments/:id - Get experiment details
+  - PATCH /v1/experiments/:id - Update experiment config
+  - DELETE /v1/experiments/:id - Delete experiment (draft only)
+  - POST /v1/experiments/:id/start - Start experiment
+  - POST /v1/experiments/:id/pause - Pause experiment
+  - POST /v1/experiments/:id/end - End experiment
+  - POST /v1/experiments/:id/assign - Assign lead to experiment
+  - POST /v1/experiments/:id/conversion - Record conversion event
+  - GET /v1/experiments/:id/report - Get variant performance report
+- **Variant Assignment**: Deterministic SHA256 hash of experimentId:leadId for consistent bucketing
+- **Variant Stats**: Track leads, conversions (qualification=accept), avgScore per variant
+- **Auto-Assignment**: Running experiments auto-assign leads on creation
+
+- **Policy Tests API (Qualification Regression Testing)**:
+  - GET /v1/policy-tests/suites - List test suites
+  - POST /v1/policy-tests/suites - Create suite with test cases
+  - GET /v1/policy-tests/suites/:id - Get suite details
+  - PATCH /v1/policy-tests/suites/:id - Update suite
+  - DELETE /v1/policy-tests/suites/:id - Delete suite
+  - POST /v1/policy-tests/suites/:id/run - Run all test cases
+  - GET /v1/policy-tests/runs - Get run history
+  - GET /v1/policy-tests/runs/:id - Get run details
+- **Test Case Format**: { id, name, input: { contact, practiceArea, intake, calls }, expectedDisposition, expectedMinScore? }
+- **Inline Mock Scoring**: Uses same factors as qualification (contact 20, practice 15, intake 25, incident 20, calls 20)
+- **Default Suite**: 6 test cases covering accept, review, decline scenarios
+
+- **Follow-up Sequences API**:
+  - GET /v1/followup-sequences - List sequences
+  - POST /v1/followup-sequences - Create sequence
+  - GET /v1/followup-sequences/:id - Get sequence details
+  - PATCH /v1/followup-sequences/:id - Update sequence
+  - DELETE /v1/followup-sequences/:id - Delete sequence
+  - POST /v1/followup-sequences/:id/trigger - Trigger sequence for a lead
+- **Sequence Steps**: Array of { delayMinutes, channel: 'sms'|'email', templateBody }
+- **Stop Rules**: { onResponse: boolean, onStatusChange: string[] } - stop on inbound message or lead status change
+- **Default Sequence**: 3-step SMS nurture (immediate, 1hr, 24hr)
+
+- **Database Tables Added**:
+  - experiments: id, orgId, name, description, kind, status, config, startedAt, endedAt
+  - experiment_assignments: id, experimentId, leadId, variant, assignedAt
+  - experiment_metrics_daily: id, experimentId, variant, date, leads, conversions, avgScore
+  - policy_test_suites: id, orgId, name, description, testCases, active
+  - policy_test_runs: id, suiteId, status, results, summary, startedAt, endedAt
+  - followup_sequences: id, orgId, name, description, trigger, steps, stopRules, active
+
+- **UI Pages**:
+  - /experiments - List, create, start/pause/end experiments
+  - /experiments/:id - View variant performance report
+  - /policy-tests - List suites, run tests, view history
 
 ### Monorepo Structure
 

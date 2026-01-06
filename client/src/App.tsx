@@ -15,6 +15,9 @@ import AdminOrgDetailPage from "@/pages/admin/org-detail";
 import SetupWizardPage from "@/pages/setup";
 import InviteAcceptPage from "@/pages/invite";
 import WebhooksPage from "@/pages/webhooks";
+import ExperimentsPage from "@/pages/experiments";
+import ExperimentDetailPage from "@/pages/experiment-detail";
+import PolicyTestsPage from "@/pages/policy-tests";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
@@ -138,6 +141,27 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <WebhooksPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/experiments/:id">
+        <ProtectedRoute>
+          <AppLayout>
+            <ExperimentDetailPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/experiments">
+        <ProtectedRoute>
+          <AppLayout>
+            <ExperimentsPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/policy-tests">
+        <ProtectedRoute>
+          <AppLayout>
+            <PolicyTestsPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import * as crypto from "crypto";
 import swaggerUi from "swagger-ui-express";
 import { prisma } from "./db";
 import { swaggerSpec } from "./openapi";
@@ -1388,6 +1389,9 @@ export async function registerRoutes(
           source,
           status: lead.status,
         });
+
+        // Auto-assign to running experiments
+        await autoAssignExperiments(orgId, lead.id);
 
         res.status(201).json(lead);
       } catch (error) {
@@ -4304,6 +4308,1056 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Scoring error:", error);
       res.status(500).json({ error: "Failed to score" });
+    }
+  });
+
+  // ============================================
+  // EXPERIMENTS API (Conversion Lab)
+  // ============================================
+
+  // Deterministic variant assignment using hash
+  function assignVariant(leadId: string, experimentId: string, variants: string[]): string {
+    const hash = crypto.createHash("sha256").update(`${experimentId}:${leadId}`).digest("hex");
+    const index = parseInt(hash.slice(0, 8), 16) % variants.length;
+    return variants[index];
+  }
+
+  // GET /v1/experiments - List experiments
+  app.get("/v1/experiments", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const experiments = await prisma.experiment.findMany({
+        where: { orgId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          _count: { select: { assignments: true } },
+        },
+      });
+      res.json(experiments.map(e => ({
+        ...e,
+        assignmentsCount: e._count.assignments,
+        _count: undefined,
+      })));
+    } catch (error) {
+      console.error("List experiments error:", error);
+      res.status(500).json({ error: "Failed to list experiments" });
+    }
+  });
+
+  // POST /v1/experiments - Create experiment
+  app.post("/v1/experiments", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { name, description, kind, config } = req.body;
+
+      if (!name || !kind || !config) {
+        return res.status(400).json({ error: "name, kind, and config required" });
+      }
+
+      const experiment = await prisma.experiment.create({
+        data: { orgId, name, description, kind, config, status: "draft" },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "experiment.create",
+          entityType: "experiment",
+          entityId: experiment.id,
+          details: { name, kind },
+        },
+      });
+
+      res.status(201).json(experiment);
+    } catch (error) {
+      console.error("Create experiment error:", error);
+      res.status(500).json({ error: "Failed to create experiment" });
+    }
+  });
+
+  // GET /v1/experiments/:id - Get experiment details
+  app.get("/v1/experiments/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const experiment = await prisma.experiment.findFirst({
+        where: { id, orgId },
+        include: {
+          _count: { select: { assignments: true } },
+        },
+      });
+
+      if (!experiment) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      res.json({
+        ...experiment,
+        assignmentsCount: experiment._count.assignments,
+        _count: undefined,
+      });
+    } catch (error) {
+      console.error("Get experiment error:", error);
+      res.status(500).json({ error: "Failed to get experiment" });
+    }
+  });
+
+  // PATCH /v1/experiments/:id - Update experiment
+  app.patch("/v1/experiments/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const { name, description, kind, config } = req.body;
+
+      const existing = await prisma.experiment.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      if (existing.status === "running") {
+        return res.status(400).json({ error: "Cannot edit running experiment" });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (kind !== undefined) updateData.kind = kind;
+      if (config !== undefined) updateData.config = config;
+
+      const experiment = await prisma.experiment.update({
+        where: { id },
+        data: updateData,
+      });
+
+      res.json(experiment);
+    } catch (error) {
+      console.error("Update experiment error:", error);
+      res.status(500).json({ error: "Failed to update experiment" });
+    }
+  });
+
+  // POST /v1/experiments/:id/start - Start experiment
+  app.post("/v1/experiments/:id/start", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.experiment.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      if (existing.status === "running") {
+        return res.status(400).json({ error: "Experiment already running" });
+      }
+
+      const experiment = await prisma.experiment.update({
+        where: { id },
+        data: { status: "running", startedAt: new Date(), pausedAt: null },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "experiment.start",
+          entityType: "experiment",
+          entityId: id,
+          details: {},
+        },
+      });
+
+      res.json(experiment);
+    } catch (error) {
+      console.error("Start experiment error:", error);
+      res.status(500).json({ error: "Failed to start experiment" });
+    }
+  });
+
+  // POST /v1/experiments/:id/pause - Pause experiment
+  app.post("/v1/experiments/:id/pause", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.experiment.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      if (existing.status !== "running") {
+        return res.status(400).json({ error: "Experiment is not running" });
+      }
+
+      const experiment = await prisma.experiment.update({
+        where: { id },
+        data: { status: "paused", pausedAt: new Date() },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "experiment.pause",
+          entityType: "experiment",
+          entityId: id,
+          details: {},
+        },
+      });
+
+      res.json(experiment);
+    } catch (error) {
+      console.error("Pause experiment error:", error);
+      res.status(500).json({ error: "Failed to pause experiment" });
+    }
+  });
+
+  // POST /v1/experiments/:id/end - End experiment
+  app.post("/v1/experiments/:id/end", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.experiment.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      if (existing.status === "ended") {
+        return res.status(400).json({ error: "Experiment already ended" });
+      }
+
+      const experiment = await prisma.experiment.update({
+        where: { id },
+        data: { status: "ended", endedAt: new Date() },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "experiment.end",
+          entityType: "experiment",
+          entityId: id,
+          details: {},
+        },
+      });
+
+      res.json(experiment);
+    } catch (error) {
+      console.error("End experiment error:", error);
+      res.status(500).json({ error: "Failed to end experiment" });
+    }
+  });
+
+  // POST /v1/experiments/:id/assign - Assign lead to experiment
+  app.post("/v1/experiments/:id/assign", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const { leadId } = req.body;
+
+      if (!leadId) {
+        return res.status(400).json({ error: "leadId required" });
+      }
+
+      const experiment = await prisma.experiment.findFirst({
+        where: { id, orgId, status: "running" },
+      });
+
+      if (!experiment) {
+        return res.status(404).json({ error: "Running experiment not found" });
+      }
+
+      // Check if already assigned
+      const existing = await prisma.experimentAssignment.findUnique({
+        where: { experimentId_leadId: { experimentId: id, leadId } },
+      });
+
+      if (existing) {
+        return res.json({ variant: existing.variant, alreadyAssigned: true });
+      }
+
+      // Get variants from config
+      const config = experiment.config as { variants?: string[] };
+      const variants = config.variants || ["control", "variant_a"];
+
+      // Deterministic assignment
+      const variant = assignVariant(leadId, id, variants);
+
+      const assignment = await prisma.experimentAssignment.create({
+        data: { orgId, experimentId: id, leadId, variant },
+      });
+
+      res.json({ variant: assignment.variant, alreadyAssigned: false });
+    } catch (error) {
+      console.error("Assign experiment error:", error);
+      res.status(500).json({ error: "Failed to assign experiment" });
+    }
+  });
+
+  // GET /v1/experiments/:id/report - Get experiment report
+  app.get("/v1/experiments/:id/report", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const experiment = await prisma.experiment.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!experiment) {
+        return res.status(404).json({ error: "Experiment not found" });
+      }
+
+      // Get assignment counts per variant
+      const assignments = await prisma.experimentAssignment.groupBy({
+        by: ["variant"],
+        where: { experimentId: id },
+        _count: { _all: true },
+      });
+
+      // Get conversion data by joining with qualifications
+      const variantStats: Record<string, { leads: number; conversions: number; avgScore: number | null }> = {};
+
+      for (const a of assignments) {
+        const assignedLeads = await prisma.experimentAssignment.findMany({
+          where: { experimentId: id, variant: a.variant },
+          select: { leadId: true },
+        });
+
+        const leadIds = assignedLeads.map(al => al.leadId);
+        
+        const qualifications = await prisma.qualification.findMany({
+          where: { leadId: { in: leadIds }, disposition: "accept" },
+        });
+
+        const allQualifications = await prisma.qualification.findMany({
+          where: { leadId: { in: leadIds } },
+        });
+
+        const avgScore = allQualifications.length > 0
+          ? allQualifications.reduce((sum, q) => sum + q.score, 0) / allQualifications.length
+          : null;
+
+        variantStats[a.variant] = {
+          leads: a._count._all,
+          conversions: qualifications.length,
+          avgScore,
+        };
+      }
+
+      // Get daily metrics
+      const dailyMetrics = await prisma.experimentMetricsDaily.findMany({
+        where: { experimentId: id },
+        orderBy: { date: "asc" },
+      });
+
+      res.json({
+        experimentId: id,
+        name: experiment.name,
+        status: experiment.status,
+        startedAt: experiment.startedAt,
+        endedAt: experiment.endedAt,
+        variantStats,
+        dailyMetrics,
+        totalAssignments: assignments.reduce((sum, a) => sum + a._count._all, 0),
+      });
+    } catch (error) {
+      console.error("Get experiment report error:", error);
+      res.status(500).json({ error: "Failed to get report" });
+    }
+  });
+
+  // Auto-assign lead to running experiments (internal helper)
+  async function autoAssignExperiments(orgId: string, leadId: string) {
+    try {
+      const runningExperiments = await prisma.experiment.findMany({
+        where: { orgId, status: "running" },
+      });
+
+      for (const experiment of runningExperiments) {
+        const config = experiment.config as { variants?: string[] };
+        const variants = config.variants || ["control", "variant_a"];
+        
+        // Skip if variants array is empty
+        if (!variants.length) {
+          console.warn(`[EXPERIMENT] Skipping ${experiment.id}: no variants configured`);
+          continue;
+        }
+
+        const variant = assignVariant(leadId, experiment.id, variants);
+
+        await prisma.experimentAssignment.upsert({
+          where: { experimentId_leadId: { experimentId: experiment.id, leadId } },
+          update: {},
+          create: { orgId, experimentId: experiment.id, leadId, variant },
+        });
+
+        console.log(`[EXPERIMENT] Auto-assigned lead ${leadId} to experiment ${experiment.id} variant=${variant}`);
+      }
+    } catch (error) {
+      console.error("[EXPERIMENT] Auto-assign error:", error);
+    }
+  }
+
+  // ============================================
+  // POLICY TESTS API (Compliance Regression)
+  // ============================================
+
+  // GET /v1/policy-tests/suites - List suites
+  app.get("/v1/policy-tests/suites", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const suites = await prisma.policyTestSuite.findMany({
+        where: { orgId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          runs: {
+            orderBy: { startedAt: "desc" },
+            take: 1,
+          },
+        },
+      });
+
+      res.json(suites.map(s => ({
+        ...s,
+        lastRun: s.runs[0] || null,
+        runs: undefined,
+      })));
+    } catch (error) {
+      console.error("List policy suites error:", error);
+      res.status(500).json({ error: "Failed to list suites" });
+    }
+  });
+
+  // POST /v1/policy-tests/suites - Create suite
+  app.post("/v1/policy-tests/suites", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { name, description, testCases } = req.body;
+
+      if (!name || !testCases || !Array.isArray(testCases)) {
+        return res.status(400).json({ error: "name and testCases array required" });
+      }
+
+      const suite = await prisma.policyTestSuite.create({
+        data: { orgId, name, description, testCases },
+      });
+
+      await createAuditLog(
+        orgId,
+        req.user!.userId,
+        "policy_test_suite.create",
+        "policy_test_suite",
+        suite.id,
+        { name, testCasesCount: testCases.length }
+      );
+
+      res.status(201).json(suite);
+    } catch (error) {
+      console.error("Create policy suite error:", error);
+      res.status(500).json({ error: "Failed to create suite" });
+    }
+  });
+
+  // GET /v1/policy-tests/suites/:id - Get suite
+  app.get("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const suite = await prisma.policyTestSuite.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!suite) {
+        return res.status(404).json({ error: "Suite not found" });
+      }
+
+      res.json(suite);
+    } catch (error) {
+      console.error("Get policy suite error:", error);
+      res.status(500).json({ error: "Failed to get suite" });
+    }
+  });
+
+  // PATCH /v1/policy-tests/suites/:id - Update suite
+  app.patch("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const { name, description, testCases, active } = req.body;
+
+      const existing = await prisma.policyTestSuite.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Suite not found" });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (testCases !== undefined) updateData.testCases = testCases;
+      if (active !== undefined) updateData.active = active;
+
+      const suite = await prisma.policyTestSuite.update({
+        where: { id },
+        data: updateData,
+      });
+
+      res.json(suite);
+    } catch (error) {
+      console.error("Update policy suite error:", error);
+      res.status(500).json({ error: "Failed to update suite" });
+    }
+  });
+
+  // DELETE /v1/policy-tests/suites/:id - Delete suite
+  app.delete("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.policyTestSuite.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Suite not found" });
+      }
+
+      await prisma.policyTestSuite.delete({ where: { id } });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete policy suite error:", error);
+      res.status(500).json({ error: "Failed to delete suite" });
+    }
+  });
+
+  // POST /v1/policy-tests/suites/:id/run - Run policy test suite
+  app.post("/v1/policy-tests/suites/:id/run", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const suite = await prisma.policyTestSuite.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!suite) {
+        return res.status(404).json({ error: "Suite not found" });
+      }
+
+      const testCases = suite.testCases as Array<{
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+        expectedDisposition: string;
+        expectedMinScore?: number;
+      }>;
+
+      // Run each test case
+      const results: Array<{
+        testId: string;
+        name: string;
+        passed: boolean;
+        actualDisposition?: string;
+        actualScore?: number;
+        error?: string;
+      }> = [];
+
+      for (const tc of testCases) {
+        try {
+          // Simulate qualification scoring based on input
+          const mockLead = tc.input as { contact?: { phone?: string; email?: string }; practiceArea?: boolean; intake?: { complete?: boolean; answers?: Record<string, unknown> }; calls?: number };
+          
+          let score = 0;
+          
+          // Contact info scoring (20 points)
+          if (mockLead.contact?.phone) score += 10;
+          if (mockLead.contact?.email) score += 10;
+          
+          // Practice area (15 points)
+          if (mockLead.practiceArea) score += 15;
+          
+          // Intake completion (25 points)
+          if (mockLead.intake?.complete) score += 25;
+          else if (mockLead.intake?.answers && Object.keys(mockLead.intake.answers).length > 0) score += 10;
+          
+          // Incident details (20 points)
+          if (mockLead.intake?.answers) {
+            const answers = mockLead.intake.answers;
+            if (answers.incidentDate) score += 10;
+            if (answers.incidentLocation) score += 10;
+          }
+          
+          // Communication history (20 points)
+          if (mockLead.calls && mockLead.calls > 0) score += Math.min(mockLead.calls * 10, 20);
+
+          let disposition = "review";
+          if (score >= 70) disposition = "accept";
+          else if (score < 30) disposition = "decline";
+
+          const passed = 
+            disposition === tc.expectedDisposition &&
+            (tc.expectedMinScore === undefined || score >= tc.expectedMinScore);
+
+          results.push({
+            testId: tc.id,
+            name: tc.name,
+            passed,
+            actualDisposition: disposition,
+            actualScore: score,
+          });
+        } catch (err) {
+          results.push({
+            testId: tc.id,
+            name: tc.name,
+            passed: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      const passedCount = results.filter(r => r.passed).length;
+      const failedCount = results.filter(r => !r.passed).length;
+      const status = failedCount === 0 ? "passed" : "failed";
+
+      const run = await prisma.policyTestRun.create({
+        data: {
+          orgId,
+          suiteId: id,
+          status,
+          results,
+          summary: { passedCount, failedCount, totalCount: results.length },
+          endedAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "policy_test.run",
+          entityType: "policy_test_suite",
+          entityId: id,
+          details: { runId: run.id, status, passedCount, failedCount },
+        },
+      });
+
+      res.json(run);
+    } catch (error) {
+      console.error("Run policy test error:", error);
+      res.status(500).json({ error: "Failed to run tests" });
+    }
+  });
+
+  // GET /v1/policy-tests/runs - Get run history
+  app.get("/v1/policy-tests/runs", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const suiteId = req.query.suite_id as string | undefined;
+
+      const where: { orgId: string; suiteId?: string } = { orgId };
+      if (suiteId) where.suiteId = suiteId;
+
+      const runs = await prisma.policyTestRun.findMany({
+        where,
+        orderBy: { startedAt: "desc" },
+        take: 50,
+        include: {
+          suite: { select: { name: true } },
+        },
+      });
+
+      res.json(runs);
+    } catch (error) {
+      console.error("Get policy runs error:", error);
+      res.status(500).json({ error: "Failed to get runs" });
+    }
+  });
+
+  // ============================================
+  // FOLLOW-UP SEQUENCES API
+  // ============================================
+
+  // GET /v1/followup-sequences - List sequences
+  app.get("/v1/followup-sequences", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const sequences = await prisma.followupSequence.findMany({
+        where: { orgId },
+        orderBy: { createdAt: "desc" },
+      });
+      res.json(sequences);
+    } catch (error) {
+      console.error("List followup sequences error:", error);
+      res.status(500).json({ error: "Failed to list sequences" });
+    }
+  });
+
+  // POST /v1/followup-sequences - Create sequence
+  app.post("/v1/followup-sequences", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { name, description, trigger, steps, stopRules } = req.body;
+
+      if (!name || !trigger || !steps || !Array.isArray(steps)) {
+        return res.status(400).json({ error: "name, trigger, and steps array required" });
+      }
+
+      const sequence = await prisma.followupSequence.create({
+        data: { orgId, name, description, trigger, steps, stopRules },
+      });
+
+      await createAuditLog(
+        orgId,
+        req.user!.userId,
+        "followup_sequence.create",
+        "followup_sequence",
+        sequence.id,
+        { name, trigger, stepsCount: steps.length }
+      );
+
+      res.status(201).json(sequence);
+    } catch (error) {
+      console.error("Create followup sequence error:", error);
+      res.status(500).json({ error: "Failed to create sequence" });
+    }
+  });
+
+  // GET /v1/followup-sequences/:id - Get sequence
+  app.get("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const sequence = await prisma.followupSequence.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!sequence) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+
+      res.json(sequence);
+    } catch (error) {
+      console.error("Get followup sequence error:", error);
+      res.status(500).json({ error: "Failed to get sequence" });
+    }
+  });
+
+  // PATCH /v1/followup-sequences/:id - Update sequence
+  app.patch("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+      const { name, description, trigger, steps, stopRules, active } = req.body;
+
+      const existing = await prisma.followupSequence.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (trigger !== undefined) updateData.trigger = trigger;
+      if (steps !== undefined) updateData.steps = steps;
+      if (stopRules !== undefined) updateData.stopRules = stopRules;
+      if (active !== undefined) updateData.active = active;
+
+      const sequence = await prisma.followupSequence.update({
+        where: { id },
+        data: updateData,
+      });
+
+      res.json(sequence);
+    } catch (error) {
+      console.error("Update followup sequence error:", error);
+      res.status(500).json({ error: "Failed to update sequence" });
+    }
+  });
+
+  // DELETE /v1/followup-sequences/:id - Delete sequence
+  app.delete("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const existing = await prisma.followupSequence.findFirst({
+        where: { id, orgId },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+
+      await prisma.followupSequence.delete({ where: { id } });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete followup sequence error:", error);
+      res.status(500).json({ error: "Failed to delete sequence" });
+    }
+  });
+
+  // POST /v1/leads/:id/followups/trigger - Trigger followup sequence for lead
+  app.post("/v1/leads/:id/followups/trigger", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const leadId = req.params.id;
+      const { sequenceId } = req.body;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId },
+        include: { contact: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Check stop conditions
+      if (lead.status === "disqualified" || lead.status === "closed") {
+        return res.status(400).json({ error: "Lead is disqualified or closed" });
+      }
+
+      let sequence;
+      if (sequenceId) {
+        sequence = await prisma.followupSequence.findFirst({
+          where: { id: sequenceId, orgId, active: true },
+        });
+      } else {
+        // Find first active sequence matching lead_created trigger
+        sequence = await prisma.followupSequence.findFirst({
+          where: { orgId, active: true, trigger: "lead_created" },
+        });
+      }
+
+      if (!sequence) {
+        return res.status(404).json({ error: "No active sequence found" });
+      }
+
+      const steps = sequence.steps as Array<{ delayMinutes: number; channel: string; templateBody: string }>;
+      const createdJobs = [];
+
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const scheduledAt = new Date(Date.now() + step.delayMinutes * 60 * 1000);
+
+        const job = await prisma.followupJob.create({
+          data: {
+            orgId,
+            sequenceId: sequence.id,
+            leadId,
+            stepIndex: i,
+            scheduledAt,
+            status: "pending",
+          },
+        });
+
+        createdJobs.push(job);
+
+        // In dev mode, execute the first job immediately if delay is 0
+        if (step.delayMinutes === 0 || i === 0) {
+          // Schedule execution
+          setImmediate(() => executeFollowupJob(job.id));
+        } else {
+          // Schedule for later (in-memory for V1)
+          setTimeout(() => executeFollowupJob(job.id), step.delayMinutes * 60 * 1000);
+        }
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorUserId: req.user!.userId,
+          actorType: "user",
+          action: "followup.trigger",
+          entityType: "lead",
+          entityId: leadId,
+          details: { sequenceId: sequence.id, jobsCreated: createdJobs.length },
+        },
+      });
+
+      res.json({
+        sequenceId: sequence.id,
+        sequenceName: sequence.name,
+        jobsScheduled: createdJobs.length,
+        jobs: createdJobs,
+      });
+    } catch (error) {
+      console.error("Trigger followup error:", error);
+      res.status(500).json({ error: "Failed to trigger followup" });
+    }
+  });
+
+  // Execute a followup job
+  async function executeFollowupJob(jobId: string) {
+    try {
+      const job = await prisma.followupJob.findUnique({
+        where: { id: jobId },
+        include: { sequence: true },
+      });
+
+      if (!job || job.status !== "pending") {
+        console.log(`[FOLLOWUP] Skipping job ${jobId} - not found or not pending`);
+        return;
+      }
+
+      // Check stop rules
+      const lead = await prisma.lead.findUnique({
+        where: { id: job.leadId },
+        include: { contact: true, messages: { orderBy: { createdAt: "desc" }, take: 1 } },
+      });
+
+      if (!lead) {
+        await prisma.followupJob.update({
+          where: { id: jobId },
+          data: { status: "cancelled", cancelReason: "Lead not found" },
+        });
+        return;
+      }
+
+      // Stop if lead is disqualified or closed
+      if (lead.status === "disqualified" || lead.status === "closed") {
+        await prisma.followupJob.update({
+          where: { id: jobId },
+          data: { status: "cancelled", cancelReason: `Lead status: ${lead.status}` },
+        });
+
+        // Cancel remaining jobs for this lead in this sequence
+        await prisma.followupJob.updateMany({
+          where: { 
+            sequenceId: job.sequenceId, 
+            leadId: job.leadId, 
+            status: "pending",
+            stepIndex: { gt: job.stepIndex },
+          },
+          data: { status: "cancelled", cancelReason: `Lead status: ${lead.status}` },
+        });
+        return;
+      }
+
+      // Stop if lead has responded (has inbound message after sequence started)
+      const latestMessage = lead.messages[0];
+      if (latestMessage && latestMessage.direction === "inbound" && latestMessage.createdAt > job.createdAt) {
+        await prisma.followupJob.update({
+          where: { id: jobId },
+          data: { status: "cancelled", cancelReason: "Lead responded" },
+        });
+
+        // Cancel remaining jobs
+        await prisma.followupJob.updateMany({
+          where: { 
+            sequenceId: job.sequenceId, 
+            leadId: job.leadId, 
+            status: "pending",
+            stepIndex: { gt: job.stepIndex },
+          },
+          data: { status: "cancelled", cancelReason: "Lead responded" },
+        });
+        return;
+      }
+
+      // Get the step to execute
+      const steps = job.sequence.steps as Array<{ delayMinutes: number; channel: string; templateBody: string }>;
+      const step = steps[job.stepIndex];
+
+      if (!step) {
+        await prisma.followupJob.update({
+          where: { id: jobId },
+          data: { status: "failed", cancelReason: "Step not found" },
+        });
+        return;
+      }
+
+      // Send the message (stub - in production would use Twilio or other provider)
+      console.log(`[FOLLOWUP] Sending ${step.channel} to lead ${job.leadId}: ${step.templateBody.slice(0, 50)}...`);
+
+      // Create an interaction and message for the followup
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId: job.orgId,
+          leadId: job.leadId,
+          channel: step.channel,
+          status: "completed",
+          endedAt: new Date(),
+        },
+      });
+
+      await prisma.message.create({
+        data: {
+          orgId: job.orgId,
+          leadId: job.leadId,
+          interactionId: interaction.id,
+          direction: "outbound",
+          channel: step.channel,
+          provider: "followup_sequence",
+          from: "system",
+          to: lead.contact.primaryPhone || lead.contact.primaryEmail || "unknown",
+          body: step.templateBody,
+        },
+      });
+
+      await prisma.followupJob.update({
+        where: { id: jobId },
+        data: { status: "sent", sentAt: new Date() },
+      });
+
+      console.log(`[FOLLOWUP] Job ${jobId} completed - message sent`);
+    } catch (error) {
+      console.error(`[FOLLOWUP] Error executing job ${jobId}:`, error);
+      await prisma.followupJob.update({
+        where: { id: jobId },
+        data: { status: "failed", cancelReason: error instanceof Error ? error.message : "Unknown error" },
+      });
+    }
+  }
+
+  // GET /v1/leads/:id/followups - Get followup jobs for a lead
+  app.get("/v1/leads/:id/followups", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const leadId = req.params.id;
+
+      const jobs = await prisma.followupJob.findMany({
+        where: { orgId, leadId },
+        orderBy: { scheduledAt: "asc" },
+        include: {
+          sequence: { select: { name: true } },
+        },
+      });
+
+      res.json(jobs);
+    } catch (error) {
+      console.error("Get lead followups error:", error);
+      res.status(500).json({ error: "Failed to get followups" });
     }
   });
 

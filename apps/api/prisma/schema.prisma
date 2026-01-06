@@ -47,6 +47,9 @@ model Organization {
   auditLogs                  AuditLog[]
   userInvites                UserInvite[]
   orgHealthSnapshots         OrgHealthSnapshot[]
+  experiments                Experiment[]
+  policyTestSuites           PolicyTestSuite[]
+  followupSequences          FollowupSequence[]
 
   @@map("organizations")
 }
@@ -460,6 +463,137 @@ model MarketingSubmission {
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("marketing_submissions")
+}
+
+// ============================================
+// EXPERIMENTS (A/B Testing - Conversion Lab)
+// ============================================
+
+model Experiment {
+  id           String    @id @default(uuid())
+  orgId        String    @map("org_id")
+  name         String
+  description  String?
+  kind         String    // intake_script, qualification_rules, follow_up_timing
+  status       String    @default("draft") // draft, running, paused, ended
+  config       Json      // variant definitions, weights, etc.
+  startedAt    DateTime? @map("started_at")
+  pausedAt     DateTime? @map("paused_at")
+  endedAt      DateTime? @map("ended_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  organization Organization              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assignments  ExperimentAssignment[]
+  metricsDaily ExperimentMetricsDaily[]
+
+  @@map("experiments")
+}
+
+model ExperimentAssignment {
+  id           String   @id @default(uuid())
+  orgId        String   @map("org_id")
+  experimentId String   @map("experiment_id")
+  leadId       String   @map("lead_id")
+  variant      String   // control, variant_a, variant_b, etc.
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, leadId])
+  @@map("experiment_assignments")
+}
+
+model ExperimentMetricsDaily {
+  id           String   @id @default(uuid())
+  orgId        String   @map("org_id")
+  experimentId String   @map("experiment_id")
+  variant      String
+  date         DateTime @db.Date
+  leads        Int      @default(0)
+  conversions  Int      @default(0)
+  avgScore     Float?   @map("avg_score")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, variant, date])
+  @@map("experiment_metrics_daily")
+}
+
+// ============================================
+// POLICY TESTS (Compliance Regression)
+// ============================================
+
+model PolicyTestSuite {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  name        String
+  description String?
+  testCases   Json     // array of test case definitions
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  runs         PolicyTestRun[]
+
+  @@map("policy_test_suites")
+}
+
+model PolicyTestRun {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  suiteId   String   @map("suite_id")
+  status    String   @default("running") // running, passed, failed
+  results   Json     // array of test results
+  summary   Json?    // passed_count, failed_count, etc.
+  startedAt DateTime @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
+  suite PolicyTestSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+
+  @@map("policy_test_runs")
+}
+
+// ============================================
+// FOLLOW-UP SEQUENCES
+// ============================================
+
+model FollowupSequence {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  name        String
+  description String?
+  trigger     String   // lead_created, intake_completed, qualification_review
+  steps       Json     // array of steps: {delayMinutes, channel, templateBody}
+  stopRules   Json?    @map("stop_rules") // conditions to cancel remaining steps
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  jobs         FollowupJob[]
+
+  @@map("followup_sequences")
+}
+
+model FollowupJob {
+  id           String    @id @default(uuid())
+  orgId        String    @map("org_id")
+  sequenceId   String    @map("sequence_id")
+  leadId       String    @map("lead_id")
+  stepIndex    Int       @map("step_index")
+  scheduledAt  DateTime  @map("scheduled_at")
+  status       String    @default("pending") // pending, sent, cancelled, failed
+  sentAt       DateTime? @map("sent_at")
+  cancelReason String?   @map("cancel_reason")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  sequence FollowupSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@map("followup_jobs")
 }
 
 // ============================================

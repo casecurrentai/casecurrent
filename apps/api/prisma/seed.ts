@@ -221,6 +221,129 @@ async function main() {
   });
   console.log('Created AI config for org:', org.name);
 
+  // Create Default Policy Test Suite with 6 test cases
+  const policyTestSuite = await prisma.policyTestSuite.upsert({
+    where: {
+      id: 'default-policy-suite-' + org.id,
+    },
+    update: {},
+    create: {
+      id: 'default-policy-suite-' + org.id,
+      orgId: org.id,
+      name: 'Qualification Regression Tests',
+      description: 'Default suite to validate qualification scoring logic',
+      active: true,
+      testCases: [
+        {
+          id: 'tc1',
+          name: 'Complete lead with phone+email accepts',
+          input: {
+            contact: { phone: '+15551234567', email: 'test@example.com' },
+            practiceArea: true,
+            intake: { complete: true, answers: { incidentDate: '2024-01-15', incidentLocation: 'Highway 101' } },
+            calls: 2,
+          },
+          expectedDisposition: 'accept',
+          expectedMinScore: 70,
+        },
+        {
+          id: 'tc2',
+          name: 'Minimal info leads to review',
+          input: {
+            contact: { phone: '+15551234567' },
+            practiceArea: false,
+            intake: { complete: false },
+            calls: 0,
+          },
+          expectedDisposition: 'review',
+        },
+        {
+          id: 'tc3',
+          name: 'No contact info declines',
+          input: {
+            contact: {},
+            practiceArea: false,
+            intake: { complete: false },
+            calls: 0,
+          },
+          expectedDisposition: 'decline',
+        },
+        {
+          id: 'tc4',
+          name: 'Partial intake with practice area reviews',
+          input: {
+            contact: { email: 'partial@test.com' },
+            practiceArea: true,
+            intake: { complete: false, answers: { incidentDate: '2024-01-15' } },
+            calls: 1,
+          },
+          expectedDisposition: 'review',
+        },
+        {
+          id: 'tc5',
+          name: 'Complete intake without calls accepts',
+          input: {
+            contact: { phone: '+15559876543', email: 'complete@test.com' },
+            practiceArea: true,
+            intake: { complete: true, answers: { incidentDate: '2024-02-01', incidentLocation: 'Main Street' } },
+            calls: 0,
+          },
+          expectedDisposition: 'accept',
+        },
+        {
+          id: 'tc6',
+          name: 'High engagement with partial info reviews',
+          input: {
+            contact: { phone: '+15551112222' },
+            practiceArea: true,
+            intake: { complete: false, answers: {} },
+            calls: 3,
+          },
+          expectedDisposition: 'review',
+        },
+      ],
+    },
+  });
+  console.log('Created default policy test suite:', policyTestSuite.name);
+
+  // Create Default Follow-up Sequence
+  const followupSequence = await prisma.followupSequence.upsert({
+    where: {
+      id: 'default-followup-' + org.id,
+    },
+    update: {},
+    create: {
+      id: 'default-followup-' + org.id,
+      orgId: org.id,
+      name: 'New Lead Welcome Sequence',
+      description: 'Automated follow-up for new leads',
+      trigger: 'lead_created',
+      active: true,
+      steps: [
+        {
+          delayMinutes: 0,
+          channel: 'sms',
+          templateBody: 'Thank you for contacting Demo Law Firm. We have received your inquiry and will be in touch shortly.',
+        },
+        {
+          delayMinutes: 60,
+          channel: 'sms',
+          templateBody: 'Hi! Just following up on your inquiry. Is there any additional information you can share about your situation?',
+        },
+        {
+          delayMinutes: 1440,
+          channel: 'sms',
+          templateBody: 'We wanted to make sure you received our messages. Our team is ready to help. Reply or call us at your convenience.',
+        },
+      ],
+      stopRules: {
+        onResponse: true,
+        onStatusChange: ['disqualified', 'closed'],
+      },
+    },
+  });
+  console.log('Created default follow-up sequence:', followupSequence.name);
+
   console.log('Seeding completed successfully!');
 }
 

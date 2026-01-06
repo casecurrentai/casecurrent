@@ -9,11 +9,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link, useLocation } from "wouter";
-import { Users, LayoutDashboard, Settings, LogOut, ChevronDown, MessageSquare, Webhook } from "lucide-react";
+import { Users, LayoutDashboard, Settings, LogOut, ChevronDown, MessageSquare, Webhook, FlaskConical, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/experiments", label: "Experiments", icon: FlaskConical },
+  { href: "/policy-tests", label: "Policy Tests", icon: ShieldCheck },
   { href: "/admin/contact-submissions", label: "Inquiries", icon: MessageSquare },
   { href: "/settings/webhooks", label: "Webhooks", icon: Webhook },
 ];
