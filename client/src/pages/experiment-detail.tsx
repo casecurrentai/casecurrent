@@ -47,21 +47,27 @@ export default function ExperimentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid gap-4 md:grid-cols-3">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
+      <div className="space-y-4 sm:space-y-6">
+        <Skeleton className="h-8 w-48 sm:w-64" />
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3">
+          <Skeleton className="h-24 sm:h-32" />
+          <Skeleton className="h-24 sm:h-32" />
+          <Skeleton className="h-24 sm:h-32 col-span-2 sm:col-span-1" />
         </div>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-48 sm:h-64" />
       </div>
     );
   }
 
   if (!report) {
     return (
-      <div className="p-6">
+      <div className="space-y-4">
+        <Link href="/experiments">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+        </Link>
         <p className="text-muted-foreground">Experiment not found</p>
       </div>
     );
@@ -70,109 +76,112 @@ export default function ExperimentDetailPage() {
   const variants = Object.entries(report.variantStats);
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex items-start gap-2 sm:gap-4">
         <Link href="/experiments">
-          <Button variant="ghost" size="icon" data-testid="button-back">
+          <Button variant="ghost" size="icon" className="shrink-0" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-experiment-name">
-              <FlaskConical className="h-6 w-6" />
-              {report.name}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2 truncate" data-testid="text-experiment-name">
+              <FlaskConical className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
+              <span className="truncate">{report.name}</span>
             </h1>
-            <Badge className={STATUS_COLORS[report.status]}>
+            <Badge className={`${STATUS_COLORS[report.status]} text-xs shrink-0`}>
               {report.status}
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             {report.startedAt && `Started ${new Date(report.startedAt).toLocaleDateString()}`}
             {report.endedAt && ` - Ended ${new Date(report.endedAt).toLocaleDateString()}`}
           </p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Stats cards - 2 columns on mobile, 3 on desktop */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Assignments</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 px-3 sm:px-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Assignments</CardTitle>
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-assignments">
+          <CardContent className="px-3 sm:px-6">
+            <div className="text-xl sm:text-2xl font-bold" data-testid="text-total-assignments">
               {report.totalAssignments}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">
               Leads assigned to this experiment
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Variants</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 px-3 sm:px-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Variants</CardTitle>
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-variant-count">
+          <CardContent className="px-3 sm:px-6">
+            <div className="text-xl sm:text-2xl font-bold" data-testid="text-variant-count">
               {variants.length}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">
               Test groups being compared
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall Conversion</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
+        <Card className="col-span-2 sm:col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2 px-3 sm:px-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Conversion</CardTitle>
+            <Target className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-overall-conversion">
+          <CardContent className="px-3 sm:px-6">
+            <div className="text-xl sm:text-2xl font-bold" data-testid="text-overall-conversion">
               {report.totalAssignments > 0
                 ? `${Math.round((variants.reduce((sum, [, s]) => sum + s.conversions, 0) / report.totalAssignments) * 100)}%`
                 : "N/A"}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">
               Leads that converted to accepted
             </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Variant Performance */}
       <Card>
-        <CardHeader>
-          <CardTitle>Variant Performance</CardTitle>
+        <CardHeader className="px-3 sm:px-6">
+          <CardTitle className="text-base sm:text-lg">Variant Performance</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 sm:px-6">
           {variants.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
+            <p className="text-muted-foreground text-center py-6 sm:py-8 text-sm">
               No data yet. Assign leads to this experiment to see results.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {variants.map(([variant, stats]) => {
                 const conversionRate = stats.leads > 0 ? (stats.conversions / stats.leads) * 100 : 0;
                 return (
                   <div
                     key={variant}
-                    className="flex items-center justify-between p-4 border rounded-md"
+                    className="flex items-center justify-between p-3 sm:p-4 border rounded-md gap-4"
                     data-testid={`row-variant-${variant}`}
                   >
-                    <div>
-                      <p className="font-medium">{variant}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {stats.leads} leads, {stats.conversions} conversions
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm sm:text-base truncate">{variant}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">
+                        {stats.leads} leads, {stats.conversions} conv.
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold">{conversionRate.toFixed(1)}%</p>
+                    <div className="text-right shrink-0">
+                      <p className="text-base sm:text-lg font-bold">{conversionRate.toFixed(1)}%</p>
                       {stats.avgScore !== null && (
-                        <p className="text-sm text-muted-foreground">
-                          Avg score: {stats.avgScore.toFixed(0)}
+                        <p className="text-[10px] sm:text-sm text-muted-foreground">
+                          Avg: {stats.avgScore.toFixed(0)}
                         </p>
                       )}
                     </div>
@@ -184,23 +193,24 @@ export default function ExperimentDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Daily Metrics - Collapsible on mobile */}
       {report.dailyMetrics.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Daily Metrics</CardTitle>
+          <CardHeader className="px-3 sm:px-6">
+            <CardTitle className="text-base sm:text-lg">Daily Metrics</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+          <CardContent className="px-3 sm:px-6">
+            <div className="space-y-2 max-h-48 sm:max-h-64 overflow-y-auto">
               {report.dailyMetrics.map((metric, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between py-2 border-b last:border-b-0"
+                  className="flex items-center justify-between py-2 border-b last:border-b-0 text-xs sm:text-sm"
                 >
-                  <span className="text-sm">
+                  <span className="truncate">
                     {new Date(metric.date).toLocaleDateString()} - {metric.variant}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {metric.leads} leads, {metric.conversions} conversions
+                  <span className="text-muted-foreground shrink-0 ml-2">
+                    {metric.leads}L / {metric.conversions}C
                   </span>
                 </div>
               ))}

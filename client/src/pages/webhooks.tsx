@@ -5,7 +5,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +31,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Webhook,
   Plus,
   Trash2,
@@ -44,6 +49,7 @@ import {
   Send,
   Loader2,
   Settings,
+  ChevronDown,
 } from "lucide-react";
 
 interface WebhookEndpoint {
@@ -127,12 +133,12 @@ function CreateWebhookDialog({ onCreated }: { onCreated: (endpoint: WebhookEndpo
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button data-testid="button-create-webhook">
+        <Button className="w-full sm:w-auto" data-testid="button-create-webhook">
           <Plus className="h-4 w-4 mr-2" />
           Add Webhook
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Webhook Endpoint</DialogTitle>
           <DialogDescription>
@@ -152,14 +158,14 @@ function CreateWebhookDialog({ onCreated }: { onCreated: (endpoint: WebhookEndpo
           </div>
           <div className="space-y-2">
             <Label>Events to Subscribe</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {AVAILABLE_EVENTS.map((event) => (
                 <Button
                   key={event.value}
                   variant={selectedEvents.includes(event.value) ? "default" : "outline"}
                   size="sm"
                   onClick={() => toggleEvent(event.value)}
-                  className="justify-start"
+                  className="justify-start text-xs sm:text-sm"
                   data-testid={`button-event-${event.value}`}
                 >
                   {event.label}
@@ -168,13 +174,14 @@ function CreateWebhookDialog({ onCreated }: { onCreated: (endpoint: WebhookEndpo
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
           <Button
             onClick={() => createMutation.mutate()}
             disabled={!url || selectedEvents.length === 0 || createMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-save-webhook"
           >
             {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -225,6 +232,7 @@ function SecretDisplay({ endpoint }: { endpoint: WebhookEndpoint }) {
         size="sm"
         onClick={() => rotateMutation.mutate()}
         disabled={rotateMutation.isPending}
+        className="w-full sm:w-auto"
         data-testid="button-rotate-secret"
       >
         {rotateMutation.isPending ? (
@@ -238,9 +246,9 @@ function SecretDisplay({ endpoint }: { endpoint: WebhookEndpoint }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <code className="bg-muted px-2 py-1 rounded text-xs font-mono" data-testid="text-secret">
-        {showSecret ? secret : "••••••••••••••••"}
+    <div className="flex items-center gap-2 min-w-0">
+      <code className="bg-muted px-2 py-1 rounded text-[10px] sm:text-xs font-mono truncate max-w-[120px] sm:max-w-none" data-testid="text-secret">
+        {showSecret ? secret : "••••••••••••"}
       </code>
       <Button
         variant="ghost"
@@ -329,17 +337,17 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
 
   return (
     <Card data-testid={`card-webhook-${endpoint.id}`}>
-      <CardContent className="p-4 space-y-4">
-        <div className="flex items-start justify-between gap-4">
+      <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
           <div className="space-y-1 min-w-0 flex-1">
-            <p className="font-medium truncate" data-testid="text-webhook-url">
+            <p className="font-medium text-sm truncate" data-testid="text-webhook-url">
               {endpoint.url}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Created {new Date(endpoint.createdAt).toLocaleDateString()}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start">
             <Switch
               checked={endpoint.active}
               onCheckedChange={() => toggleMutation.mutate()}
@@ -347,7 +355,7 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
               data-testid="switch-webhook-active"
             />
             <Badge
-              className={endpoint.active ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"}
+              className={`text-xs ${endpoint.active ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"}`}
             >
               {endpoint.active ? "Active" : "Inactive"}
             </Badge>
@@ -356,13 +364,13 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
 
         <div className="flex flex-wrap gap-1">
           {endpoint.events.map((event) => (
-            <Badge key={event} variant="secondary" className="text-xs">
+            <Badge key={event} variant="secondary" className="text-[10px] sm:text-xs">
               {event}
             </Badge>
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t">
           <SecretDisplay endpoint={endpoint} />
           <div className="flex gap-2">
             <Button
@@ -370,6 +378,7 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
               size="sm"
               onClick={() => testMutation.mutate()}
               disabled={testMutation.isPending || !endpoint.active}
+              className="flex-1 sm:flex-none"
               data-testid="button-test-webhook"
             >
               {testMutation.isPending ? (
@@ -385,18 +394,18 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="max-w-[95vw] sm:max-w-lg">
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Webhook?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This will permanently delete this webhook endpoint and all its delivery history.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                  <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => deleteMutation.mutate()}
-                    className="bg-destructive text-destructive-foreground"
+                    className="w-full sm:w-auto bg-destructive text-destructive-foreground"
                   >
                     Delete
                   </AlertDialogAction>
@@ -413,28 +422,27 @@ function WebhookCard({ endpoint, onDeleted }: { endpoint: WebhookEndpoint; onDel
 function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
   return (
     <div
-      className="flex items-center justify-between gap-4 py-2 border-b last:border-b-0"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 border-b last:border-b-0"
       data-testid={`row-delivery-${delivery.id}`}
     >
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <Badge className={STATUS_COLORS[delivery.status] || "bg-muted"}>
-          {delivery.status === "delivered" && <CheckCircle className="h-3 w-3 mr-1" />}
-          {delivery.status === "failed" && <XCircle className="h-3 w-3 mr-1" />}
-          {delivery.status === "pending" && <Clock className="h-3 w-3 mr-1" />}
+      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+        <Badge className={`${STATUS_COLORS[delivery.status] || "bg-muted"} text-[10px] sm:text-xs shrink-0`}>
+          {delivery.status === "delivered" && <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5" />}
+          {delivery.status === "failed" && <XCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5" />}
+          {delivery.status === "pending" && <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5" />}
           {delivery.status}
         </Badge>
-        <Badge variant="outline" className="text-xs">
+        <Badge variant="outline" className="text-[10px] sm:text-xs shrink-0">
           {delivery.eventType}
         </Badge>
-        <span className="text-sm text-muted-foreground truncate">{delivery.endpointUrl}</span>
       </div>
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-sm text-muted-foreground">
         {delivery.responseCode && (
           <span className="font-mono">{delivery.responseCode}</span>
         )}
-        <span>Attempts: {delivery.attemptCount}</span>
+        <span>x{delivery.attemptCount}</span>
         <span className="whitespace-nowrap">
-          {new Date(delivery.createdAt).toLocaleString()}
+          {new Date(delivery.createdAt).toLocaleTimeString()}
         </span>
       </div>
     </div>
@@ -444,6 +452,7 @@ function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
 export default function WebhooksPage() {
   const { token } = useAuth();
   const [newEndpoint, setNewEndpoint] = useState<WebhookEndpoint | null>(null);
+  const [deliveriesExpanded, setDeliveriesExpanded] = useState(false);
 
   const { data: endpoints = [], isLoading } = useQuery<WebhookEndpoint[]>({
     queryKey: ["/v1/webhooks"],
@@ -470,14 +479,14 @@ export default function WebhooksPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-full sm:w-32" />
         </div>
-        <div className="space-y-4">
-          <Skeleton className="h-40" />
-          <Skeleton className="h-40" />
+        <div className="space-y-3 sm:space-y-4">
+          <Skeleton className="h-36 sm:h-40" />
+          <Skeleton className="h-36 sm:h-40" />
         </div>
       </div>
     );
@@ -488,38 +497,38 @@ export default function WebhooksPage() {
     : endpoints;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
-            <Settings className="h-6 w-6" />
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
+            <Settings className="h-5 w-5 sm:h-6 sm:w-6" />
             Webhook Settings
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Manage webhook endpoints for real-time event notifications
           </p>
         </div>
         <CreateWebhookDialog onCreated={setNewEndpoint} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Webhook className="h-5 w-5" />
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <div className="space-y-3 sm:space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+            <Webhook className="h-4 w-4 sm:h-5 sm:w-5" />
             Endpoints ({allEndpoints.length})
           </h2>
           {allEndpoints.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center">
-                <Webhook className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">No webhook endpoints configured</p>
-                <p className="text-sm text-muted-foreground mt-1">
+              <CardContent className="p-6 sm:p-8 text-center">
+                <Webhook className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm sm:text-base">No webhook endpoints configured</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                   Add a webhook to receive real-time notifications
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {allEndpoints.map((endpoint) => (
                 <WebhookCard
                   key={endpoint.id}
@@ -535,24 +544,33 @@ export default function WebhooksPage() {
           )}
         </div>
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Recent Deliveries</h2>
-          <Card>
-            <CardContent className="p-4">
-              {deliveries.length === 0 ? (
-                <div className="text-center py-8">
-                  <Clock className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No delivery attempts yet</p>
-                </div>
-              ) : (
-                <div className="max-h-[500px] overflow-y-auto">
-                  {deliveries.map((delivery) => (
-                    <DeliveryRow key={delivery.id} delivery={delivery} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <div className="space-y-3 sm:space-y-4">
+          <Collapsible open={deliveriesExpanded} onOpenChange={setDeliveriesExpanded} className="lg:!block">
+            <CollapsibleTrigger asChild className="lg:pointer-events-none">
+              <div className="flex items-center justify-between cursor-pointer lg:cursor-default">
+                <h2 className="text-base sm:text-lg font-semibold">Recent Deliveries</h2>
+                <ChevronDown className={`h-5 w-5 transition-transform lg:hidden ${deliveriesExpanded ? "rotate-180" : ""}`} />
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="lg:!block lg:!h-auto">
+              <Card className="mt-3">
+                <CardContent className="p-3 sm:p-4">
+                  {deliveries.length === 0 ? (
+                    <div className="text-center py-6 sm:py-8">
+                      <Clock className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground text-sm">No delivery attempts yet</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-[300px] sm:max-h-[500px] overflow-y-auto">
+                      {deliveries.map((delivery) => (
+                        <DeliveryRow key={delivery.id} delivery={delivery} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </div>
     </div>

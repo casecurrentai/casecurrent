@@ -19,6 +19,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ShieldCheck,
   Plus,
   Play,
@@ -27,6 +32,7 @@ import {
   Clock,
   Loader2,
   History,
+  ChevronDown,
 } from "lucide-react";
 
 interface PolicyTestSuite {
@@ -115,12 +121,12 @@ function CreateSuiteDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button data-testid="button-create-suite">
+        <Button className="w-full sm:w-auto" data-testid="button-create-suite">
           <Plus className="h-4 w-4 mr-2" />
           New Suite
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Policy Test Suite</DialogTitle>
           <DialogDescription>
@@ -148,17 +154,18 @@ function CreateSuiteDialog() {
               data-testid="input-suite-description"
             />
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Suite will be created with 6 default test cases covering common scenarios.
           </p>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
           <Button
             onClick={() => createMutation.mutate()}
             disabled={!name || createMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-save-suite"
           >
             {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -206,33 +213,33 @@ function SuiteCard({ suite }: { suite: PolicyTestSuite }) {
 
   return (
     <Card data-testid={`card-suite-${suite.id}`}>
-      <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-base">{suite.name}</CardTitle>
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 space-y-0 pb-2 px-3 sm:px-6">
+        <div className="space-y-1 min-w-0">
+          <CardTitle className="text-sm sm:text-base truncate">{suite.name}</CardTitle>
           {suite.description && (
-            <p className="text-sm text-muted-foreground">{suite.description}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{suite.description}</p>
           )}
         </div>
         {suite.lastRun && (
-          <Badge className={STATUS_COLORS[suite.lastRun.status]}>
+          <Badge className={`${STATUS_COLORS[suite.lastRun.status]} text-xs self-start sm:self-center`}>
             {suite.lastRun.status === "passed" && <CheckCircle className="h-3 w-3 mr-1" />}
             {suite.lastRun.status === "failed" && <XCircle className="h-3 w-3 mr-1" />}
             {suite.lastRun.status}
           </Badge>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
           <span>{suite.testCases.length} test cases</span>
           {suite.lastRun && (
-            <span>
+            <span className="hidden sm:inline">
               Last run: {new Date(suite.lastRun.startedAt).toLocaleString()}
             </span>
           )}
         </div>
 
         {suite.lastRun && (
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-xs sm:text-sm">
             <span className="text-green-600 dark:text-green-400">
               {suite.lastRun.summary.passedCount} passed
             </span>
@@ -247,6 +254,7 @@ function SuiteCard({ suite }: { suite: PolicyTestSuite }) {
           size="sm"
           onClick={() => runMutation.mutate()}
           disabled={runMutation.isPending}
+          className="w-full sm:w-auto"
           data-testid="button-run-suite"
         >
           {runMutation.isPending ? (
@@ -261,8 +269,50 @@ function SuiteCard({ suite }: { suite: PolicyTestSuite }) {
   );
 }
 
+function RunHistoryItem({ run }: { run: PolicyTestRun }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <div
+          className="flex items-center justify-between py-2.5 sm:py-2 px-1 -mx-1 rounded-md hover-elevate cursor-pointer"
+          data-testid={`row-run-${run.id}`}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Badge className={`${STATUS_COLORS[run.status]} text-[10px] sm:text-xs shrink-0`} variant="secondary">
+              {run.status === "passed" && <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
+              {run.status === "failed" && <XCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
+              {run.status}
+            </Badge>
+            <span className="text-xs sm:text-sm truncate">{run.suite.name}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] sm:text-sm text-muted-foreground shrink-0">
+            <span className="hidden sm:inline">{run.summary.passedCount}/{run.summary.totalCount}</span>
+            <span className="sm:hidden">{run.summary.passedCount}/{run.summary.totalCount}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          </div>
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-4 pb-2 space-y-1">
+        {run.results.map((result, idx) => (
+          <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+            {result.passed ? (
+              <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+            ) : (
+              <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+            )}
+            <span className="truncate">{result.name}</span>
+          </div>
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function PolicyTestsPage() {
   const { token } = useAuth();
+  const [runsExpanded, setRunsExpanded] = useState(false);
 
   const { data: suites = [], isLoading: suitesLoading } = useQuery<PolicyTestSuite[]>({
     queryKey: ["/v1/policy-tests/suites"],
@@ -288,49 +338,50 @@ export default function PolicyTestsPage() {
 
   if (suitesLoading) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-full sm:w-32" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
+        <div className="space-y-3 sm:space-y-4">
+          <Skeleton className="h-40 sm:h-48" />
+          <Skeleton className="h-40 sm:h-48" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
-            <ShieldCheck className="h-6 w-6" />
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
+            <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
             Policy Tests
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Run compliance regression tests to validate qualification rules
           </p>
         </div>
         <CreateSuiteDialog />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Test Suites</h2>
+      {/* Mobile: Stacked layout, Desktop: Side-by-side */}
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <div className="space-y-3 sm:space-y-4">
+          <h2 className="text-base sm:text-lg font-semibold">Test Suites</h2>
           {suites.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center">
-                <ShieldCheck className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">No test suites yet</p>
-                <p className="text-sm text-muted-foreground mt-1">
+              <CardContent className="p-6 sm:p-8 text-center">
+                <ShieldCheck className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground text-sm sm:text-base">No test suites yet</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                   Create a suite to start testing your qualification rules
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {suites.map((suite) => (
                 <SuiteCard key={suite.id} suite={suite} />
               ))}
@@ -338,46 +389,36 @@ export default function PolicyTestsPage() {
           )}
         </div>
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Recent Runs
-          </h2>
-          <Card>
-            <CardContent className="p-4">
-              {runs.length === 0 ? (
-                <div className="text-center py-8">
-                  <Clock className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No test runs yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {runs.map((run) => (
-                    <div
-                      key={run.id}
-                      className="flex items-center justify-between py-2 border-b last:border-b-0"
-                      data-testid={`row-run-${run.id}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge className={STATUS_COLORS[run.status]} variant="secondary">
-                          {run.status === "passed" && <CheckCircle className="h-3 w-3 mr-1" />}
-                          {run.status === "failed" && <XCircle className="h-3 w-3 mr-1" />}
-                          {run.status}
-                        </Badge>
-                        <span className="text-sm">{run.suite.name}</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {run.summary.passedCount}/{run.summary.totalCount} passed
-                        <span className="ml-2">
-                          {new Date(run.startedAt).toLocaleString()}
-                        </span>
-                      </div>
+        <div className="space-y-3 sm:space-y-4">
+          <Collapsible open={runsExpanded} onOpenChange={setRunsExpanded} className="lg:!block">
+            <CollapsibleTrigger asChild className="lg:pointer-events-none">
+              <div className="flex items-center justify-between cursor-pointer lg:cursor-default">
+                <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
+                  <History className="h-4 w-4 sm:h-5 sm:w-5" />
+                  Recent Runs
+                </h2>
+                <ChevronDown className={`h-5 w-5 transition-transform lg:hidden ${runsExpanded ? "rotate-180" : ""}`} />
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="lg:!block lg:!h-auto">
+              <Card className="mt-3">
+                <CardContent className="p-3 sm:p-4">
+                  {runs.length === 0 ? (
+                    <div className="text-center py-6 sm:py-8">
+                      <Clock className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground text-sm">No test runs yet</p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  ) : (
+                    <div className="space-y-1 max-h-[300px] sm:max-h-96 overflow-y-auto">
+                      {runs.map((run) => (
+                        <RunHistoryItem key={run.id} run={run} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </div>
     </div>

@@ -4,18 +4,10 @@ import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { Mail, Building, MessageSquare, Calendar, Phone } from "lucide-react";
+import { Mail, Building, MessageSquare, Calendar, Phone, ChevronRight } from "lucide-react";
 
 interface ContactSubmission {
   id: string;
@@ -83,64 +75,67 @@ export default function ContactSubmissionsPage() {
   const demoCount = demoData?.total || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
+        <h1 className="text-lg sm:text-2xl font-bold tracking-tight" data-testid="text-page-title">
           Marketing Submissions
         </h1>
-        <p className="text-muted-foreground">
-          Contact form and demo request submissions from the marketing website
+        <p className="text-xs sm:text-sm text-muted-foreground">
+          Contact form and demo request submissions
         </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all" data-testid="tab-all">
-            All ({contactCount + demoCount})
-          </TabsTrigger>
-          <TabsTrigger value="demo" data-testid="tab-demo">
-            Demo Requests ({demoCount})
-          </TabsTrigger>
-          <TabsTrigger value="contact" data-testid="tab-contact">
-            Contact Forms ({contactCount})
-          </TabsTrigger>
-        </TabsList>
+        <ScrollArea className="w-full">
+          <TabsList className="inline-flex w-auto">
+            <TabsTrigger value="all" data-testid="tab-all" className="text-xs sm:text-sm">
+              All ({contactCount + demoCount})
+            </TabsTrigger>
+            <TabsTrigger value="demo" data-testid="tab-demo" className="text-xs sm:text-sm">
+              Demo ({demoCount})
+            </TabsTrigger>
+            <TabsTrigger value="contact" data-testid="tab-contact" className="text-xs sm:text-sm">
+              Contact ({contactCount})
+            </TabsTrigger>
+          </TabsList>
+          <ScrollBar orientation="horizontal" className="sm:hidden" />
+        </ScrollArea>
 
-        <TabsContent value="all" className="mt-6">
-          <div className="space-y-6">
+        <TabsContent value="all" className="mt-4 sm:mt-6">
+          <div className="space-y-4 sm:space-y-6">
             {demoCount > 0 && (
               <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Calendar className="h-5 w-5" />
+                <CardHeader className="pb-3 px-3 sm:px-6">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
                     Demo Requests
-                    <Badge variant="default" className="ml-2">{demoCount}</Badge>
+                    <Badge variant="default" className="ml-2 text-xs">{demoCount}</Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <DemoTable submissions={demoData?.submissions || []} isLoading={demoLoading} />
+                <CardContent className="px-3 sm:px-6">
+                  <DemoList submissions={demoData?.submissions || []} isLoading={demoLoading} />
                 </CardContent>
               </Card>
             )}
             
             {contactCount > 0 && (
               <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <MessageSquare className="h-5 w-5" />
+                <CardHeader className="pb-3 px-3 sm:px-6">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
                     Contact Submissions
-                    <Badge variant="secondary" className="ml-2">{contactCount}</Badge>
+                    <Badge variant="secondary" className="ml-2 text-xs">{contactCount}</Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ContactTable submissions={contactData?.submissions || []} isLoading={contactLoading} />
+                <CardContent className="px-3 sm:px-6">
+                  <ContactList submissions={contactData?.submissions || []} isLoading={contactLoading} />
                 </CardContent>
               </Card>
             )}
 
             {!isLoading && contactCount === 0 && demoCount === 0 && (
               <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
+                <CardContent className="py-8 sm:py-12 text-center text-muted-foreground text-sm">
                   No marketing submissions yet
                 </CardContent>
               </Card>
@@ -148,32 +143,32 @@ export default function ContactSubmissionsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="demo" className="mt-6">
+        <TabsContent value="demo" className="mt-4 sm:mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
+            <CardHeader className="px-3 sm:px-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
                 Demo Requests
-                <Badge variant="default" className="ml-2">{demoCount}</Badge>
+                <Badge variant="default" className="ml-2 text-xs">{demoCount}</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <DemoTable submissions={demoData?.submissions || []} isLoading={demoLoading} />
+            <CardContent className="px-3 sm:px-6">
+              <DemoList submissions={demoData?.submissions || []} isLoading={demoLoading} />
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="contact" className="mt-6">
+        <TabsContent value="contact" className="mt-4 sm:mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
+            <CardHeader className="px-3 sm:px-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
                 Contact Submissions
-                <Badge variant="secondary" className="ml-2">{contactCount}</Badge>
+                <Badge variant="secondary" className="ml-2 text-xs">{contactCount}</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ContactTable submissions={contactData?.submissions || []} isLoading={contactLoading} />
+            <CardContent className="px-3 sm:px-6">
+              <ContactList submissions={contactData?.submissions || []} isLoading={contactLoading} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -182,12 +177,12 @@ export default function ContactSubmissionsPage() {
   );
 }
 
-function DemoTable({ submissions, isLoading }: { submissions: MarketingSubmission[]; isLoading: boolean }) {
+function DemoList({ submissions, isLoading }: { submissions: MarketingSubmission[]; isLoading: boolean }) {
   if (isLoading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-16 w-full" />
+          <Skeleton key={i} className="h-20 sm:h-16 w-full" />
         ))}
       </div>
     );
@@ -195,78 +190,62 @@ function DemoTable({ submissions, isLoading }: { submissions: MarketingSubmissio
 
   if (!submissions.length) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div className="text-center py-6 sm:py-8 text-muted-foreground text-sm">
         No demo requests yet
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Firm</TableHead>
-            <TableHead>Practice Area</TableHead>
-            <TableHead>Lead Volume</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {submissions.map((submission) => (
-            <TableRow key={submission.id} data-testid={`row-demo-${submission.id}`}>
-              <TableCell className="whitespace-nowrap">
-                {format(new Date(submission.createdAt), "MMM d, yyyy HH:mm")}
-              </TableCell>
-              <TableCell className="font-medium">{submission.name}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Mail className="h-3 w-3 text-muted-foreground" />
-                  {submission.email}
-                </div>
-              </TableCell>
-              <TableCell>
-                {submission.firm ? (
-                  <div className="flex items-center gap-1">
-                    <Building className="h-3 w-3 text-muted-foreground" />
-                    {submission.firm}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {submission.practiceArea ? (
-                  <Badge variant="outline" className="capitalize">
-                    {submission.practiceArea.replace(/_/g, " ")}
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {submission.monthlyLeadVolume ? (
-                  <span className="text-sm">{submission.monthlyLeadVolume.replace(/_/g, "-")}</span>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      {submissions.map((submission) => (
+        <div
+          key={submission.id}
+          className="p-3 border rounded-lg space-y-2"
+          data-testid={`card-demo-${submission.id}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-sm sm:text-base truncate">{submission.name}</p>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Mail className="h-3 w-3 shrink-0" />
+                <span className="truncate">{submission.email}</span>
+              </div>
+            </div>
+            <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
+              {format(new Date(submission.createdAt), "MMM d, HH:mm")}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {submission.firm && (
+              <Badge variant="outline" className="text-[10px] sm:text-xs gap-1">
+                <Building className="h-2.5 w-2.5" />
+                {submission.firm}
+              </Badge>
+            )}
+            {submission.practiceArea && (
+              <Badge variant="secondary" className="text-[10px] sm:text-xs capitalize">
+                {submission.practiceArea.replace(/_/g, " ")}
+              </Badge>
+            )}
+            {submission.monthlyLeadVolume && (
+              <Badge variant="outline" className="text-[10px] sm:text-xs">
+                {submission.monthlyLeadVolume.replace(/_/g, "-")} leads/mo
+              </Badge>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-function ContactTable({ submissions, isLoading }: { submissions: ContactSubmission[]; isLoading: boolean }) {
+function ContactList({ submissions, isLoading }: { submissions: ContactSubmission[]; isLoading: boolean }) {
   if (isLoading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-16 w-full" />
+          <Skeleton key={i} className="h-24 sm:h-20 w-full" />
         ))}
       </div>
     );
@@ -274,54 +253,43 @@ function ContactTable({ submissions, isLoading }: { submissions: ContactSubmissi
 
   if (!submissions.length) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div className="text-center py-6 sm:py-8 text-muted-foreground text-sm">
         No contact submissions yet
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Firm</TableHead>
-            <TableHead className="max-w-[300px]">Message</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {submissions.map((submission) => (
-            <TableRow key={submission.id} data-testid={`row-contact-${submission.id}`}>
-              <TableCell className="whitespace-nowrap">
-                {format(new Date(submission.createdAt), "MMM d, yyyy HH:mm")}
-              </TableCell>
-              <TableCell className="font-medium">{submission.name}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Mail className="h-3 w-3 text-muted-foreground" />
-                  {submission.email}
-                </div>
-              </TableCell>
-              <TableCell>
-                {submission.firm ? (
-                  <div className="flex items-center gap-1">
-                    <Building className="h-3 w-3 text-muted-foreground" />
-                    {submission.firm}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell className="max-w-[300px] truncate">
-                {submission.message}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      {submissions.map((submission) => (
+        <div
+          key={submission.id}
+          className="p-3 border rounded-lg space-y-2"
+          data-testid={`card-contact-${submission.id}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-sm sm:text-base truncate">{submission.name}</p>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Mail className="h-3 w-3 shrink-0" />
+                <span className="truncate">{submission.email}</span>
+              </div>
+            </div>
+            <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
+              {format(new Date(submission.createdAt), "MMM d, HH:mm")}
+            </span>
+          </div>
+          {submission.firm && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Building className="h-3 w-3" />
+              {submission.firm}
+            </div>
+          )}
+          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
+            {submission.message}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

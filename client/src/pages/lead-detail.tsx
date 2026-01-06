@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -34,6 +35,7 @@ import {
   AlertTriangle,
   Info,
   Target,
+  Send,
 } from "lucide-react";
 
 interface Contact {
@@ -170,10 +172,10 @@ function formatDuration(seconds: number | null): string {
 function PlaceholderPanel({ icon: Icon, title }: { icon: typeof Phone; title: string }) {
   return (
     <Card>
-      <CardContent className="p-8 text-center">
-        <Icon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground mt-1">Coming soon</p>
+      <CardContent className="p-6 sm:p-8 text-center">
+        <Icon className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+        <p className="text-muted-foreground text-sm sm:text-base">{title}</p>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">Coming soon</p>
       </CardContent>
     </Card>
   );
@@ -183,8 +185,8 @@ function InteractionTimeline({ interactions }: { interactions: Interaction[] }) 
   if (interactions.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+        <CardContent className="p-6 sm:p-8 text-center">
+          <MessageSquare className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-muted-foreground">No interactions yet</p>
         </CardContent>
       </Card>
@@ -192,23 +194,23 @@ function InteractionTimeline({ interactions }: { interactions: Interaction[] }) 
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {interactions.map((interaction) => (
         <Card key={interaction.id} data-testid={`interaction-${interaction.id}`}>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 {interaction.channel === "call" && (
                   interaction.call?.direction === "inbound" 
-                    ? <PhoneIncoming className="w-5 h-5 text-primary" />
-                    : <PhoneOutgoing className="w-5 h-5 text-primary" />
+                    ? <PhoneIncoming className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                    : <PhoneOutgoing className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 )}
-                {interaction.channel === "sms" && <MessageSquare className="w-5 h-5 text-primary" />}
-                {interaction.channel === "webchat" && <MessageSquare className="w-5 h-5 text-primary" />}
+                {interaction.channel === "sms" && <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />}
+                {interaction.channel === "webchat" && <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium capitalize">{interaction.channel}</span>
+                  <span className="font-medium capitalize text-sm sm:text-base">{interaction.channel}</span>
                   <Badge variant={interaction.status === "active" ? "default" : "secondary"} className="text-xs">
                     {interaction.status}
                   </Badge>
@@ -218,7 +220,7 @@ function InteractionTimeline({ interactions }: { interactions: Interaction[] }) 
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 sm:gap-4 mt-1 text-xs sm:text-sm text-muted-foreground flex-wrap">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {new Date(interaction.startedAt).toLocaleString()}
@@ -229,11 +231,11 @@ function InteractionTimeline({ interactions }: { interactions: Interaction[] }) 
                 </div>
                 
                 {interaction.call && (
-                  <div className="mt-2 text-sm">
+                  <div className="mt-2 text-xs sm:text-sm">
                     <span className="text-muted-foreground">From: </span>
-                    <span>{interaction.call.fromE164}</span>
-                    <span className="text-muted-foreground mx-2">To: </span>
-                    <span>{interaction.call.toE164}</span>
+                    <span className="break-all">{interaction.call.fromE164}</span>
+                    <span className="text-muted-foreground mx-1 sm:mx-2">To: </span>
+                    <span className="break-all">{interaction.call.toE164}</span>
                   </div>
                 )}
                 
@@ -242,13 +244,13 @@ function InteractionTimeline({ interactions }: { interactions: Interaction[] }) 
                     {interaction.messages.slice(0, 3).map((msg) => (
                       <div 
                         key={msg.id} 
-                        className={`p-2 rounded-lg text-sm ${
+                        className={`p-2 rounded-lg text-xs sm:text-sm ${
                           msg.direction === "inbound" 
                             ? "bg-muted" 
                             : "bg-primary/10 ml-4"
                         }`}
                       >
-                        <p className="text-xs text-muted-foreground mb-1">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">
                           {msg.direction === "inbound" ? msg.from : "You"} - {new Date(msg.createdAt).toLocaleTimeString()}
                         </p>
                         <p>{msg.body}</p>
@@ -276,8 +278,8 @@ function CallsPanel({ interactions }: { interactions: Interaction[] }) {
   if (calls.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <PhoneCall className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+        <CardContent className="p-6 sm:p-8 text-center">
+          <PhoneCall className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-muted-foreground">No calls yet</p>
         </CardContent>
       </Card>
@@ -288,28 +290,28 @@ function CallsPanel({ interactions }: { interactions: Interaction[] }) {
     <div className="space-y-3">
       {calls.map((interaction) => (
         <Card key={interaction.id}>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 {interaction.call?.direction === "inbound" 
-                  ? <PhoneIncoming className="w-5 h-5 text-primary" />
-                  : <PhoneOutgoing className="w-5 h-5 text-primary" />
+                  ? <PhoneIncoming className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                  : <PhoneOutgoing className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 }
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium capitalize">{interaction.call?.direction} Call</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium capitalize text-sm sm:text-base">{interaction.call?.direction} Call</span>
                   <Badge variant={interaction.status === "active" ? "default" : "secondary"} className="text-xs">
                     {interaction.status}
                   </Badge>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   {new Date(interaction.startedAt).toLocaleString()}
                   {interaction.call?.durationSeconds && ` - ${formatDuration(interaction.call.durationSeconds)}`}
                 </p>
               </div>
               {interaction.call?.recordingUrl && (
-                <Badge variant="outline">Recording available</Badge>
+                <Badge variant="outline" className="text-xs hidden sm:inline-flex">Recording</Badge>
               )}
             </div>
           </CardContent>
@@ -328,8 +330,8 @@ function MessagesPanel({ interactions }: { interactions: Interaction[] }) {
   if (allMessages.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+        <CardContent className="p-6 sm:p-8 text-center">
+          <MessageSquare className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-muted-foreground">No messages yet</p>
         </CardContent>
       </Card>
@@ -341,22 +343,22 @@ function MessagesPanel({ interactions }: { interactions: Interaction[] }) {
       {allMessages.map((msg) => (
         <div 
           key={msg.id} 
-          className={`p-3 rounded-lg ${
+          className={`p-2.5 sm:p-3 rounded-lg ${
             msg.direction === "inbound" 
               ? "bg-muted" 
-              : "bg-primary/10 ml-8"
+              : "bg-primary/10 ml-6 sm:ml-8"
           }`}
         >
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-xs font-medium">
               {msg.direction === "inbound" ? msg.from : "Outbound"}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[10px] sm:text-xs text-muted-foreground">
               {new Date(msg.createdAt).toLocaleString()}
             </span>
-            <Badge variant="outline" className="text-xs">{msg.channel}</Badge>
+            <Badge variant="outline" className="text-[10px] sm:text-xs">{msg.channel}</Badge>
           </div>
-          <p className="text-sm">{msg.body}</p>
+          <p className="text-xs sm:text-sm">{msg.body}</p>
         </div>
       ))}
     </div>
@@ -465,7 +467,7 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <Skeleton className="h-40" />
         </CardContent>
       </Card>
@@ -475,12 +477,13 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
   if (!intakeResponse?.exists) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <ClipboardList className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground mb-4">No intake started for this lead</p>
+        <CardContent className="p-6 sm:p-8 text-center">
+          <ClipboardList className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground mb-4 text-sm sm:text-base">No intake started for this lead</p>
           <Button
             onClick={() => initMutation.mutate()}
             disabled={initMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-init-intake"
           >
             {initMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -498,9 +501,9 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 px-3 sm:px-6">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <ClipboardList className="h-4 w-4" />
             Intake Form
           </CardTitle>
@@ -509,47 +512,48 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
           </Badge>
         </div>
         {intake.questionSet && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Question Set: {intake.questionSet.name} (v{intake.questionSet.version})
           </p>
         )}
         {intake.completedAt && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Completed: {new Date(intake.completedAt).toLocaleString()}
           </p>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 px-3 sm:px-6">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Current Answers</label>
-          <div className="bg-muted p-3 rounded-md text-sm font-mono overflow-x-auto" data-testid="text-intake-answers">
-            <pre>{JSON.stringify(currentAnswers, null, 2)}</pre>
+          <label className="text-xs sm:text-sm font-medium">Current Answers</label>
+          <div className="bg-muted p-2 sm:p-3 rounded-md text-xs sm:text-sm font-mono overflow-x-auto" data-testid="text-intake-answers">
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(currentAnswers, null, 2)}</pre>
           </div>
         </div>
 
         {!isComplete && (
           <>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Edit Answers (JSON)</label>
+              <label className="text-xs sm:text-sm font-medium">Edit Answers (JSON)</label>
               <Textarea
                 value={answersJson}
                 onChange={(e) => {
                   setAnswersJson(e.target.value);
                   setJsonError(null);
                 }}
-                placeholder='{"question1": "answer1", "question2": "answer2"}'
-                className="font-mono text-sm"
-                rows={5}
+                placeholder='{"question1": "answer1"}'
+                className="font-mono text-xs sm:text-sm"
+                rows={4}
                 data-testid="input-intake-answers"
               />
-              {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
+              {jsonError && <p className="text-xs sm:text-sm text-destructive">{jsonError}</p>}
             </div>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="outline"
                 onClick={handleSave}
                 disabled={saveMutation.isPending || !answersJson.trim()}
+                className="w-full sm:w-auto"
                 data-testid="button-save-intake"
               >
                 {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -559,6 +563,7 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
               <Button
                 onClick={() => completeMutation.mutate()}
                 disabled={completeMutation.isPending}
+                className="w-full sm:w-auto"
                 data-testid="button-complete-intake"
               >
                 {completeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -632,7 +637,7 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <Skeleton className="h-40" />
         </CardContent>
       </Card>
@@ -642,12 +647,13 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
   if (!qualResponse?.exists) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <Target className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground mb-4">No qualification run for this lead</p>
+        <CardContent className="p-6 sm:p-8 text-center">
+          <Target className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground mb-4 text-sm sm:text-base">No qualification run for this lead</p>
           <Button
             onClick={() => runMutation.mutate()}
             disabled={runMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-run-qualification"
           >
             {runMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -671,9 +677,9 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 px-3 sm:px-6">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
             <Target className="h-4 w-4" />
             AI Qualification
           </CardTitle>
@@ -681,46 +687,47 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
             {qual.disposition}
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Last updated: {new Date(qual.updatedAt).toLocaleString()}
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Score</p>
-            <p className={`text-2xl font-bold ${getScoreColor(qual.score)}`} data-testid="text-score">
-              {qual.score}/100
+      <CardContent className="space-y-4 px-3 sm:px-6">
+        {/* Score stats - responsive grid */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+          <div className="space-y-1 p-2 sm:p-0 bg-muted/50 sm:bg-transparent rounded-lg">
+            <p className="text-[10px] sm:text-sm text-muted-foreground">Score</p>
+            <p className={`text-lg sm:text-2xl font-bold ${getScoreColor(qual.score)}`} data-testid="text-score">
+              {qual.score}
             </p>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Confidence</p>
-            <p className="text-2xl font-bold" data-testid="text-confidence">
+          <div className="space-y-1 p-2 sm:p-0 bg-muted/50 sm:bg-transparent rounded-lg">
+            <p className="text-[10px] sm:text-sm text-muted-foreground">Confidence</p>
+            <p className="text-lg sm:text-2xl font-bold" data-testid="text-confidence">
               {qual.confidence}%
             </p>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Disposition</p>
-            <p className="text-lg font-semibold capitalize">{qual.disposition}</p>
+          <div className="space-y-1 p-2 sm:p-0 bg-muted/50 sm:bg-transparent rounded-lg">
+            <p className="text-[10px] sm:text-sm text-muted-foreground">Result</p>
+            <p className="text-sm sm:text-lg font-semibold capitalize">{qual.disposition}</p>
           </div>
         </div>
 
         {reasons.score_factors.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium flex items-center gap-1">
-              <CheckCircle className="h-4 w-4 text-green-500" />
+            <h4 className="text-xs sm:text-sm font-medium flex items-center gap-1">
+              <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
               Score Factors
             </h4>
             <div className="space-y-2">
               {reasons.score_factors.map((factor, idx) => (
-                <div key={idx} className="bg-muted p-2 rounded-md text-sm" data-testid={`factor-${idx}`}>
+                <div key={idx} className="bg-muted p-2 rounded-md text-xs sm:text-sm" data-testid={`factor-${idx}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">{factor.name}</span>
-                    <Badge variant="outline" className="text-xs">+{factor.weight}</Badge>
+                    <Badge variant="outline" className="text-[10px] sm:text-xs">+{factor.weight}</Badge>
                   </div>
                   <p className="text-muted-foreground mt-1">{factor.evidence}</p>
                   {factor.evidence_quote && (
-                    <p className="text-xs text-muted-foreground mt-1 italic">
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 italic">
                       "{factor.evidence_quote}..."
                     </p>
                   )}
@@ -732,13 +739,13 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
 
         {reasons.missing_fields.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium flex items-center gap-1">
-              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <h4 className="text-xs sm:text-sm font-medium flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-500" />
               Missing Information
             </h4>
             <div className="flex flex-wrap gap-1">
               {reasons.missing_fields.map((field, idx) => (
-                <Badge key={idx} variant="secondary" className="text-xs" data-testid={`missing-${idx}`}>
+                <Badge key={idx} variant="secondary" className="text-[10px] sm:text-xs" data-testid={`missing-${idx}`}>
                   {field.replace(/_/g, " ")}
                 </Badge>
               ))}
@@ -748,13 +755,13 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
 
         {reasons.disqualifiers.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium flex items-center gap-1 text-destructive">
-              <AlertTriangle className="h-4 w-4" />
+            <h4 className="text-xs sm:text-sm font-medium flex items-center gap-1 text-destructive">
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
               Disqualifiers
             </h4>
             <div className="space-y-1">
               {reasons.disqualifiers.map((dq, idx) => (
-                <p key={idx} className="text-sm text-destructive" data-testid={`disqualifier-${idx}`}>{dq}</p>
+                <p key={idx} className="text-xs sm:text-sm text-destructive" data-testid={`disqualifier-${idx}`}>{dq}</p>
               ))}
             </div>
           </div>
@@ -762,11 +769,11 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
 
         {reasons.explanations.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-sm font-medium flex items-center gap-1">
-              <Info className="h-4 w-4 text-blue-500" />
+            <h4 className="text-xs sm:text-sm font-medium flex items-center gap-1">
+              <Info className="h-3 w-3 sm:h-4 sm:w-4 text-blue-500" />
               AI Explanation
             </h4>
-            <div className="text-sm text-muted-foreground space-y-1">
+            <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
               {reasons.explanations.map((exp, idx) => (
                 <p key={idx} data-testid={`explanation-${idx}`}>{exp}</p>
               ))}
@@ -774,19 +781,7 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
           </div>
         )}
 
-        {reasons.routing && (reasons.routing.practice_area_id || reasons.routing.notes) && (
-          <div className="space-y-1">
-            <h4 className="text-sm font-medium">Routing</h4>
-            {reasons.routing.practice_area_id && (
-              <p className="text-sm text-muted-foreground">Practice Area ID: {reasons.routing.practice_area_id}</p>
-            )}
-            {reasons.routing.notes && (
-              <p className="text-sm text-muted-foreground">Notes: {reasons.routing.notes}</p>
-            )}
-          </div>
-        )}
-
-        <p className="text-xs text-muted-foreground" data-testid="text-model">
+        <p className="text-[10px] sm:text-xs text-muted-foreground" data-testid="text-model">
           Model: {reasons.model.provider}/{reasons.model.model}{reasons.model.version ? ` v${reasons.model.version}` : ""}
         </p>
 
@@ -796,6 +791,7 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
             size="sm"
             onClick={() => runMutation.mutate()}
             disabled={runMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-rerun-qualification"
           >
             {runMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -805,6 +801,38 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// Mobile quick actions bar
+function MobileQuickActions({ lead }: { lead: Lead }) {
+  return (
+    <div className="fixed bottom-16 left-0 right-0 z-40 bg-background border-t p-3 flex items-center justify-around gap-2 md:hidden safe-area-bottom">
+      {lead.contact.primaryPhone && (
+        <a href={`tel:${lead.contact.primaryPhone}`} className="flex-1">
+          <Button variant="outline" className="w-full gap-2" data-testid="mobile-action-call">
+            <Phone className="h-4 w-4" />
+            Call
+          </Button>
+        </a>
+      )}
+      {lead.contact.primaryPhone && (
+        <a href={`sms:${lead.contact.primaryPhone}`} className="flex-1">
+          <Button variant="outline" className="w-full gap-2" data-testid="mobile-action-text">
+            <MessageSquare className="h-4 w-4" />
+            Text
+          </Button>
+        </a>
+      )}
+      {lead.contact.primaryEmail && (
+        <a href={`mailto:${lead.contact.primaryEmail}`} className="flex-1">
+          <Button variant="outline" className="w-full gap-2" data-testid="mobile-action-email">
+            <Mail className="h-4 w-4" />
+            Email
+          </Button>
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -839,13 +867,10 @@ export default function LeadDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid gap-6 md:grid-cols-3">
-          <div className="md:col-span-2 space-y-4">
-            <Skeleton className="h-40" />
-            <Skeleton className="h-60" />
-          </div>
+        <div className="space-y-4">
+          <Skeleton className="h-40" />
           <Skeleton className="h-60" />
         </div>
       </div>
@@ -854,7 +879,7 @@ export default function LeadDetailPage() {
 
   if (error || !lead) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <Link href="/leads">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -862,7 +887,7 @@ export default function LeadDetailPage() {
           </Button>
         </Link>
         <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
+          <CardContent className="p-8 sm:p-12 text-center text-muted-foreground">
             Lead not found or failed to load.
           </CardContent>
         </Card>
@@ -871,110 +896,147 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 flex-wrap">
+    <div className="space-y-4 sm:space-y-6 pb-20 md:pb-0">
+      {/* Header */}
+      <div className="flex items-start gap-2 sm:gap-4">
         <Link href="/leads">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+          <Button variant="ghost" size="icon" className="flex-shrink-0" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold" data-testid="text-lead-name">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-2xl font-bold truncate" data-testid="text-lead-name">
               {lead.contact.name}
             </h1>
-            <Badge className={STATUS_COLORS[lead.status]} data-testid="badge-status">
+            <Badge className={`text-xs ${STATUS_COLORS[lead.status]}`} data-testid="badge-status">
               {lead.status}
             </Badge>
-            <Badge variant="outline" className={PRIORITY_COLORS[lead.priority]} data-testid="badge-priority">
+            <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[lead.priority]}`} data-testid="badge-priority">
               {lead.priority}
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Created {new Date(lead.createdAt).toLocaleDateString()}
           </p>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      {/* Main content - single column on mobile, sidebar on desktop */}
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
+        {/* Contact card - shown first on mobile for quick access */}
+        <div className="lg:hidden">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Lead Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Source</p>
-                  <p className="font-medium capitalize" data-testid="text-source">{lead.source}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                  {lead.contact.name.charAt(0).toUpperCase()}
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Practice Area</p>
-                  <p className="font-medium" data-testid="text-practice-area">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{lead.contact.name}</p>
+                  <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                    {lead.contact.primaryPhone && (
+                      <a href={`tel:${lead.contact.primaryPhone}`} className="hover:underline flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {lead.contact.primaryPhone}
+                      </a>
+                    )}
+                    {lead.contact.primaryEmail && (
+                      <a href={`mailto:${lead.contact.primaryEmail}`} className="hover:underline flex items-center gap-1 truncate">
+                        <Mail className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{lead.contact.primaryEmail}</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main column */}
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          {/* Lead Summary Card */}
+          <Card>
+            <CardHeader className="pb-2 px-3 sm:px-6">
+              <CardTitle className="text-base sm:text-lg">Lead Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6">
+              <div className="grid gap-3 sm:gap-4 grid-cols-2">
+                <div className="space-y-0.5 sm:space-y-1">
+                  <p className="text-[10px] sm:text-sm text-muted-foreground">Source</p>
+                  <p className="text-sm sm:text-base font-medium capitalize" data-testid="text-source">{lead.source}</p>
+                </div>
+                <div className="space-y-0.5 sm:space-y-1">
+                  <p className="text-[10px] sm:text-sm text-muted-foreground">Practice Area</p>
+                  <p className="text-sm sm:text-base font-medium" data-testid="text-practice-area">
                     {lead.practiceArea?.name || "Not assigned"}
                   </p>
                 </div>
                 {lead.incidentDate && (
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <div className="space-y-0.5 sm:space-y-1">
+                    <p className="text-[10px] sm:text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       Incident Date
                     </p>
-                    <p className="font-medium">
+                    <p className="text-sm sm:text-base font-medium">
                       {new Date(lead.incidentDate).toLocaleDateString()}
                     </p>
                   </div>
                 )}
                 {lead.incidentLocation && (
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <div className="space-y-0.5 sm:space-y-1">
+                    <p className="text-[10px] sm:text-sm text-muted-foreground flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       Location
                     </p>
-                    <p className="font-medium">{lead.incidentLocation}</p>
+                    <p className="text-sm sm:text-base font-medium truncate">{lead.incidentLocation}</p>
                   </div>
                 )}
               </div>
               {lead.summary && (
                 <div className="space-y-1 pt-2 border-t">
-                  <p className="text-sm text-muted-foreground">Summary</p>
-                  <p data-testid="text-summary">{lead.summary}</p>
+                  <p className="text-[10px] sm:text-sm text-muted-foreground">Summary</p>
+                  <p className="text-xs sm:text-base" data-testid="text-summary">{lead.summary}</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
+          {/* Tabs - Scrollable on mobile */}
           <Tabs defaultValue="interactions" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-              <TabsTrigger value="interactions" data-testid="tab-interactions">
-                <MessageSquare className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Interactions</span>
-                {interactions.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-xs">{interactions.length}</Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="calls" data-testid="tab-calls">
-                <PhoneCall className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Calls</span>
-              </TabsTrigger>
-              <TabsTrigger value="messages" data-testid="tab-messages">
-                <MessageSquare className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Messages</span>
-              </TabsTrigger>
-              <TabsTrigger value="intake" data-testid="tab-intake">
-                <ClipboardList className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Intake</span>
-              </TabsTrigger>
-              <TabsTrigger value="qualification" data-testid="tab-qualification">
-                <CheckCircle className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Qualification</span>
-              </TabsTrigger>
-              <TabsTrigger value="tasks" data-testid="tab-tasks">
-                <FileText className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Tasks</span>
-              </TabsTrigger>
-            </TabsList>
+            <ScrollArea className="w-full">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:w-full sm:grid-cols-6 gap-1">
+                <TabsTrigger value="interactions" className="gap-1 px-3 sm:px-2" data-testid="tab-interactions">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Activity</span>
+                  {interactions.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px] ml-1 h-4 px-1">{interactions.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="calls" className="gap-1 px-3 sm:px-2" data-testid="tab-calls">
+                  <PhoneCall className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Calls</span>
+                </TabsTrigger>
+                <TabsTrigger value="messages" className="gap-1 px-3 sm:px-2" data-testid="tab-messages">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Messages</span>
+                </TabsTrigger>
+                <TabsTrigger value="intake" className="gap-1 px-3 sm:px-2" data-testid="tab-intake">
+                  <ClipboardList className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Intake</span>
+                </TabsTrigger>
+                <TabsTrigger value="qualification" className="gap-1 px-3 sm:px-2" data-testid="tab-qualification">
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Score</span>
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className="gap-1 px-3 sm:px-2" data-testid="tab-tasks">
+                  <FileText className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Tasks</span>
+                </TabsTrigger>
+              </TabsList>
+              <ScrollBar orientation="horizontal" className="sm:hidden" />
+            </ScrollArea>
             <TabsContent value="interactions" className="mt-4">
               <InteractionTimeline interactions={interactions} />
             </TabsContent>
@@ -996,7 +1058,8 @@ export default function LeadDetailPage() {
           </Tabs>
         </div>
 
-        <div className="space-y-6">
+        {/* Sidebar - Desktop only */}
+        <div className="hidden lg:block space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1057,6 +1120,9 @@ export default function LeadDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Mobile Quick Actions */}
+      <MobileQuickActions lead={lead} />
     </div>
   );
 }

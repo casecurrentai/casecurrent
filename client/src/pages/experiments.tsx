@@ -106,12 +106,12 @@ function CreateExperimentDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button data-testid="button-create-experiment">
+        <Button className="w-full sm:w-auto" data-testid="button-create-experiment">
           <Plus className="h-4 w-4 mr-2" />
           New Experiment
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create Experiment</DialogTitle>
           <DialogDescription>
@@ -153,13 +153,14 @@ function CreateExperimentDialog() {
             />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
           <Button
             onClick={() => createMutation.mutate()}
             disabled={!name || createMutation.isPending}
+            className="w-full sm:w-auto"
             data-testid="button-save-experiment"
           >
             {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -198,25 +199,25 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
 
   return (
     <Card data-testid={`card-experiment-${experiment.id}`}>
-      <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-base">{experiment.name}</CardTitle>
-          <p className="text-sm text-muted-foreground">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 space-y-0 pb-2 px-3 sm:px-6">
+        <div className="space-y-1 min-w-0">
+          <CardTitle className="text-sm sm:text-base truncate">{experiment.name}</CardTitle>
+          <p className="text-xs sm:text-sm text-muted-foreground">
             {KIND_LABELS[experiment.kind] || experiment.kind}
           </p>
         </div>
-        <Badge className={STATUS_COLORS[experiment.status]}>
+        <Badge className={`${STATUS_COLORS[experiment.status]} text-xs self-start sm:self-center`}>
           {experiment.status}
         </Badge>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-4 text-sm">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6">
+        <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
           <div className="flex items-center gap-1">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span>{experiment.assignmentsCount} assignments</span>
+            <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
+            <span>{experiment.assignmentsCount}</span>
           </div>
           <div className="flex items-center gap-1">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
             <span>{experiment.config.variants?.length || 2} variants</span>
           </div>
         </div>
@@ -227,6 +228,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
               size="sm"
               onClick={() => actionMutation.mutate("start")}
               disabled={actionMutation.isPending}
+              className="flex-1 sm:flex-none"
               data-testid="button-start-experiment"
             >
               <Play className="h-4 w-4 mr-1" />
@@ -240,6 +242,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
                 variant="outline"
                 onClick={() => actionMutation.mutate("pause")}
                 disabled={actionMutation.isPending}
+                className="flex-1 sm:flex-none"
                 data-testid="button-pause-experiment"
               >
                 <Pause className="h-4 w-4 mr-1" />
@@ -250,6 +253,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
                 variant="outline"
                 onClick={() => actionMutation.mutate("end")}
                 disabled={actionMutation.isPending}
+                className="flex-1 sm:flex-none"
                 data-testid="button-end-experiment"
               >
                 <Square className="h-4 w-4 mr-1" />
@@ -263,6 +267,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
                 size="sm"
                 onClick={() => actionMutation.mutate("start")}
                 disabled={actionMutation.isPending}
+                className="flex-1 sm:flex-none"
                 data-testid="button-resume-experiment"
               >
                 <Play className="h-4 w-4 mr-1" />
@@ -273,6 +278,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
                 variant="outline"
                 onClick={() => actionMutation.mutate("end")}
                 disabled={actionMutation.isPending}
+                className="flex-1 sm:flex-none"
                 data-testid="button-end-experiment"
               >
                 <Square className="h-4 w-4 mr-1" />
@@ -280,8 +286,8 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
               </Button>
             </>
           )}
-          <Link href={`/experiments/${experiment.id}`}>
-            <Button size="sm" variant="outline" data-testid="button-view-report">
+          <Link href={`/experiments/${experiment.id}`} className="flex-1 sm:flex-none">
+            <Button size="sm" variant="outline" className="w-full" data-testid="button-view-report">
               <BarChart3 className="h-4 w-4 mr-1" />
               Report
             </Button>
@@ -308,29 +314,29 @@ export default function ExperimentsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-10 w-full sm:w-36" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-40 sm:h-48" />
+          <Skeleton className="h-40 sm:h-48" />
+          <Skeleton className="h-40 sm:h-48 hidden lg:block" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
-            <FlaskConical className="h-6 w-6" />
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-page-title">
+            <FlaskConical className="h-5 w-5 sm:h-6 sm:w-6" />
             Conversion Lab
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Run A/B experiments to optimize intake and qualification
           </p>
         </div>
@@ -339,16 +345,16 @@ export default function ExperimentsPage() {
 
       {experiments.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center">
-            <FlaskConical className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <CardContent className="p-6 sm:p-8 text-center">
+            <FlaskConical className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3" />
             <p className="text-muted-foreground">No experiments yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
               Create your first experiment to start optimizing
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {experiments.map((experiment) => (
             <ExperimentCard key={experiment.id} experiment={experiment} />
           ))}

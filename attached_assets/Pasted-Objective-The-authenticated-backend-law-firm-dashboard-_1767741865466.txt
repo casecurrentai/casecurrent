@@ -1,0 +1,136 @@
+Objective
+The authenticated “backend” (law-firm dashboard) currently renders like the desktop layout on mobile. Convert ALL backend pages to a true mobile-first experience so firms can comfortably manage leads, calls, and messages from their phone.
+Scope (must cover every authenticated page)
+
+
+Dashboard / Overview
+
+
+Calls / Voicemails / Call detail views
+
+
+Messages / SMS / Chat threads
+
+
+Leads / Intake submissions / Lead detail views
+
+
+Settings / Integrations / Users / Billing (any admin pages)
+
+
+Any other backend routes (audit and include all)
+
+
+Requirements
+
+
+Mobile-first responsive layout
+
+
+
+
+Implement responsive design that prioritizes small screens first, then scales up.
+
+
+Use a single-column layout on phones; avoid desktop multi-column grids on small screens.
+
+
+Ensure no horizontal scrolling on mobile at any viewport width.
+
+
+Use proper breakpoints (e.g., sm/md/lg) to progressively enhance for tablet/desktop.
+
+
+
+
+Navigation designed for mobile
+
+
+
+
+Replace desktop sidebar behavior on mobile with a bottom navigation bar OR a compact hamburger menu + sticky top bar (choose whichever fits the existing design system best).
+
+
+Keep primary actions reachable with one thumb (calls, messages, leads).
+
+
+Provide clear active-state indicators.
+
+
+
+
+Tables and dense data must be mobile-usable
+
+
+
+
+Convert tables into stacked “cards” on mobile (each record becomes a card with key fields).
+
+
+Add filter + search controls that work well on mobile.
+
+
+Ensure tap targets are large enough; avoid tiny icons/links.
+
+
+
+
+Call + message workflows must be phone-friendly
+
+
+
+
+Call detail and message thread screens must be readable, with correct spacing and typography.
+
+
+Message input must be sticky at the bottom of the screen, not obscured by iOS/Android keyboards.
+
+
+Ensure quick actions are prominent: “Call back,” “Text back,” “Mark as resolved,” “Assign,” etc.
+
+
+Use safe-area insets (notches) and ensure sticky elements don’t overlap content.
+
+
+
+
+UI polish and accessibility
+
+
+
+
+Consistent spacing scale, readable font sizes on mobile, and clear hierarchy.
+
+
+Buttons and interactive elements must meet accessibility tap-target guidelines.
+
+
+Confirm contrast and focus states are correct.
+
+
+Implementation notes
+
+
+Do not change backend functionality, APIs, or data models—this is UI/UX refactor only.
+
+
+Reuse existing components/styles where possible, but create responsive variants as needed.
+
+
+Audit and update shared layout components (dashboard shell, nav, page container) so fixes apply everywhere consistently.
+
+
+Add a simple “Responsive QA checklist” section in the repo README or a dev note (what pages were tested, key breakpoints, and any known limitations).
+
+
+Definition of done
+
+
+Every backend page looks intentionally designed on mobile, not merely “shrunk desktop.”
+
+
+No horizontal scroll on iPhone-sized viewports.
+
+
+Navigation and core workflows (responding to messages, reviewing calls, managing leads) are comfortable and fast on a phone.
+
