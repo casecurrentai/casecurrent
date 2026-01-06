@@ -24,15 +24,17 @@ export function PageShell({ children }: PageShellProps) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative">
-      <header className="sticky top-0 z-50 border-b border-border/50 overflow-hidden">
-        <GuillocheUnderlay />
-        <div className="relative z-10 bg-background/60 backdrop-blur-sm">
-          <div className="container mx-auto px-6">
-            <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center gap-2">
-              <Scale className="h-6 w-6 text-primary" />
-              <span className="font-bold text-xl text-foreground">CounselTech</span>
-            </Link>
+      <header className="sticky top-0 z-50 border-b border-border/50 h-16">
+        <div className="absolute inset-0">
+          <GuillocheUnderlay />
+        </div>
+        <div className="relative z-10 h-full bg-background/30 backdrop-blur-sm">
+          <div className="container mx-auto px-6 h-full">
+            <div className="flex items-center justify-between h-full">
+              <Link href="/" className="flex items-center gap-2">
+                <Scale className="h-6 w-6 text-primary" />
+                <span className="font-bold text-xl text-foreground">CounselTech</span>
+              </Link>
 
             <nav className="hidden lg:flex items-center gap-1">
               {NAV_LINKS.map((link) => (

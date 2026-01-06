@@ -72,7 +72,7 @@ export function GuillocheUnderlay() {
   const debugPattern = searchParams.get("debugPattern") === "1";
   const debugFrame = searchParams.get("debugFrame") === "1";
   
-  const baseOpacity = debugPattern ? 0.6 : 0.18;
+  const baseOpacity = debugPattern ? 0.8 : 0.25;
   
   return (
     <div 
