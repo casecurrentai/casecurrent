@@ -639,6 +639,55 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // PRACTICE AREAS ENDPOINTS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/practice-areas:
+   *   get:
+   *     summary: List practice areas
+   *     tags: [Practice Areas]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of practice areas
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 practiceAreas:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                       name:
+   *                         type: string
+   *                       active:
+   *                         type: boolean
+   */
+  app.get("/v1/practice-areas", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+
+      const practiceAreas = await prisma.practiceArea.findMany({
+        where: { orgId, active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, active: true },
+      });
+
+      res.json({ practiceAreas });
+    } catch (error) {
+      console.error("List practice areas error:", error);
+      res.status(500).json({ error: "Failed to list practice areas" });
+    }
+  });
+
+  // ============================================
   // LEADS ENDPOINTS
   // ============================================
 
