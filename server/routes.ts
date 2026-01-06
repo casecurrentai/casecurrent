@@ -1026,6 +1026,134 @@ export async function registerRoutes(
     }
   );
 
+  // =============================================
+  // MARKETING ENDPOINTS (PUBLIC)
+  // =============================================
+
+  // Simple rate limiting for contact form
+  const contactSubmissions = new Map<string, { count: number; resetAt: number }>();
+  const RATE_LIMIT_MAX = 5;
+  const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+  function checkRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const record = contactSubmissions.get(ip);
+    
+    if (!record || record.resetAt < now) {
+      contactSubmissions.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+      return true;
+    }
+    
+    if (record.count >= RATE_LIMIT_MAX) {
+      return false;
+    }
+    
+    record.count++;
+    return true;
+  }
+
+  /**
+   * @openapi
+   * /v1/marketing/contact:
+   *   post:
+   *     summary: Submit marketing contact form
+   *     tags: [Marketing]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name, email, message]
+   *             properties:
+   *               name:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *               firm:
+   *                 type: string
+   *               message:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Submission created
+   *       429:
+   *         description: Rate limited
+   */
+  app.post("/v1/marketing/contact", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+
+      const { name, email, firm, message } = req.body;
+
+      if (!name || typeof name !== "string" || name.trim().length < 2) {
+        return res.status(400).json({ error: "Name is required (min 2 characters)" });
+      }
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+      if (!message || typeof message !== "string" || message.trim().length < 10) {
+        return res.status(400).json({ error: "Message is required (min 10 characters)" });
+      }
+
+      const submission = await prisma.marketingContactSubmission.create({
+        data: {
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          firm: firm?.trim() || null,
+          message: message.trim(),
+          metadata: {
+            ip: clientIp,
+            userAgent: req.headers["user-agent"] || null,
+            submittedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Note: Audit log skipped for public submissions since there's no org context
+      // Submission metadata includes IP and timestamp for tracking purposes
+
+      res.status(201).json({ success: true, id: submission.id });
+    } catch (error) {
+      console.error("Marketing contact submission error:", error);
+      res.status(500).json({ error: "Failed to submit contact form" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/marketing/contact-submissions:
+   *   get:
+   *     summary: List marketing contact submissions (admin only)
+   *     tags: [Marketing]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of submissions
+   */
+  app.get(
+    "/v1/marketing/contact-submissions",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const submissions = await prisma.marketingContactSubmission.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+        res.json({ submissions, total: submissions.length });
+      } catch (error) {
+        console.error("Fetch contact submissions error:", error);
+        res.status(500).json({ error: "Failed to fetch submissions" });
+      }
+    }
+  );
+
   // Root API info endpoint
   /**
    * @openapi

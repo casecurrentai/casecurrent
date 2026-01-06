@@ -9,11 +9,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link, useLocation } from "wouter";
-import { Users, LayoutDashboard, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Users, LayoutDashboard, Settings, LogOut, ChevronDown, MessageSquare } from "lucide-react";
 import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/admin/contact-submissions", label: "Inquiries", icon: MessageSquare },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {

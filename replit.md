@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 - **Database Adapter**: `@prisma/adapter-pg` for PostgreSQL driver adapter
 - **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, and AI configuration
 
-### Database Tables (18 total)
+### Database Tables (19 total)
 
 - **Core**: organizations, users, contacts
 - **Practice**: practice_areas, intake_question_sets, ai_configs
@@ -47,6 +47,17 @@ Preferred communication style: Simple, everyday language.
 - **Workflow**: tasks, notifications
 - **Webhooks**: outgoing_webhook_endpoints, outgoing_webhook_deliveries
 - **Audit**: audit_logs
+- **Marketing**: marketing_contact_submissions
+
+### Marketing Site (Checkpoint 4.5)
+
+Public marketing pages built into the Vite React client:
+- **Routes**: `/` (Home), `/how-it-works`, `/security`, `/solutions`, `/pricing`, `/resources`, `/contact`
+- **Components**: PageShell, Hero, FeatureCard, SectionFrame, UIFrame, PhoneFrame, PricingCard, TimelineStepper, TrustList
+- **Design**: Guilloche SVG patterns, dot-grid backgrounds, wireframe corner brackets, clean enterprise SaaS aesthetic
+- **Contact Form**: POST /v1/marketing/contact with honeypot spam protection and rate limiting (5 submissions/hour per IP)
+- **Admin View**: /admin/contact-submissions for viewing marketing submissions (requires admin role)
+- **SEO**: robots.txt and sitemap.xml in client/public/
 
 ### Authentication & Authorization
 

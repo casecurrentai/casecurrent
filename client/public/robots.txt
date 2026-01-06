@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /dashboard
+Disallow: /leads
+Disallow: /admin
+
+Sitemap: https://counseltech.io/sitemap.xml

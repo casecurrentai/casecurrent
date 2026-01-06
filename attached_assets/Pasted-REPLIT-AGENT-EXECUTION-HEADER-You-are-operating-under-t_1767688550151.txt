@@ -1,0 +1,133 @@
+REPLIT AGENT EXECUTION HEADER
+You are operating under the CounselTech V1 CONSTITUTION already provided.
+Implement ONLY the single checkpoint specified in this message. Do NOT start future checkpoints.
+Stop immediately after completing this checkpoint.
+Create a Replit checkpoint named exactly: cp4_5-marketing-site
+
+========================================================
+CHECKPOINT 4.5 — MARKETING SITE (MATCH PROVIDED DESIGN THEME)
+========================================================
+Goal:
+Build a public marketing website inside the existing Next.js web app that matches the visual theme shown in the provided screenshot:
+- clean enterprise SaaS
+- light background
+- subtle guilloche / security-pattern underlay near the top nav and hero
+- rounded cards with soft borders/shadows
+- “wireframe / callout” style section framing (thin lines, corner brackets, subtle dot-grid accents)
+- UI-preview blocks (dashboard + mobile app mock panels)
+Do NOT copy counseltech.net code/assets. Create an original implementation in the same category.
+
+Scope:
+Add public routes (unauthed) within /apps/web (Next.js):
+- / (Home)
+- /how-it-works
+- /security
+- /solutions
+- /pricing
+- /resources (blog index stub)
+- /contact
+
+Navigation:
+Top nav with left logo + links + right-side CTA button.
+Sticky top bar with subtle translucent background.
+
+Design system (must implement as reusable components):
+- PageShell (nav + footer)
+- Hero (headline, subhead, CTA group, hero visual area)
+- FeatureCard (icon, title, description)
+- SectionFrame (wireframe-like outline + subtle connector lines/corner brackets)
+- UIFrame (browser-window mock frame for web screenshots)
+- PhoneFrame (mobile device mock frame for app screenshots)
+- StatPill / MetricCard (small analytic blocks like the screenshot)
+- TimelineStepper (for how-it-works)
+- TrustList (checklist sections on security page)
+
+Visual style requirements (encode in CSS/Tailwind):
+- Background: very light neutral (near-white) with faint dot-grid layer in some sections.
+- Accents: deep navy/ink for primary text; muted gray for body; restrained blue as primary accent; soft green as “success” accent.
+- Cards: white surfaces, 12–16px radius, 1px border in light gray, very soft shadow.
+- Typography: modern sans (system is fine), strong H1/H2 hierarchy, lots of whitespace.
+- Guilloche underlay: implement as an SVG pattern (very subtle opacity) positioned behind nav/hero only.
+- Wireframe callouts: implement using pseudo-elements or SVG lines in SectionFrame; keep subtle.
+
+Content structure (must match screenshot’s layout logic):
+HOME (/)
+1) Hero
+   - H1: “CounselTech AI Intake + Lead Capture”
+   - Subhead: enterprise-trustworthy, simple, measurable outcomes
+   - Primary CTA: “Book a Demo”
+   - Secondary CTA: “See How It Works”
+   - Right side hero visual: a framed UI mock (use UIFrame + 3–4 FeatureCards floating/stacked; include subtle “connector” lines)
+2) “Everything included” section
+   - A grid of 6 FeatureCards (AI Voice Agent, Smart Qualification, Instant Follow-up, Webhooks/Integrations, Dashboard Analytics, Security & Compliance)
+3) “How it works” preview section
+   - SectionFrame with 3-step cards and a TimelineStepper
+4) “Client Mobile App” preview section
+   - Use PhoneFrame components to show 3–4 screens (dashboard, leads list, lead detail, settings)
+   - These are illustrative (static mock UI built with HTML/CSS), not functional app screens.
+5) Final CTA band
+
+HOW-IT-WORKS (/how-it-works)
+- Top hero + short summary
+- Step cards (capture → qualify → follow-up → deliver to staff)
+- TimelineStepper with 4–6 steps
+- Include a framed “dashboard preview” area similar to screenshot
+
+SECURITY (/security)
+- Hero: “Security you can explain to a law firm”
+- Two-column layout:
+  - Left: Trust checklist (RBAC, audit logs, encryption in transit/at rest, retention controls, tenant scoping)
+  - Right: stacked security cards in a UIFrame
+- Add “Data boundaries” section explaining org_id scoping and auditability (truthful; do not claim SOC2 unless your product actually has it—mark “SOC2 Type II: planned” unless implemented)
+
+SOLUTIONS (/solutions)
+- Practice areas grid + operational outcomes:
+  - Personal Injury, Criminal Defense, Family Law, Immigration
+- For each: common intake fields and what gets captured
+- Include “Integrations” section: Zapier webhook + placeholders for Clio/MyCase
+
+PRICING (/pricing)
+- 2–3 tier cards (Starter, Growth, Enterprise) – copy can be stubby, but layout must be real and consistent with design system
+
+RESOURCES (/resources)
+- Blog index stub page with 6 placeholder cards (title, excerpt, date)
+
+CONTACT (/contact)
+- Contact form (name, email, firm, message)
+- Submit to API endpoint POST /v1/marketing/contact
+- Add spam controls:
+  - honeypot field
+  - basic rate limit on endpoint
+
+Backend requirement for contact form:
+Add a new table (Prisma + migration):
+- marketing_contact_submissions:
+  id, org_id(nullable), name, email, firm(nullable), message, created_at, metadata(json nullable)
+If org_id is not known (public), allow null.
+Add endpoint:
+- POST /v1/marketing/contact
+Store submission + write audit_log actor_type=system.
+
+SEO basics:
+- metadata tags per page
+- OpenGraph defaults
+- robots.txt + sitemap.xml (basic static ok)
+
+Rules:
+- Do NOT implement telephony/AI features in this checkpoint.
+- Do NOT touch schema unrelated to contact submissions.
+- Use the existing component library patterns; don’t create a second styling system.
+- All pages must be linked in nav/footer.
+
+Verification required before stopping:
+1) All marketing pages render without auth.
+2) Nav/footer works.
+3) Contact form submits and persists to DB.
+4) Add a simple admin view in dashboard settings to list contact submissions (table view only).
+
+After completion:
+- List files created/modified
+- List commands run
+- Confirm what is NOT implemented yet
+- Create Replit checkpoint: cp4_5-marketing-site
+Then STOP.

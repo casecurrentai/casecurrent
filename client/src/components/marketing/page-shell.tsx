@@ -1,0 +1,156 @@
+import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { Scale, Menu, X } from "lucide-react";
+import { useState } from "react";
+
+const NAV_LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/how-it-works", label: "How It Works" },
+  { href: "/solutions", label: "Solutions" },
+  { href: "/security", label: "Security" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/resources", label: "Resources" },
+];
+
+interface PageShellProps {
+  children: React.ReactNode;
+}
+
+export function PageShell({ children }: PageShellProps) {
+  const [location] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+        <div className="container mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/" className="flex items-center gap-2">
+              <Scale className="h-6 w-6 text-primary" />
+              <span className="font-bold text-xl text-foreground">CounselTech</span>
+            </Link>
+
+            <nav className="hidden lg:flex items-center gap-1">
+              {NAV_LINKS.map((link) => (
+                <Link key={link.href} href={link.href}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "text-muted-foreground",
+                      location === link.href && "text-foreground bg-muted"
+                    )}
+                    data-testid={`link-nav-${link.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    {link.label}
+                  </Button>
+                </Link>
+              ))}
+            </nav>
+
+            <div className="hidden lg:flex items-center gap-3">
+              <Link href="/login">
+                <Button variant="ghost" size="sm" data-testid="link-nav-login">
+                  Sign In
+                </Button>
+              </Link>
+              <Link href="/contact">
+                <Button size="sm" data-testid="link-nav-contact">
+                  Book a Demo
+                </Button>
+              </Link>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              data-testid="button-mobile-menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
+        </div>
+
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t border-border bg-background">
+            <nav className="container mx-auto px-6 py-4 space-y-2">
+              {NAV_LINKS.map((link) => (
+                <Link key={link.href} href={link.href}>
+                  <Button
+                    variant="ghost"
+                    className={cn(
+                      "w-full justify-start",
+                      location === link.href && "bg-muted"
+                    )}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {link.label}
+                  </Button>
+                </Link>
+              ))}
+              <div className="pt-4 space-y-2">
+                <Link href="/login">
+                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/contact">
+                  <Button className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                    Book a Demo
+                  </Button>
+                </Link>
+              </div>
+            </nav>
+          </div>
+        )}
+      </header>
+
+      <main className="flex-1">{children}</main>
+
+      <footer className="border-t border-border bg-muted/30">
+        <div className="container mx-auto px-6 py-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="col-span-2 md:col-span-1">
+              <div className="flex items-center gap-2 mb-4">
+                <Scale className="h-5 w-5 text-primary" />
+                <span className="font-bold text-foreground">CounselTech</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                AI-powered intake and lead capture for modern law firms.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-3">Product</h4>
+              <ul className="space-y-2 text-sm">
+                <li><Link href="/how-it-works" className="text-muted-foreground hover:text-foreground">How It Works</Link></li>
+                <li><Link href="/solutions" className="text-muted-foreground hover:text-foreground">Solutions</Link></li>
+                <li><Link href="/pricing" className="text-muted-foreground hover:text-foreground">Pricing</Link></li>
+                <li><Link href="/security" className="text-muted-foreground hover:text-foreground">Security</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-3">Resources</h4>
+              <ul className="space-y-2 text-sm">
+                <li><Link href="/resources" className="text-muted-foreground hover:text-foreground">Blog</Link></li>
+                <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold text-foreground mb-3">Legal</h4>
+              <ul className="space-y-2 text-sm">
+                <li><span className="text-muted-foreground">Privacy Policy</span></li>
+                <li><span className="text-muted-foreground">Terms of Service</span></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
+            2025 CounselTech. All rights reserved.
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

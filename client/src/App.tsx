@@ -8,7 +8,16 @@ import { AppLayout } from "@/components/app-layout";
 import LoginPage from "@/pages/login";
 import LeadsPage from "@/pages/leads";
 import LeadDetailPage from "@/pages/lead-detail";
+import ContactSubmissionsPage from "@/pages/admin/contact-submissions";
 import NotFound from "@/pages/not-found";
+
+import MarketingHomePage from "@/pages/marketing/home";
+import HowItWorksPage from "@/pages/marketing/how-it-works";
+import SecurityPage from "@/pages/marketing/security";
+import SolutionsPage from "@/pages/marketing/solutions";
+import PricingPage from "@/pages/marketing/pricing";
+import ResourcesPage from "@/pages/marketing/resources";
+import ContactPage from "@/pages/marketing/contact";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -22,7 +31,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
   
   if (user) {
-    return <Redirect to="/leads" />;
+    return <Redirect to="/dashboard" />;
   }
   
   return <>{children}</>;
@@ -31,13 +40,22 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/">
-        <Redirect to="/leads" />
-      </Route>
+      <Route path="/" component={MarketingHomePage} />
+      <Route path="/how-it-works" component={HowItWorksPage} />
+      <Route path="/security" component={SecurityPage} />
+      <Route path="/solutions" component={SolutionsPage} />
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/resources" component={ResourcesPage} />
+      <Route path="/contact" component={ContactPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />
         </PublicRoute>
+      </Route>
+      <Route path="/dashboard">
+        <AppLayout>
+          <Redirect to="/leads" />
+        </AppLayout>
       </Route>
       <Route path="/leads">
         <AppLayout>
@@ -47,6 +65,11 @@ function Router() {
       <Route path="/leads/:id">
         <AppLayout>
           <LeadDetailPage />
+        </AppLayout>
+      </Route>
+      <Route path="/admin/contact-submissions">
+        <AppLayout>
+          <ContactSubmissionsPage />
         </AppLayout>
       </Route>
       <Route component={NotFound} />

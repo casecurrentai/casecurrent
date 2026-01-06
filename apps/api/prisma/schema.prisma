@@ -386,6 +386,23 @@ model OutgoingWebhookDelivery {
 }
 
 // ============================================
+// MARKETING
+// ============================================
+
+model MarketingContactSubmission {
+  id        String   @id @default(uuid())
+  orgId     String?  @map("org_id")
+  name      String
+  email     String
+  firm      String?
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("marketing_contact_submissions")
+}
+
+// ============================================
 // AUDIT LOG
 // ============================================
 
