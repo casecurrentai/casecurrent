@@ -68,7 +68,7 @@ Public marketing pages built into the Vite React client:
 - **Session Management**: Express session with connect-pg-simple for PostgreSQL session storage
 - **Impersonation**: Platform admins can impersonate any org with 1-hour tokens (fully audited)
 
-### Platform Admin System (Checkpoint 5)
+### Platform Admin System (Checkpoint 4.5)
 
 - **Admin Access**: Controlled by PLATFORM_ADMIN_EMAILS environment variable
 - **Firm Provisioning**: Create orgs with owner via invite link or temporary password
@@ -78,6 +78,26 @@ Public marketing pages built into the Vite React client:
 - **Admin Routes**: `/v1/admin/orgs`, `/v1/admin/orgs/:id`, `/v1/admin/orgs/:id/invites`, `/v1/admin/orgs/:id/impersonate`, `/v1/admin/orgs/:id/health`
 - **Setup Wizard**: 8-step onboarding (Firm Basics, Business Hours, Practice Areas, Phone Numbers, AI Voice, Intake Logic, Follow-up, Review)
 - **Frontend Pages**: `/admin/orgs`, `/admin/orgs/new`, `/admin/orgs/:id`, `/setup`, `/invite/:token`
+
+### Telephony Ingest (Checkpoint 5)
+
+- **Interactions API**: POST /v1/interactions (manual creation), GET /v1/leads/:id/interactions
+- **Twilio Voice Webhook**: POST /v1/telephony/twilio/voice
+  - Idempotent by provider_call_id (CallSid)
+  - Creates/attaches lead + interaction + call
+  - Returns TwiML placeholder response
+- **Twilio Status Webhook**: POST /v1/telephony/twilio/status
+  - Updates call status and duration
+  - Marks interaction as completed when call ends
+- **Twilio Recording Webhook**: POST /v1/telephony/twilio/recording
+  - Stores recording URL
+  - Enqueues transcription job (flag in transcriptJson)
+- **Twilio SMS Webhook**: POST /v1/telephony/twilio/sms
+  - Idempotent by providerMessageId (MessageSid)
+  - Creates message + interaction, attaches to lead
+  - Returns TwiML response
+- **Audit Logging**: All telephony events logged with entityType/entityId
+- **Lead Detail UI**: Shows interactions timeline, calls panel, messages panel
 
 ### Monorepo Structure
 

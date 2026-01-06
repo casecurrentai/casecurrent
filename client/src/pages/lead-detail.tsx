@@ -19,6 +19,9 @@ import {
   Bell,
   FileText,
   User,
+  PhoneIncoming,
+  PhoneOutgoing,
+  Clock,
 } from "lucide-react";
 
 interface Contact {
@@ -45,6 +48,39 @@ interface Lead {
   practiceArea: { id: string; name: string } | null;
 }
 
+interface Call {
+  id: string;
+  direction: string;
+  provider: string;
+  fromE164: string;
+  toE164: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  recordingUrl: string | null;
+}
+
+interface Message {
+  id: string;
+  direction: string;
+  channel: string;
+  from: string;
+  to: string;
+  body: string;
+  createdAt: string;
+}
+
+interface Interaction {
+  id: string;
+  channel: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  metadata: any;
+  call: Call | null;
+  messages: Message[];
+}
+
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-primary text-primary-foreground",
   contacted: "bg-blue-500 text-white dark:bg-blue-600",
@@ -61,6 +97,13 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-muted text-muted-foreground",
 };
 
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return "N/A";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
 function PlaceholderPanel({ icon: Icon, title }: { icon: typeof Phone; title: string }) {
   return (
     <Card>
@@ -70,6 +113,190 @@ function PlaceholderPanel({ icon: Icon, title }: { icon: typeof Phone; title: st
         <p className="text-sm text-muted-foreground mt-1">Coming soon</p>
       </CardContent>
     </Card>
+  );
+}
+
+function InteractionTimeline({ interactions }: { interactions: Interaction[] }) {
+  if (interactions.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">No interactions yet</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {interactions.map((interaction) => (
+        <Card key={interaction.id} data-testid={`interaction-${interaction.id}`}>
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                {interaction.channel === "call" && (
+                  interaction.call?.direction === "inbound" 
+                    ? <PhoneIncoming className="w-5 h-5 text-primary" />
+                    : <PhoneOutgoing className="w-5 h-5 text-primary" />
+                )}
+                {interaction.channel === "sms" && <MessageSquare className="w-5 h-5 text-primary" />}
+                {interaction.channel === "webchat" && <MessageSquare className="w-5 h-5 text-primary" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium capitalize">{interaction.channel}</span>
+                  <Badge variant={interaction.status === "active" ? "default" : "secondary"} className="text-xs">
+                    {interaction.status}
+                  </Badge>
+                  {interaction.call && (
+                    <Badge variant="outline" className="text-xs">
+                      {interaction.call.direction}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {new Date(interaction.startedAt).toLocaleString()}
+                  </span>
+                  {interaction.call?.durationSeconds && (
+                    <span>{formatDuration(interaction.call.durationSeconds)}</span>
+                  )}
+                </div>
+                
+                {interaction.call && (
+                  <div className="mt-2 text-sm">
+                    <span className="text-muted-foreground">From: </span>
+                    <span>{interaction.call.fromE164}</span>
+                    <span className="text-muted-foreground mx-2">To: </span>
+                    <span>{interaction.call.toE164}</span>
+                  </div>
+                )}
+                
+                {interaction.messages.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {interaction.messages.slice(0, 3).map((msg) => (
+                      <div 
+                        key={msg.id} 
+                        className={`p-2 rounded-lg text-sm ${
+                          msg.direction === "inbound" 
+                            ? "bg-muted" 
+                            : "bg-primary/10 ml-4"
+                        }`}
+                      >
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {msg.direction === "inbound" ? msg.from : "You"} - {new Date(msg.createdAt).toLocaleTimeString()}
+                        </p>
+                        <p>{msg.body}</p>
+                      </div>
+                    ))}
+                    {interaction.messages.length > 3 && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        +{interaction.messages.length - 3} more messages
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function CallsPanel({ interactions }: { interactions: Interaction[] }) {
+  const calls = interactions.filter(i => i.channel === "call" && i.call);
+  
+  if (calls.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <PhoneCall className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">No calls yet</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {calls.map((interaction) => (
+        <Card key={interaction.id}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                {interaction.call?.direction === "inbound" 
+                  ? <PhoneIncoming className="w-5 h-5 text-primary" />
+                  : <PhoneOutgoing className="w-5 h-5 text-primary" />
+                }
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium capitalize">{interaction.call?.direction} Call</span>
+                  <Badge variant={interaction.status === "active" ? "default" : "secondary"} className="text-xs">
+                    {interaction.status}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(interaction.startedAt).toLocaleString()}
+                  {interaction.call?.durationSeconds && ` - ${formatDuration(interaction.call.durationSeconds)}`}
+                </p>
+              </div>
+              {interaction.call?.recordingUrl && (
+                <Badge variant="outline">Recording available</Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function MessagesPanel({ interactions }: { interactions: Interaction[] }) {
+  const messageInteractions = interactions.filter(i => i.channel === "sms" || i.channel === "webchat");
+  const allMessages = messageInteractions.flatMap(i => i.messages).sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  
+  if (allMessages.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">No messages yet</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {allMessages.map((msg) => (
+        <div 
+          key={msg.id} 
+          className={`p-3 rounded-lg ${
+            msg.direction === "inbound" 
+              ? "bg-muted" 
+              : "bg-primary/10 ml-8"
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-medium">
+              {msg.direction === "inbound" ? msg.from : "Outbound"}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {new Date(msg.createdAt).toLocaleString()}
+            </span>
+            <Badge variant="outline" className="text-xs">{msg.channel}</Badge>
+          </div>
+          <p className="text-sm">{msg.body}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -85,6 +312,18 @@ export default function LeadDetailPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to fetch lead");
+      return res.json();
+    },
+    enabled: !!leadId,
+  });
+
+  const { data: interactions = [] } = useQuery<Interaction[]>({
+    queryKey: ["/v1/leads", leadId, "interactions"],
+    queryFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/interactions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch interactions");
       return res.json();
     },
     enabled: !!leadId,
@@ -203,6 +442,9 @@ export default function LeadDetailPage() {
               <TabsTrigger value="interactions" data-testid="tab-interactions">
                 <MessageSquare className="h-4 w-4 mr-1" />
                 <span className="hidden sm:inline">Interactions</span>
+                {interactions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">{interactions.length}</Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="calls" data-testid="tab-calls">
                 <PhoneCall className="h-4 w-4 mr-1" />
@@ -226,13 +468,13 @@ export default function LeadDetailPage() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="interactions" className="mt-4">
-              <PlaceholderPanel icon={MessageSquare} title="Interactions will appear here" />
+              <InteractionTimeline interactions={interactions} />
             </TabsContent>
             <TabsContent value="calls" className="mt-4">
-              <PlaceholderPanel icon={PhoneCall} title="Call history will appear here" />
+              <CallsPanel interactions={interactions} />
             </TabsContent>
             <TabsContent value="messages" className="mt-4">
-              <PlaceholderPanel icon={MessageSquare} title="SMS and chat messages will appear here" />
+              <MessagesPanel interactions={interactions} />
             </TabsContent>
             <TabsContent value="intake" className="mt-4">
               <PlaceholderPanel icon={ClipboardList} title="Intake form responses will appear here" />

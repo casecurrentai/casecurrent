@@ -2363,5 +2363,531 @@ export async function registerRoutes(
     }
   );
 
+  // ============================================
+  // INTERACTIONS ROUTES
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/interactions:
+   *   post:
+   *     summary: Create a new interaction (for testing)
+   *     tags: [Interactions]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       201:
+   *         description: Interaction created
+   */
+  app.post(
+    "/v1/interactions",
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { leadId, channel, metadata } = req.body;
+        const orgId = req.user!.orgId;
+
+        if (!leadId || !channel) {
+          return res.status(400).json({ error: "leadId and channel are required" });
+        }
+
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId },
+        });
+
+        if (!lead) {
+          return res.status(404).json({ error: "Lead not found" });
+        }
+
+        const interaction = await prisma.interaction.create({
+          data: {
+            orgId,
+            leadId,
+            channel,
+            status: "active",
+            metadata: metadata || {},
+          },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, "user", "create_interaction", "interaction", interaction.id, { channel });
+
+        res.status(201).json(interaction);
+      } catch (error) {
+        console.error("Create interaction error:", error);
+        res.status(500).json({ error: "Failed to create interaction" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/interactions:
+   *   get:
+   *     summary: Get interactions for a lead
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: List of interactions
+   */
+  app.get(
+    "/v1/leads/:id/interactions",
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+        const orgId = req.user!.orgId;
+
+        const lead = await prisma.lead.findFirst({
+          where: { id, orgId },
+        });
+
+        if (!lead) {
+          return res.status(404).json({ error: "Lead not found" });
+        }
+
+        const interactions = await prisma.interaction.findMany({
+          where: { leadId: id, orgId },
+          include: {
+            call: true,
+            messages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { startedAt: "desc" },
+        });
+
+        res.json(interactions);
+      } catch (error) {
+        console.error("Get lead interactions error:", error);
+        res.status(500).json({ error: "Failed to get interactions" });
+      }
+    }
+  );
+
+  // ============================================
+  // TELEPHONY - TWILIO WEBHOOKS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/voice:
+   *   post:
+   *     summary: Handle incoming Twilio voice call webhook
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: TwiML response
+   */
+  app.post("/v1/telephony/twilio/voice", async (req, res) => {
+    try {
+      const payload = req.body;
+      const {
+        CallSid,
+        From,
+        To,
+        CallStatus,
+        Direction,
+        CallerName,
+      } = payload;
+
+      if (!CallSid || !From || !To) {
+        return res.status(400).json({ error: "Missing required Twilio parameters" });
+      }
+
+      const existingCall = await prisma.call.findFirst({
+        where: { providerCallId: CallSid },
+      });
+
+      if (existingCall) {
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Thank you for calling. Please hold while we connect you.</Say>
+  <Pause length="2"/>
+</Response>`);
+      }
+
+      const phoneNumber = await prisma.phoneNumber.findFirst({
+        where: { e164: To },
+        include: { organization: true },
+      });
+
+      if (!phoneNumber) {
+        console.log(`No phone number found for ${To}, returning generic TwiML`);
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>This number is not currently configured. Please try again later.</Say>
+  <Hangup/>
+</Response>`);
+      }
+
+      const orgId = phoneNumber.orgId;
+
+      let contact = await prisma.contact.findFirst({
+        where: { orgId, primaryPhone: From },
+      });
+
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            orgId,
+            name: CallerName || "Unknown Caller",
+            primaryPhone: From,
+          },
+        });
+      }
+
+      let lead = await prisma.lead.findFirst({
+        where: {
+          orgId,
+          contactId: contact.id,
+          status: { in: ["new", "in_progress"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!lead) {
+        lead = await prisma.lead.create({
+          data: {
+            orgId,
+            contactId: contact.id,
+            source: "phone",
+            status: "new",
+            priority: "medium",
+          },
+        });
+      }
+
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          channel: "call",
+          status: "active",
+          metadata: payload,
+        },
+      });
+
+      const call = await prisma.call.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          interactionId: interaction.id,
+          phoneNumberId: phoneNumber.id,
+          direction: Direction?.toLowerCase() === "outbound-api" ? "outbound" : "inbound",
+          provider: "twilio",
+          providerCallId: CallSid,
+          fromE164: From,
+          toE164: To,
+          startedAt: new Date(),
+          transcriptJson: { rawPayload: payload },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorType: "system",
+          action: "inbound_call_received",
+          entityType: "call",
+          entityId: call.id,
+          details: { providerCallId: CallSid, from: From, to: To },
+        },
+      });
+
+      res.set("Content-Type", "text/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Thank you for calling. An AI assistant will be with you shortly.</Say>
+  <Pause length="1"/>
+  <Say>Please describe your legal matter after the beep.</Say>
+  <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
+</Response>`);
+    } catch (error) {
+      console.error("Twilio voice webhook error:", error);
+      res.set("Content-Type", "text/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>We encountered an error. Please try again later.</Say>
+  <Hangup/>
+</Response>`);
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/status:
+   *   post:
+   *     summary: Handle Twilio call status callback
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Status updated
+   */
+  app.post("/v1/telephony/twilio/status", async (req, res) => {
+    try {
+      const payload = req.body;
+      const { CallSid, CallStatus, CallDuration } = payload;
+
+      if (!CallSid) {
+        return res.status(400).json({ error: "Missing CallSid" });
+      }
+
+      const call = await prisma.call.findFirst({
+        where: { providerCallId: CallSid },
+      });
+
+      if (!call) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      const updateData: any = {
+        transcriptJson: {
+          ...(call.transcriptJson as any || {}),
+          statusPayload: payload,
+        },
+      };
+
+      if (["completed", "busy", "no-answer", "canceled", "failed"].includes(CallStatus)) {
+        updateData.endedAt = new Date();
+        
+        await prisma.interaction.update({
+          where: { id: call.interactionId },
+          data: { endedAt: new Date(), status: "completed" },
+        });
+      }
+
+      if (CallDuration) {
+        updateData.durationSeconds = parseInt(CallDuration, 10);
+      }
+
+      await prisma.call.update({
+        where: { id: call.id },
+        data: updateData,
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: call.orgId,
+          actorType: "system",
+          action: "call_status_updated",
+          entityType: "call",
+          entityId: call.id,
+          details: { status: CallStatus, duration: CallDuration },
+        },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Twilio status webhook error:", error);
+      res.status(500).json({ error: "Failed to update call status" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/recording:
+   *   post:
+   *     summary: Handle Twilio recording callback
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Recording stored
+   */
+  app.post("/v1/telephony/twilio/recording", async (req, res) => {
+    try {
+      const payload = req.body;
+      const { CallSid, RecordingUrl, RecordingSid, RecordingDuration } = payload;
+
+      if (!CallSid || !RecordingUrl) {
+        return res.status(400).json({ error: "Missing CallSid or RecordingUrl" });
+      }
+
+      const call = await prisma.call.findFirst({
+        where: { providerCallId: CallSid },
+      });
+
+      if (!call) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      await prisma.call.update({
+        where: { id: call.id },
+        data: {
+          recordingUrl: RecordingUrl,
+          transcriptJson: {
+            ...(call.transcriptJson as any || {}),
+            recordingPayload: payload,
+            transcriptionJobEnqueued: true,
+            transcriptionJobEnqueuedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: call.orgId,
+          actorType: "system",
+          action: "recording_received",
+          entityType: "call",
+          entityId: call.id,
+          details: { recordingSid: RecordingSid, duration: RecordingDuration },
+        },
+      });
+
+      res.json({ success: true, message: "Recording stored, transcription job enqueued" });
+    } catch (error) {
+      console.error("Twilio recording webhook error:", error);
+      res.status(500).json({ error: "Failed to process recording" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/sms:
+   *   post:
+   *     summary: Handle incoming Twilio SMS webhook
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: TwiML response
+   */
+  app.post("/v1/telephony/twilio/sms", async (req, res) => {
+    try {
+      const payload = req.body;
+      const { MessageSid, From, To, Body } = payload;
+
+      if (!MessageSid || !From || !To) {
+        return res.status(400).json({ error: "Missing required Twilio SMS parameters" });
+      }
+
+      const existingMessage = await prisma.message.findFirst({
+        where: { providerMessageId: MessageSid },
+      });
+
+      if (existingMessage) {
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>`);
+      }
+
+      const phoneNumber = await prisma.phoneNumber.findFirst({
+        where: { e164: To },
+        include: { organization: true },
+      });
+
+      if (!phoneNumber) {
+        console.log(`No phone number found for SMS to ${To}`);
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>`);
+      }
+
+      const orgId = phoneNumber.orgId;
+
+      let contact = await prisma.contact.findFirst({
+        where: { orgId, primaryPhone: From },
+      });
+
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            orgId,
+            name: "Unknown Sender",
+            primaryPhone: From,
+          },
+        });
+      }
+
+      let lead = await prisma.lead.findFirst({
+        where: {
+          orgId,
+          contactId: contact.id,
+          status: { in: ["new", "in_progress"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!lead) {
+        lead = await prisma.lead.create({
+          data: {
+            orgId,
+            contactId: contact.id,
+            source: "sms",
+            status: "new",
+            priority: "medium",
+          },
+        });
+      }
+
+      let interaction = await prisma.interaction.findFirst({
+        where: {
+          leadId: lead.id,
+          channel: "sms",
+          status: "active",
+        },
+        orderBy: { startedAt: "desc" },
+      });
+
+      if (!interaction) {
+        interaction = await prisma.interaction.create({
+          data: {
+            orgId,
+            leadId: lead.id,
+            channel: "sms",
+            status: "active",
+            metadata: { initialPayload: payload },
+          },
+        });
+      }
+
+      const message = await prisma.message.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          interactionId: interaction.id,
+          direction: "inbound",
+          channel: "sms",
+          provider: "twilio",
+          providerMessageId: MessageSid,
+          from: From,
+          to: To,
+          body: Body || "",
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorType: "system",
+          action: "inbound_sms_received",
+          entityType: "message",
+          entityId: message.id,
+          details: { from: From, to: To, bodyPreview: Body?.substring(0, 100) },
+        },
+      });
+
+      res.set("Content-Type", "text/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Thank you for contacting us. An attorney will review your message shortly.</Message>
+</Response>`);
+    } catch (error) {
+      console.error("Twilio SMS webhook error:", error);
+      res.set("Content-Type", "text/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>`);
+    }
+  });
+
   return httpServer;
 }
