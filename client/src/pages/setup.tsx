@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ChevronRight, ChevronLeft, Building2, Clock, Briefcase, Phone, Bot, FileText, Bell, CheckCircle } from "lucide-react";
+import { Check, ChevronRight, ChevronLeft, Building2, Clock, Briefcase, Phone, Bot, FileText, Bell, CheckCircle, HelpCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const STEPS = [
   { id: 1, title: "Firm Basics", icon: Building2 },
@@ -24,11 +25,86 @@ const STEPS = [
   { id: 8, title: "Review", icon: CheckCircle },
 ];
 
+const STEP_HELP: Record<number, { title: string; description: string; faqs: Array<{ q: string; a: string }> }> = {
+  1: {
+    title: "Firm Basics Help",
+    description: "Set up your law firm's basic information. This will be used throughout the platform.",
+    faqs: [
+      { q: "Why do I need to set a timezone?", a: "The timezone ensures your business hours, call logs, and notifications display in your local time. It also affects when AI agents switch to after-hours mode." },
+      { q: "Can I change my firm name later?", a: "Yes, you can update your firm name anytime from the Settings page after completing setup." },
+    ],
+  },
+  2: {
+    title: "Business Hours Help",
+    description: "Define when your office is open to receive calls. The AI will adjust its behavior based on these hours.",
+    faqs: [
+      { q: "What happens outside business hours?", a: "Depending on your after-hours setting, calls can go to voicemail, be handled by AI, or forward to a mobile number." },
+      { q: "Can I set different hours for different days?", a: "The initial setup uses the same hours for all weekdays. You can configure per-day schedules in Settings after setup." },
+      { q: "What does 'AI Agent Handles' mean?", a: "The AI will answer calls, gather information, and create leads even when your office is closed." },
+    ],
+  },
+  3: {
+    title: "Practice Areas Help",
+    description: "Select the types of cases your firm handles. This helps the AI route and qualify leads appropriately.",
+    faqs: [
+      { q: "Why do practice areas matter?", a: "Practice areas determine which intake questions to ask and how leads are scored. Each area can have its own qualification criteria." },
+      { q: "Can I add custom practice areas?", a: "Yes, after completing setup you can add custom practice areas from the Settings page." },
+      { q: "What if I handle multiple case types?", a: "Enable all practice areas that apply. The AI will ask callers about their case type to route them correctly." },
+    ],
+  },
+  4: {
+    title: "Phone Numbers Help",
+    description: "Add your firm's phone number for call tracking and AI voice agent integration.",
+    faqs: [
+      { q: "What is E.164 format?", a: "E.164 is the international phone number format starting with + and country code. For US numbers: +1 followed by 10 digits (e.g., +15551234567)." },
+      { q: "Do I need to port my number?", a: "No, you can keep your existing phone number. CounselTech works with your current phone provider via call forwarding." },
+      { q: "Can I add multiple phone numbers?", a: "Yes, you can add additional numbers after setup for different offices or departments." },
+    ],
+  },
+  5: {
+    title: "AI Voice Help",
+    description: "Configure how the AI greets callers and sets expectations during the conversation.",
+    faqs: [
+      { q: "What makes a good voice greeting?", a: "Keep it professional but welcoming. Include your firm name and a brief offer to help. Example: 'Thank you for calling Smith Law. How may I assist you today?'" },
+      { q: "Why include a disclaimer?", a: "Recording disclaimers are legally required in many states. The AI will play this at the start of each call for compliance." },
+      { q: "What do the tone options mean?", a: "Professional is formal and business-like. Friendly is warmer and conversational. Empathetic is especially supportive, ideal for personal injury or family law." },
+    ],
+  },
+  6: {
+    title: "Intake Logic Help",
+    description: "Define the questions the AI asks to gather case information. This step is optional during initial setup.",
+    faqs: [
+      { q: "Do I need to configure this now?", a: "No, CounselTech includes default intake questions. You can customize them later in Settings." },
+      { q: "What format should the JSON be?", a: "Use a schema with 'questions' array. Each question needs: id, text, type (text/select/date), and optional 'required' flag." },
+      { q: "Can different practice areas have different questions?", a: "Yes, each practice area can have its own intake question set tailored to that case type." },
+    ],
+  },
+  7: {
+    title: "Follow-up Help",
+    description: "Configure automatic follow-up messages to keep leads engaged after their initial contact.",
+    faqs: [
+      { q: "What is auto follow-up?", a: "When enabled, the system automatically sends SMS or email messages to leads who haven't responded, keeping them engaged until your team can connect." },
+      { q: "How does the delay work?", a: "The delay is the time between a lead's last contact and the follow-up message. 30 minutes is recommended to seem responsive but not pushy." },
+      { q: "Can I customize the follow-up messages?", a: "Yes, after setup you can create custom follow-up sequences with multiple messages, timing, and conditions." },
+    ],
+  },
+  8: {
+    title: "Review & Complete",
+    description: "Review your settings before completing the setup. You can always adjust these settings later.",
+    faqs: [
+      { q: "Can I change settings after completing setup?", a: "Absolutely! All settings are accessible from the Settings page. Setup just gets you started quickly." },
+      { q: "What happens after I complete setup?", a: "You'll be taken to the Leads dashboard where you can start receiving and managing leads immediately." },
+      { q: "Is my data saved if I leave?", a: "Yes, each step saves automatically when you click Next. You can close and return to continue where you left off." },
+    ],
+  },
+};
+
 export default function SetupWizardPage() {
   const { token, organization, user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [basics, setBasics] = useState({ name: "", timezone: "America/New_York" });
   const [businessHours, setBusinessHours] = useState({
@@ -229,15 +305,51 @@ export default function SetupWizardPage() {
           </div>
         </div>
 
+        <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-primary" />
+                {STEP_HELP[currentStep]?.title}
+              </DialogTitle>
+              <DialogDescription>
+                {STEP_HELP[currentStep]?.description}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <h4 className="font-medium text-sm text-foreground">Frequently Asked Questions</h4>
+              <div className="space-y-3">
+                {STEP_HELP[currentStep]?.faqs.map((faq, index) => (
+                  <div key={index} className="border rounded-lg p-3">
+                    <p className="font-medium text-sm text-foreground">{faq.q}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{faq.a}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {(() => {
-                const StepIcon = STEPS[currentStep - 1].icon;
-                return <StepIcon className="w-5 h-5" />;
-              })()}
-              {STEPS[currentStep - 1].title}
-            </CardTitle>
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="flex items-center gap-2">
+                {(() => {
+                  const StepIcon = STEPS[currentStep - 1].icon;
+                  return <StepIcon className="w-5 h-5" />;
+                })()}
+                {STEPS[currentStep - 1].title}
+              </CardTitle>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setHelpOpen(true)}
+                aria-label="Get help for this step"
+                data-testid="button-help"
+              >
+                <HelpCircle className="w-5 h-5 text-muted-foreground" />
+              </Button>
+            </div>
             <CardDescription>Step {currentStep} of 8</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
