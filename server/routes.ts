@@ -1154,6 +1154,130 @@ export async function registerRoutes(
     }
   );
 
+  /**
+   * @openapi
+   * /v1/marketing/demo-request:
+   *   post:
+   *     summary: Submit demo request form
+   *     tags: [Marketing]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [name, email]
+   *             properties:
+   *               name:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *               firm_name:
+   *                 type: string
+   *               phone:
+   *                 type: string
+   *               practice_area:
+   *                 type: string
+   *               current_intake_method:
+   *                 type: string
+   *               monthly_lead_volume:
+   *                 type: string
+   *               message:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Demo request created
+   *       429:
+   *         description: Rate limited
+   */
+  app.post("/v1/marketing/demo-request", async (req, res) => {
+    try {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+
+      const { name, email, firm_name, phone, practice_area, current_intake_method, monthly_lead_volume, message, website } = req.body;
+
+      // Honeypot check - reject if filled (bots fill this hidden field)
+      if (website && typeof website === "string" && website.trim().length > 0) {
+        // Silently succeed to not reveal the honeypot
+        return res.status(201).json({ success: true, id: "honeypot" });
+      }
+
+      if (!name || typeof name !== "string" || name.trim().length < 2) {
+        return res.status(400).json({ error: "Name is required (min 2 characters)" });
+      }
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+
+      const submission = await prisma.marketingSubmission.create({
+        data: {
+          type: "demo",
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          firm: firm_name?.trim() || null,
+          phone: phone?.trim() || null,
+          practiceArea: practice_area || null,
+          currentIntakeMethod: current_intake_method || null,
+          monthlyLeadVolume: monthly_lead_volume || null,
+          message: message?.trim() || null,
+          metadata: {
+            ip: clientIp,
+            userAgent: req.headers["user-agent"] || null,
+            submittedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      res.status(201).json({ success: true, id: submission.id });
+    } catch (error) {
+      console.error("Demo request submission error:", error);
+      res.status(500).json({ error: "Failed to submit demo request" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/marketing/submissions:
+   *   get:
+   *     summary: List all marketing submissions (admin only)
+   *     tags: [Marketing]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: type
+   *         schema:
+   *           type: string
+   *           enum: [contact, demo]
+   *     responses:
+   *       200:
+   *         description: List of submissions
+   */
+  app.get(
+    "/v1/marketing/submissions",
+    authMiddleware,
+    requireMinRole("admin"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { type } = req.query;
+        
+        const submissions = await prisma.marketingSubmission.findMany({
+          where: type ? { type: type as string } : undefined,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        });
+        res.json({ submissions, total: submissions.length });
+      } catch (error) {
+        console.error("Fetch marketing submissions error:", error);
+        res.status(500).json({ error: "Failed to fetch submissions" });
+      }
+    }
+  );
+
   // Root API info endpoint
   /**
    * @openapi

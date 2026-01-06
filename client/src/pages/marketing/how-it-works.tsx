@@ -5,8 +5,9 @@ import { UIFrame } from "@/components/marketing/ui-frame";
 import { TimelineStepper } from "@/components/marketing/timeline-stepper";
 import { FeatureCard, MetricCard } from "@/components/marketing/feature-card";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { Card, CardContent } from "@/components/ui/card";
-import { Phone, MessageSquare, Globe, Brain, Zap, Users, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
+import { Phone, MessageSquare, Globe, Brain, Zap, BarChart3 } from "lucide-react";
 
 const CAPTURE_METHODS = [
   {
@@ -57,9 +58,10 @@ export default function HowItWorksPage() {
   return (
     <PageShell>
       <Hero
-        headline="Quick Correlations"
+        headline="How CounselTech Works"
         subheadline="From first contact to qualified consultation in minutes. See how CounselTech captures, qualifies, and delivers leads to your team."
-        primaryCta={{ label: "Book a Demo", href: "/contact" }}
+        primaryCta={{ label: "Book a Demo", href: "/demo" }}
+        secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
         <SectionFrame showCorners className="p-4">
           <UIFrame title="Intake Flow">
@@ -92,20 +94,22 @@ export default function HowItWorksPage() {
 
       <section className="py-20">
         <div className="container mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Multi-Channel Capture</h2>
-            <p className="text-muted-foreground">Meet leads where they are</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {CAPTURE_METHODS.map((method) => (
-              <FeatureCard
-                key={method.title}
-                icon={method.icon}
-                title={method.title}
-                description={method.description}
-              />
-            ))}
-          </div>
+          <SectionFrame showCorners showConnectors className="p-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Multi-Channel Capture</h2>
+              <p className="text-muted-foreground">Meet leads where they are</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {CAPTURE_METHODS.map((method) => (
+                <FeatureCard
+                  key={method.title}
+                  icon={method.icon}
+                  title={method.title}
+                  description={method.description}
+                />
+              ))}
+            </div>
+          </SectionFrame>
         </div>
       </section>
 
@@ -155,28 +159,28 @@ export default function HowItWorksPage() {
 
       <section className="py-20">
         <div className="container mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl font-bold text-foreground mb-4">Real-Time Analytics</h2>
-              <p className="text-muted-foreground mb-6">
-                Track every step of your intake funnel. See which sources convert best,
-                where leads drop off, and how your team performs.
-              </p>
-              <ul className="space-y-3">
-                {[
-                  "Conversion rate by source and practice area",
-                  "Response time tracking and alerts",
-                  "Lead quality scoring distribution",
-                  "A/B testing for intake scripts",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-primary" />
-                    <span className="text-muted-foreground">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <SectionFrame showCorners className="p-4">
+          <SectionFrame showCorners className="p-8">
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <h2 className="text-3xl font-bold text-foreground mb-4">Real-Time Analytics</h2>
+                <p className="text-muted-foreground mb-6">
+                  Track every step of your intake funnel. See which sources convert best,
+                  where leads drop off, and how your team performs.
+                </p>
+                <ul className="space-y-3">
+                  {[
+                    "Conversion rate by source and practice area",
+                    "Response time tracking and alerts",
+                    "Lead quality scoring distribution",
+                    "A/B testing for intake scripts",
+                  ].map((item) => (
+                    <li key={item} className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-primary" />
+                      <span className="text-muted-foreground">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
               <UIFrame title="Analytics">
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -205,7 +209,28 @@ export default function HowItWorksPage() {
                   </div>
                 </div>
               </UIFrame>
-            </SectionFrame>
+            </div>
+          </SectionFrame>
+        </div>
+      </section>
+
+      <section className="py-16 bg-primary text-primary-foreground">
+        <div className="container mx-auto px-6 text-center">
+          <h2 className="text-2xl font-bold mb-4">Ready to See It in Action?</h2>
+          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
+            Schedule a personalized demo to see how CounselTech can transform your intake process.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/demo">
+              <Button size="lg" variant="secondary" data-testid="button-cta-demo">
+                Book a Demo
+              </Button>
+            </Link>
+            <Link href="/contact">
+              <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground" data-testid="button-cta-contact">
+                Contact Sales
+              </Button>
+            </Link>
           </div>
         </div>
       </section>

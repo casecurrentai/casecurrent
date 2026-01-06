@@ -5,17 +5,18 @@ import { SectionFrame } from "@/components/marketing/section-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 import {
   Car,
   Gavel,
   Heart,
   Globe,
-  Webhook,
   Link2,
-  FileText,
   Phone,
   Calendar,
   MessageSquare,
+  FileText,
 } from "lucide-react";
 
 const PRACTICE_AREAS = [
@@ -121,66 +122,71 @@ export default function SolutionsPage() {
       <Hero
         headline="Solutions for Every Practice"
         subheadline="Tailored intake workflows for the practice areas that matter most. Capture the right information from day one."
-        primaryCta={{ label: "Book a Demo", href: "/contact" }}
+        primaryCta={{ label: "Book a Demo", href: "/demo" }}
+        secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
       <section className="py-20">
         <div className="container mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Practice Areas</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Pre-built intake templates with practice-specific qualification criteria
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            {PRACTICE_AREAS.map((area) => (
-              <Card key={area.name}>
-                <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <area.icon className="w-5 h-5 text-primary" />
+          <SectionFrame showCorners showConnectors className="p-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Practice Areas</h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Pre-built intake templates with practice-specific qualification criteria
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              {PRACTICE_AREAS.map((area) => (
+                <Card key={area.name}>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <area.icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{area.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{area.description}</p>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">{area.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{area.description}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <h4 className="text-sm font-medium mb-3">Common Intake Fields</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {area.intakeFields.map((field) => (
+                        <Badge key={field} variant="secondary" className="text-xs">
+                          {field}
+                        </Badge>
+                      ))}
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <h4 className="text-sm font-medium mb-3">Common Intake Fields</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {area.intakeFields.map((field) => (
-                      <Badge key={field} variant="secondary" className="text-xs">
-                        {field}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </SectionFrame>
         </div>
       </section>
 
       <section className="py-20 bg-muted/30 relative">
         <DotGridPattern />
         <div className="container mx-auto px-6 relative z-10">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Operational Outcomes</h2>
-            <p className="text-muted-foreground">
-              Measurable improvements to your intake process
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {OUTCOMES.map((outcome) => (
-              <FeatureCard
-                key={outcome.title}
-                icon={outcome.icon}
-                title={outcome.title}
-                description={outcome.description}
-              />
-            ))}
-          </div>
+          <SectionFrame showCorners className="p-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Operational Outcomes</h2>
+              <p className="text-muted-foreground">
+                Measurable improvements to your intake process
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {OUTCOMES.map((outcome) => (
+                <FeatureCard
+                  key={outcome.title}
+                  icon={outcome.icon}
+                  title={outcome.title}
+                  description={outcome.description}
+                />
+              ))}
+            </div>
+          </SectionFrame>
         </div>
       </section>
 
@@ -219,6 +225,27 @@ export default function SolutionsPage() {
               ))}
             </div>
           </SectionFrame>
+        </div>
+      </section>
+
+      <section className="py-16 bg-primary text-primary-foreground">
+        <div className="container mx-auto px-6 text-center">
+          <h2 className="text-2xl font-bold mb-4">See CounselTech for Your Practice Area</h2>
+          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
+            Schedule a demo tailored to your specific practice and intake workflow.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/demo">
+              <Button size="lg" variant="secondary" data-testid="button-cta-demo">
+                Book a Demo
+              </Button>
+            </Link>
+            <Link href="/contact">
+              <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground" data-testid="button-cta-contact">
+                Contact Sales
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
     </PageShell>

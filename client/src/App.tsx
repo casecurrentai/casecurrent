@@ -18,6 +18,7 @@ import SolutionsPage from "@/pages/marketing/solutions";
 import PricingPage from "@/pages/marketing/pricing";
 import ResourcesPage from "@/pages/marketing/resources";
 import ContactPage from "@/pages/marketing/contact";
+import DemoPage from "@/pages/marketing/demo";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/pricing" component={PricingPage} />
       <Route path="/resources" component={ResourcesPage} />
       <Route path="/contact" component={ContactPage} />
+      <Route path="/demo" component={DemoPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />

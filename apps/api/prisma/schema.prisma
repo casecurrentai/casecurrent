@@ -402,6 +402,23 @@ model MarketingContactSubmission {
   @@map("marketing_contact_submissions")
 }
 
+model MarketingSubmission {
+  id                   String   @id @default(uuid())
+  type                 String   // 'contact' | 'demo'
+  name                 String
+  email                String
+  firm                 String?
+  phone                String?
+  practiceArea         String?  @map("practice_area")
+  currentIntakeMethod  String?  @map("current_intake_method")
+  monthlyLeadVolume    String?  @map("monthly_lead_volume")
+  message              String?
+  metadata             Json?
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@map("marketing_submissions")
+}
+
 // ============================================
 // AUDIT LOG
 // ============================================

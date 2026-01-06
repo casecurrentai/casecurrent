@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Scale, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { GuillocheUnderlay } from "./guilloche-pattern";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -22,7 +23,9 @@ export function PageShell({ children }: PageShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col relative">
+      <GuillocheUnderlay />
+      
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-6">
           <div className="flex items-center justify-between h-16">
@@ -56,7 +59,12 @@ export function PageShell({ children }: PageShellProps) {
                 </Button>
               </Link>
               <Link href="/contact">
-                <Button size="sm" data-testid="link-nav-contact">
+                <Button variant="outline" size="sm" data-testid="link-nav-contact">
+                  Contact Sales
+                </Button>
+              </Link>
+              <Link href="/demo">
+                <Button size="sm" data-testid="link-nav-demo">
                   Book a Demo
                 </Button>
               </Link>
@@ -98,6 +106,11 @@ export function PageShell({ children }: PageShellProps) {
                   </Button>
                 </Link>
                 <Link href="/contact">
+                  <Button variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                    Contact Sales
+                  </Button>
+                </Link>
+                <Link href="/demo">
                   <Button className="w-full" onClick={() => setMobileMenuOpen(false)}>
                     Book a Demo
                   </Button>
@@ -108,9 +121,9 @@ export function PageShell({ children }: PageShellProps) {
         )}
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 relative z-10">{children}</main>
 
-      <footer className="border-t border-border bg-muted/30">
+      <footer className="border-t border-border bg-muted/30 relative z-10">
         <div className="container mx-auto px-6 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="col-span-2 md:col-span-1">
@@ -135,7 +148,8 @@ export function PageShell({ children }: PageShellProps) {
               <h4 className="font-semibold text-foreground mb-3">Resources</h4>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/resources" className="text-muted-foreground hover:text-foreground">Blog</Link></li>
-                <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link></li>
+                <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact Sales</Link></li>
+                <li><Link href="/demo" className="text-muted-foreground hover:text-foreground">Book a Demo</Link></li>
               </ul>
             </div>
             <div>

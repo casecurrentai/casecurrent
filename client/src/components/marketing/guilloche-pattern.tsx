@@ -1,7 +1,13 @@
-export function GuillochePattern() {
+import { useLocation } from "wouter";
+
+interface GuillochePatternProps {
+  className?: string;
+}
+
+export function GuillochePattern({ className }: GuillochePatternProps) {
   return (
     <svg
-      className="absolute inset-0 w-full h-full pointer-events-none"
+      className={`absolute inset-0 w-full h-full pointer-events-none ${className || ""}`}
       xmlns="http://www.w3.org/2000/svg"
       style={{ opacity: 0.03 }}
     >
@@ -57,5 +63,84 @@ export function DotGridPattern() {
       </defs>
       <rect width="100%" height="100%" fill="url(#dot-grid)" />
     </svg>
+  );
+}
+
+export function GuillocheUnderlay() {
+  const [location] = useLocation();
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const debugMode = searchParams.get("debugPattern") === "1";
+  
+  const baseOpacity = debugMode ? 0.25 : 0.04;
+  
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
+      <svg
+        className="absolute inset-0 w-full h-full text-primary"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ opacity: baseOpacity }}
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <defs>
+          <pattern
+            id="guilloche-underlay"
+            x="0"
+            y="0"
+            width="120"
+            height="120"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M0,60 Q30,0 60,60 T120,60"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.8"
+            />
+            <path
+              d="M0,60 Q30,120 60,60 T120,60"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.8"
+            />
+            <path
+              d="M60,0 Q0,30 60,60 T60,120"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.6"
+            />
+            <path
+              d="M60,0 Q120,30 60,60 T60,120"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.6"
+            />
+            <circle cx="60" cy="60" r="25" fill="none" stroke="currentColor" strokeWidth="0.4" />
+            <circle cx="60" cy="60" r="40" fill="none" stroke="currentColor" strokeWidth="0.4" />
+            <circle cx="60" cy="60" r="55" fill="none" stroke="currentColor" strokeWidth="0.3" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#guilloche-underlay)" />
+      </svg>
+      
+      <svg
+        className="absolute inset-0 w-full h-full text-muted-foreground"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ opacity: baseOpacity * 0.5 }}
+      >
+        <defs>
+          <pattern
+            id="dot-underlay"
+            x="0"
+            y="0"
+            width="24"
+            height="24"
+            patternUnits="userSpaceOnUse"
+          >
+            <circle cx="2" cy="2" r="0.8" fill="currentColor" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dot-underlay)" />
+      </svg>
+    </div>
   );
 }

@@ -1,0 +1,223 @@
+REPLIT AGENT EXECUTION HEADER
+You are operating under the CounselTech V1 CONSTITUTION already provided.
+Implement ONLY the single checkpoint specified in this message.
+Do NOT start CP5. Stop immediately after completing this checkpoint.
+After completion you MUST create a Replit checkpoint named exactly: cp4_6_marketing-signature-pricing-demo
+========================================================
+
+CHECKPOINT 4.6 — MARKETING SIGNATURES + PRICING + DEMO PAGE (ALL-IN-ONE)
+Create a Replit checkpoint named exactly: cp4_6_marketing-signature-pricing-demo
+
+Context:
+We are between CP4 and CP5. Marketing is not polished enough yet.
+Issues to resolve now:
+- Guilloche underlay not visible
+- Wireframe/SectionFrame signature inconsistent across pages
+- Pricing page needs exact copy + correct tier pricing
+- Need a dedicated /demo page and route CTAs to /demo (distinct from /contact)
+
+Goal:
+Make the marketing site conversion-ready and brand-consistent BEFORE we proceed to CP5.
+
+Scope:
+Marketing pages only (unauthed):
+- /, /how-it-works, /security, /solutions, /pricing, /resources, /contact, /demo
+
+Do NOT implement telephony, AI, lead pipeline, or dashboard feature work in this checkpoint.
+
+--------------------------------------------------------
+1) SIGNATURE DESIGN ENFORCEMENT (SITE-WIDE)
+--------------------------------------------------------
+
+A) Guilloche underlay (must be present and confirmable)
+- Implement as a reusable component (e.g., <GuillocheUnderlay />) inside the MARKETING PageShell.
+- Guilloche must appear behind top nav + hero on ALL marketing pages listed above.
+- It must NOT appear on authenticated dashboard routes.
+- Add debug toggle:
+  - If URL includes ?debugPattern=1, increase guilloche opacity enough that it is unmistakable.
+  - Default remains subtle (low opacity).
+- Ensure contrast/readability remains strong.
+
+B) Wireframe signature / SectionFrame (must be consistent across pages)
+- Ensure SectionFrame (wireframe outline + corner brackets + subtle connectors/dot-grid) can wrap sections cleanly.
+- Apply SectionFrame in at least 2–3 sections on EVERY marketing page:
+  - /how-it-works, /security, /solutions, /pricing, /resources, /contact, /demo, and homepage
+- Do NOT use one-off per-page hacks; use the reusable component.
+
+C) CTA consistency
+- Update global marketing nav + homepage hero CTAs:
+  - Primary CTA: “Book a Demo” → /demo
+  - Secondary CTA: “Contact Sales” → /contact
+- Ensure footer includes /demo link.
+
+--------------------------------------------------------
+2) PRICING PAGE — EXACT COPY + TIERS (NO SLA MENTION)
+--------------------------------------------------------
+
+Update ONLY /pricing content/structure using the exact copy below.
+STRICT: Do NOT mention SLA or “performance guarantees” anywhere.
+
+Pricing tiers (must match exactly):
+- CounselTech Core: $349 / month
+- CounselTech Pro: $749 / month (Most Popular)
+- CounselTech Elite: $1,499 / month
+- One-Time Setup: $500–$1,000
+
+Layout requirements:
+- Hero (headline + subheadline + 2 short supporting paragraphs)
+- 3 tier cards: Core, Pro (Most Popular, visually emphasized), Elite
+- One-Time Setup section (framed via SectionFrame)
+- “Why Law Firms Choose CounselTech” section (framed via SectionFrame)
+- Bottom CTA band (Book a Demo + Contact Sales)
+
+PRICING COPY (IMPLEMENT EXACTLY):
+
+Simple, Transparent Pricing
+
+Built for Law Firms. Priced for Real Results.
+
+CounselTech AI replaces missed-call revenue loss and intake bottlenecks with a 24/7 AI-powered intake system designed specifically for law firms.
+
+No long-term contracts. No per-call nickel-and-diming. Just predictable monthly pricing.
+
+CounselTech Core
+
+$349 / month
+
+Best for solo attorneys and small firms getting started with AI intake
+
+Never miss another after-hours or overflow call.
+
+Includes
+• AI voice agent for missed & after-hours calls
+• Voicemail transcription + intelligent summaries
+• Lead capture (name, phone, case type, urgency)
+• Email & SMS lead notifications
+• Secure dashboard with call and lead history
+• Built-in legal disclaimers
+• 1 firm · 1 phone number
+
+Outcome
+
+Capture leads you’re already paying for — without hiring staff.
+
+CounselTech Pro
+
+$749 / month
+
+Most Popular
+
+Designed for growing firms that care about conversion, not just coverage
+
+Turn more callers into qualified cases automatically.
+
+Includes everything in Core, plus
+• Live call screening & warm transfers
+• Custom intake logic by practice area
+• CRM integrations (Clio, MyCase)
+• Zapier & webhook automations
+• AI follow-ups for missed leads
+• Advanced analytics & conversion insights
+• Multiple phone numbers
+• Priority support
+
+Outcome
+
+Replace manual intake, improve lead quality, and increase signed cases — without adding headcount.
+
+CounselTech Elite
+
+$1,499 / month
+
+For high-volume and multi-attorney firms
+
+A fully branded, always-on AI intake system.
+
+Includes everything in Pro, plus
+• 24/7 AI call handling (not just overflow)
+• Advanced qualification & urgency scoring
+• Practice-area-specific AI models
+• Firm-branded AI voice & scripting
+• Reliability monitoring & priority incident response
+• Dedicated onboarding & quarterly optimization
+• Optional bilingual support
+
+Outcome
+
+Enterprise-grade intake without enterprise complexity.
+
+One-Time Setup
+
+$500–$1,000 (based on complexity)
+
+Includes:
+• AI configuration & training
+• Call flow setup
+• CRM & automation connections
+• Firm-specific intake logic
+
+Occasionally waived during promotions.
+
+Why Law Firms Choose CounselTech
+• Costs less than a part-time receptionist
+• Works 24/7 — nights, weekends, holidays
+• No per-call or per-lead fees
+• Designed exclusively for legal intake
+• Built to integrate with your existing systems
+
+--------------------------------------------------------
+3) DEMO PAGE — /demo (PRIMARY CTA DESTINATION)
+--------------------------------------------------------
+
+Create /demo as a dedicated conversion page (distinct from /contact).
+
+Page structure:
+- Hero:
+  Title: “See CounselTech AI in action”
+  Subhead: “A 15-minute walkthrough tailored to your practice area and intake workflow.”
+  Primary CTA: “Request a Demo” (scroll to form)
+- “What you’ll see” section (SectionFrame):
+  - Missed-call capture → structured lead → qualification → notifications → dashboard
+- “Who it’s for” section:
+  - PI, Criminal Defense, Family Law, Immigration (short bullets)
+- “Implementation timeline” section (SectionFrame):
+  - Setup + go-live in days (keep non-committal; do not promise fixed timeline)
+- Demo Request Form (must persist):
+  Fields:
+  - name, email, firm_name, phone(optional), practice_area, current_intake_method (dropdown), monthly_lead_volume (dropdown), message(optional)
+  - add a honeypot field for spam
+  Behavior:
+  - POST to API endpoint /v1/marketing/demo-request
+  - show success state “We’ll reach out shortly.”
+  - store submission in DB
+
+Backend requirement (minimal and marketing-only):
+- If a marketing submissions table already exists, reuse it.
+- Otherwise create a new table via Prisma migrate:
+  marketing_submissions:
+    id, type('contact'|'demo'), name, email, firm(nullable), phone(nullable),
+    practice_area(nullable), metadata(json), message(nullable),
+    created_at
+- Implement endpoints:
+  - POST /v1/marketing/demo-request
+  - (optional) POST /v1/marketing/contact if not already present
+- Apply basic rate limiting + honeypot validation.
+- Write audit_logs actor_type=system for each submission.
+
+Admin view:
+- Add a simple table in dashboard settings to view marketing submissions (type, date, name, email, firm, practice_area).
+
+--------------------------------------------------------
+4) VERIFICATION (REQUIRED BEFORE STOPPING)
+--------------------------------------------------------
+You must:
+1) List each marketing route and confirm:
+   - guilloche visible + debugPattern=1 makes it obvious
+   - SectionFrame appears multiple times on the page
+   - CTAs route to /demo
+2) Confirm /pricing matches the exact copy and prices above, and contains NO SLA language.
+3) Confirm /demo form submits and persists; admin table shows the record.
+4) List the exact files changed and commands run.
+
+Then create Replit checkpoint: cp4_6_marketing-signature-pricing-demo
+Then STOP.

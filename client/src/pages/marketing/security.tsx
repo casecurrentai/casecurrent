@@ -4,8 +4,10 @@ import { TrustList, SecurityCard } from "@/components/marketing/trust-list";
 import { SectionFrame } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
 import { Shield, Lock, Eye, Database, Users, FileCheck } from "lucide-react";
 
 const TRUST_ITEMS = [
@@ -71,17 +73,18 @@ export default function SecurityPage() {
       <Hero
         headline="Trust & Security"
         subheadline="Security you can explain to a law firm. Built with compliance, auditability, and data protection as foundational requirements."
-        primaryCta={{ label: "Book a Demo", href: "/contact" }}
+        primaryCta={{ label: "Book a Demo", href: "/demo" }}
+        secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
       <section className="py-20">
         <div className="container mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
-              <TrustList items={TRUST_ITEMS} />
-            </div>
-            <SectionFrame showCorners className="p-4">
+          <SectionFrame showCorners showConnectors className="p-8">
+            <div className="grid lg:grid-cols-2 gap-12">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
+                <TrustList items={TRUST_ITEMS} />
+              </div>
               <UIFrame title="Security Overview">
                 <div className="space-y-4">
                   {SECURITY_SECTIONS.map((section) => (
@@ -93,52 +96,54 @@ export default function SecurityPage() {
                   ))}
                 </div>
               </UIFrame>
-            </SectionFrame>
-          </div>
+            </div>
+          </SectionFrame>
         </div>
       </section>
 
       <section className="py-20 bg-muted/30 relative">
         <DotGridPattern />
         <div className="container mx-auto px-6 relative z-10">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground mb-4">Unrelenting Security</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Every layer of the platform is designed with security-first principles
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <Lock className="w-10 h-10 text-primary mb-4" />
-                <h3 className="font-semibold text-lg mb-2">Secure Infrastructure</h3>
-                <p className="text-muted-foreground text-sm">
-                  Hosted on enterprise-grade cloud infrastructure with network isolation,
-                  DDoS protection, and continuous monitoring.
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <Eye className="w-10 h-10 text-primary mb-4" />
-                <h3 className="font-semibold text-lg mb-2">Transparent Logging</h3>
-                <p className="text-muted-foreground text-sm">
-                  Comprehensive audit logs capture every data access and modification,
-                  exportable for compliance reviews.
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <Database className="w-10 h-10 text-primary mb-4" />
-                <h3 className="font-semibold text-lg mb-2">Data Boundaries</h3>
-                <p className="text-muted-foreground text-sm">
-                  Strict org_id scoping ensures complete tenant isolation at the
-                  database level with cascading delete protection.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          <SectionFrame showCorners className="p-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Unrelenting Security</h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Every layer of the platform is designed with security-first principles
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card>
+                <CardContent className="p-6">
+                  <Lock className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">Secure Infrastructure</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Hosted on enterprise-grade cloud infrastructure with network isolation,
+                    DDoS protection, and continuous monitoring.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <Eye className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">Transparent Logging</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Comprehensive audit logs capture every data access and modification,
+                    exportable for compliance reviews.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <Database className="w-10 h-10 text-primary mb-4" />
+                  <h3 className="font-semibold text-lg mb-2">Data Boundaries</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Strict org_id scoping ensures complete tenant isolation at the
+                    database level with cascading delete protection.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </SectionFrame>
         </div>
       </section>
 
@@ -181,6 +186,27 @@ export default function SecurityPage() {
               </Card>
             </div>
           </SectionFrame>
+        </div>
+      </section>
+
+      <section className="py-16 bg-primary text-primary-foreground">
+        <div className="container mx-auto px-6 text-center">
+          <h2 className="text-2xl font-bold mb-4">Questions About Security?</h2>
+          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
+            Our team is happy to walk through our security practices and answer any compliance questions.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/demo">
+              <Button size="lg" variant="secondary" data-testid="button-cta-demo">
+                Book a Demo
+              </Button>
+            </Link>
+            <Link href="/contact">
+              <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground" data-testid="button-cta-contact">
+                Contact Sales
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
     </PageShell>
