@@ -30,10 +30,23 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Storage
 
-- **Database**: PostgreSQL with Drizzle ORM
-- **Schema Location**: `/shared/schema.ts` contains database table definitions
-- **Migrations**: Drizzle Kit for database migrations (`/migrations` directory)
-- **In-Memory Fallback**: MemStorage class for development without database
+- **Database**: PostgreSQL with Prisma ORM (v7.2.0)
+- **Schema Location**: `/apps/api/prisma/schema.prisma` contains 18 base tables with multi-tenant org_id scoping
+- **Migrations**: Prisma Migrate (`/apps/api/prisma/migrations` directory)
+- **Prisma Config**: `/apps/api/prisma.config.ts` for Prisma 7 configuration
+- **Database Adapter**: `@prisma/adapter-pg` for PostgreSQL driver adapter
+- **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, and AI configuration
+
+### Database Tables (18 total)
+
+- **Core**: organizations, users, contacts
+- **Practice**: practice_areas, intake_question_sets, ai_configs
+- **Leads**: leads, interactions, calls, messages
+- **Intake**: intakes, qualifications
+- **Telephony**: phone_numbers
+- **Workflow**: tasks, notifications
+- **Webhooks**: outgoing_webhook_endpoints, outgoing_webhook_deliveries
+- **Audit**: audit_logs
 
 ### Authentication & Authorization
 
