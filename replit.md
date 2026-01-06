@@ -99,6 +99,19 @@ Public marketing pages built into the Vite React client:
 - **Audit Logging**: All telephony events logged with entityType/entityId
 - **Lead Detail UI**: Shows interactions timeline, calls panel, messages panel
 
+### Structured Intake Flow (Checkpoint 6)
+
+- **GET /v1/leads/:id/intake**: Retrieve intake for a lead (includes question set schema)
+- **POST /v1/leads/:id/intake/init**: Initialize intake with question set selection
+  - Priority: practice area-specific question set > default question set
+  - Creates intake row with completion_status=partial
+- **PATCH /v1/leads/:id/intake**: Update intake answers (merge with existing)
+- **POST /v1/leads/:id/intake/complete**: Complete intake with webhook stub
+  - Sets completion_status=complete, completed_at
+  - Emits intake.completed webhook event (record-only stub)
+- **Audit Logging**: All intake operations logged (init, update, complete)
+- **UI Components**: IntakePanel with JSON editor, init/save/complete buttons
+
 ### Monorepo Structure
 
 ```

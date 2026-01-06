@@ -1,11 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
   Phone,
@@ -22,6 +26,10 @@ import {
   PhoneIncoming,
   PhoneOutgoing,
   Clock,
+  Play,
+  Save,
+  CheckCheck,
+  Loader2,
 } from "lucide-react";
 
 interface Contact {
@@ -79,6 +87,25 @@ interface Interaction {
   metadata: any;
   call: Call | null;
   messages: Message[];
+}
+
+interface Intake {
+  id: string;
+  leadId: string;
+  questionSetId: string | null;
+  practiceAreaId: string | null;
+  answers: Record<string, any> | null;
+  completionStatus: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  questionSet: { id: string; name: string; schema: any; version: number } | null;
+  practiceArea: { id: string; name: string } | null;
+}
+
+interface IntakeResponse {
+  exists: boolean;
+  intake: Intake | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -300,6 +327,216 @@ function MessagesPanel({ interactions }: { interactions: Interaction[] }) {
   );
 }
 
+function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
+  const { toast } = useToast();
+  const [answersJson, setAnswersJson] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const { data: intakeResponse, isLoading } = useQuery<IntakeResponse>({
+    queryKey: ["/v1/leads", leadId, "intake"],
+    queryFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/intake`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch intake");
+      return res.json();
+    },
+  });
+
+  const initMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/intake/init`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to initialize intake");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId, "intake"] });
+      toast({ title: "Intake initialized" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (answers: Record<string, any>) => {
+      const res = await fetch(`/v1/leads/${leadId}/intake`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ answers }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save intake");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId, "intake"] });
+      toast({ title: "Intake saved" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/intake/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to complete intake");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId, "intake"] });
+      toast({ title: "Intake completed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleSave = () => {
+    try {
+      const parsed = JSON.parse(answersJson || "{}");
+      setJsonError(null);
+      saveMutation.mutate(parsed);
+    } catch {
+      setJsonError("Invalid JSON format");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="h-40" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!intakeResponse?.exists) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <ClipboardList className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground mb-4">No intake started for this lead</p>
+          <Button
+            onClick={() => initMutation.mutate()}
+            disabled={initMutation.isPending}
+            data-testid="button-init-intake"
+          >
+            {initMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Play className="h-4 w-4 mr-2" />
+            Start Intake
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const intake = intakeResponse.intake!;
+  const isComplete = intake.completionStatus === "complete";
+  const currentAnswers = intake.answers || {};
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Intake Form
+          </CardTitle>
+          <Badge variant={isComplete ? "default" : "secondary"} data-testid="badge-intake-status">
+            {isComplete ? "Complete" : "In Progress"}
+          </Badge>
+        </div>
+        {intake.questionSet && (
+          <p className="text-sm text-muted-foreground">
+            Question Set: {intake.questionSet.name} (v{intake.questionSet.version})
+          </p>
+        )}
+        {intake.completedAt && (
+          <p className="text-sm text-muted-foreground">
+            Completed: {new Date(intake.completedAt).toLocaleString()}
+          </p>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Current Answers</label>
+          <div className="bg-muted p-3 rounded-md text-sm font-mono overflow-x-auto" data-testid="text-intake-answers">
+            <pre>{JSON.stringify(currentAnswers, null, 2)}</pre>
+          </div>
+        </div>
+
+        {!isComplete && (
+          <>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Edit Answers (JSON)</label>
+              <Textarea
+                value={answersJson}
+                onChange={(e) => {
+                  setAnswersJson(e.target.value);
+                  setJsonError(null);
+                }}
+                placeholder='{"question1": "answer1", "question2": "answer2"}'
+                className="font-mono text-sm"
+                rows={5}
+                data-testid="input-intake-answers"
+              />
+              {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={handleSave}
+                disabled={saveMutation.isPending || !answersJson.trim()}
+                data-testid="button-save-intake"
+              >
+                {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <Save className="h-4 w-4 mr-2" />
+                Save Answers
+              </Button>
+              <Button
+                onClick={() => completeMutation.mutate()}
+                disabled={completeMutation.isPending}
+                data-testid="button-complete-intake"
+              >
+                {completeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <CheckCheck className="h-4 w-4 mr-2" />
+                Complete Intake
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function LeadDetailPage() {
   const [, params] = useRoute("/leads/:id");
   const { token } = useAuth();
@@ -477,7 +714,7 @@ export default function LeadDetailPage() {
               <MessagesPanel interactions={interactions} />
             </TabsContent>
             <TabsContent value="intake" className="mt-4">
-              <PlaceholderPanel icon={ClipboardList} title="Intake form responses will appear here" />
+              <IntakePanel leadId={leadId!} token={token!} />
             </TabsContent>
             <TabsContent value="qualification" className="mt-4">
               <PlaceholderPanel icon={CheckCircle} title="Qualification score and reasons will appear here" />

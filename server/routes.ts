@@ -2889,5 +2889,291 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // INTAKE ENDPOINTS (Checkpoint 6)
+  // ============================================
+
+  // GET /v1/leads/:id/intake - Get intake for a lead
+  app.get("/v1/leads/:id/intake", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { id: leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const intake = await prisma.intake.findUnique({
+        where: { leadId },
+        include: {
+          questionSet: {
+            select: { id: true, name: true, schema: true, version: true },
+          },
+          practiceArea: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      if (!intake) {
+        return res.json({ exists: false, intake: null });
+      }
+
+      res.json({ exists: true, intake });
+    } catch (error) {
+      console.error("Get intake error:", error);
+      res.status(500).json({ error: "Failed to get intake" });
+    }
+  });
+
+  // POST /v1/leads/:id/intake/init - Initialize intake for a lead
+  app.post("/v1/leads/:id/intake/init", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { id: leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: { practiceArea: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Check if intake already exists
+      const existingIntake = await prisma.intake.findUnique({
+        where: { leadId },
+      });
+
+      if (existingIntake) {
+        return res.status(400).json({ error: "Intake already exists for this lead" });
+      }
+
+      // Find appropriate question set
+      // Priority: practice area specific > default (no practice area)
+      let questionSet = null;
+
+      if (lead.practiceAreaId) {
+        questionSet = await prisma.intakeQuestionSet.findFirst({
+          where: {
+            orgId: user.orgId,
+            practiceAreaId: lead.practiceAreaId,
+            active: true,
+          },
+          orderBy: { version: "desc" },
+        });
+      }
+
+      // Fallback to default question set (no practice area)
+      if (!questionSet) {
+        questionSet = await prisma.intakeQuestionSet.findFirst({
+          where: {
+            orgId: user.orgId,
+            practiceAreaId: null,
+            active: true,
+          },
+          orderBy: { version: "desc" },
+        });
+      }
+
+      // Create intake
+      const intake = await prisma.intake.create({
+        data: {
+          orgId: user.orgId,
+          leadId,
+          practiceAreaId: lead.practiceAreaId,
+          questionSetId: questionSet?.id || null,
+          answers: {},
+          completionStatus: "partial",
+        },
+        include: {
+          questionSet: {
+            select: { id: true, name: true, schema: true, version: true },
+          },
+          practiceArea: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.id,
+          actorType: "user",
+          action: "intake_initialized",
+          entityType: "intake",
+          entityId: intake.id,
+          details: {
+            leadId,
+            questionSetId: questionSet?.id || null,
+            practiceAreaId: lead.practiceAreaId,
+          },
+        },
+      });
+
+      res.status(201).json(intake);
+    } catch (error) {
+      console.error("Init intake error:", error);
+      res.status(500).json({ error: "Failed to initialize intake" });
+    }
+  });
+
+  // PATCH /v1/leads/:id/intake - Update intake answers
+  app.patch("/v1/leads/:id/intake", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { id: leadId } = req.params;
+      const { answers } = req.body;
+
+      if (!answers || typeof answers !== "object") {
+        return res.status(400).json({ error: "Invalid answers format" });
+      }
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const existingIntake = await prisma.intake.findUnique({
+        where: { leadId },
+      });
+
+      if (!existingIntake) {
+        return res.status(404).json({ error: "Intake not found. Initialize first." });
+      }
+
+      if (existingIntake.completionStatus === "complete") {
+        return res.status(400).json({ error: "Cannot update completed intake" });
+      }
+
+      // Merge new answers with existing
+      const existingAnswers = (existingIntake.answers as Record<string, any>) || {};
+      const mergedAnswers = { ...existingAnswers, ...answers };
+
+      const intake = await prisma.intake.update({
+        where: { leadId },
+        data: {
+          answers: mergedAnswers,
+        },
+        include: {
+          questionSet: {
+            select: { id: true, name: true, schema: true, version: true },
+          },
+          practiceArea: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.id,
+          actorType: "user",
+          action: "intake_updated",
+          entityType: "intake",
+          entityId: intake.id,
+          details: {
+            leadId,
+            updatedFields: Object.keys(answers),
+          },
+        },
+      });
+
+      res.json(intake);
+    } catch (error) {
+      console.error("Update intake error:", error);
+      res.status(500).json({ error: "Failed to update intake" });
+    }
+  });
+
+  // POST /v1/leads/:id/intake/complete - Complete intake
+  app.post("/v1/leads/:id/intake/complete", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { id: leadId } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const existingIntake = await prisma.intake.findUnique({
+        where: { leadId },
+      });
+
+      if (!existingIntake) {
+        return res.status(404).json({ error: "Intake not found. Initialize first." });
+      }
+
+      if (existingIntake.completionStatus === "complete") {
+        return res.status(400).json({ error: "Intake already completed" });
+      }
+
+      const intake = await prisma.intake.update({
+        where: { leadId },
+        data: {
+          completionStatus: "complete",
+          completedAt: new Date(),
+        },
+        include: {
+          questionSet: {
+            select: { id: true, name: true, schema: true, version: true },
+          },
+          practiceArea: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.id,
+          actorType: "user",
+          action: "intake_completed",
+          entityType: "intake",
+          entityId: intake.id,
+          details: {
+            leadId,
+            answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
+          },
+        },
+      });
+
+      // Webhook stub - record that event should be emitted
+      // In production, this would call the webhook delivery system
+      console.log(`[WEBHOOK STUB] intake.completed event for intake ${intake.id}, lead ${leadId}`);
+
+      res.json({
+        ...intake,
+        webhookEvent: {
+          type: "intake.completed",
+          recordedAt: new Date().toISOString(),
+          note: "Webhook delivery stub - will be implemented in webhook system",
+        },
+      });
+    } catch (error) {
+      console.error("Complete intake error:", error);
+      res.status(500).json({ error: "Failed to complete intake" });
+    }
+  });
+
   return httpServer;
 }
