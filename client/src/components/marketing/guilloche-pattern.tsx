@@ -72,22 +72,23 @@ export function GuillocheUnderlay() {
   const debugPattern = searchParams.get("debugPattern") === "1";
   const debugFrame = searchParams.get("debugFrame") === "1";
   
-  const baseOpacity = debugPattern ? 0.35 : 0.04;
+  const baseOpacity = debugPattern ? 0.6 : 0.05;
   
   return (
     <div 
       className="absolute inset-0 overflow-hidden pointer-events-none" 
       style={{ 
         zIndex: 0,
-        outline: debugFrame ? "3px dashed hsl(var(--primary))" : "none",
-        outlineOffset: "-3px",
+        outline: debugFrame ? "4px dashed hsl(var(--primary))" : "none",
+        outlineOffset: "-4px",
+        backgroundColor: debugFrame ? "hsla(var(--primary) / 0.03)" : "transparent",
       }}
       data-testid="guilloche-underlay-container"
     >
       <svg
         className="absolute inset-0 w-full h-full text-primary"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ opacity: baseOpacity }}
+        style={{ opacity: baseOpacity, filter: debugPattern ? "none" : "blur(0.3px)" }}
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>

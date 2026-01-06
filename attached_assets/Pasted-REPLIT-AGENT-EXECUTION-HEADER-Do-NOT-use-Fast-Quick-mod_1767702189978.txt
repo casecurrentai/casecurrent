@@ -1,0 +1,99 @@
+REPLIT AGENT EXECUTION HEADER
+Do NOT use Fast/Quick mode. Use the most thorough reasoning/planning mode available.
+Implement ONLY this checkpoint. Do NOT start new features beyond what is listed here.
+After completion create a Replit checkpoint named exactly: cp10_1-visual-parity-and-backend-proof
+Stop after completion.
+
+========================================================
+CHECKPOINT 10.1 — VISUAL PARITY (COUNSELTECH.NET) + BACKEND PROOF REPORT
+========================================================
+
+GOALS:
+A) Fix marketing UI so it matches counseltech.net’s spacing/hierarchy and visibly includes the signature guilloche + wireframe framing on ALL marketing pages.
+B) Produce a “Backend Proof Report” so the owner can verify the product is actually sellable (OpenAPI present, migrations present, smoke tests run, Twilio routes exist if implemented).
+
+SCOPE:
+- Marketing pages only for design changes (/, /solutions, /how-it-works, /security, /pricing, /resources, /contact or /demo).
+- Backend report is read-only verification + running tests; do not add new features.
+
+--------------------------------------------------------
+A) VISUAL PARITY FIX (COUNSELTECH.NET FEEL)
+--------------------------------------------------------
+
+1) Ensure ALL marketing pages use ONE shared MarketingLayout/PageShell (nav + footer + global background layers).
+- If any marketing page does not use MarketingLayout, refactor it so it does.
+- MarketingLayout should not apply to authenticated dashboard pages.
+
+2) Guilloche signature MUST be visible:
+- Add/confirm a GuillocheUnderlay component mounted behind the top nav + hero on ALL marketing pages.
+- Add debug toggles:
+  - ?debugPattern=1 => guilloche opacity becomes unmistakable
+  - ?debugFrame=1   => outline the guilloche container so we can confirm it is mounted and positioned
+- Fix z-index/background layering so the guilloche is not hidden by an opaque layer.
+- Default (no debug params) should be subtle but still perceptible on high-quality displays.
+
+3) Wireframe signature MUST be present across the whole marketing site:
+- Implement/confirm a reusable SectionFrame component (corner brackets, thin strokes, subtle connectors).
+- Apply SectionFrame at least 2 times on EVERY marketing page (not just homepage).
+- Increase usage on pages that look “empty” by framing major sections.
+
+4) Spacing + hierarchy improvements (match counseltech.net’s rhythm):
+- Increase vertical spacing between sections (consistent section padding).
+- Enforce a consistent typography scale: big hero H1, strong H2 section headers, short subheads, readable body.
+- Convert “dense” blocks into card grids (like counseltech.net):
+  - 3-up capability cards
+  - 6–12 “Everything included” feature cards
+- CTAs: ensure primary CTA is consistent across pages (“Book a Demo”) and placed in hero and bottom CTA band.
+
+5) Create a visual verification page:
+- Add /design-audit (unauthed) listing links to every marketing page with ?debugPattern=1&debugFrame=1 appended.
+- Include a checkbox list of requirements:
+  - Guilloche visible in debug mode
+  - SectionFrame appears multiple times
+  - Section spacing consistent
+  - CTA buttons consistent
+
+--------------------------------------------------------
+B) BACKEND PROOF REPORT (NO NEW FEATURES)
+--------------------------------------------------------
+
+Create a markdown file at /docs/BACKEND_PROOF_REPORT.md containing:
+
+1) DB
+- Prisma schema present (path)
+- List migrations (names + timestamps)
+- Confirm seed exists and what it creates (org + owner user etc.)
+
+2) API + OpenAPI
+- Confirm /docs (OpenAPI/Swagger) endpoint exists and how to access it
+- List all implemented /v1 routes (grouped by feature area)
+- Confirm auth flow endpoints exist and are working
+
+3) Smoke tests
+- Run the API smoke tests (or add minimal ones if missing, but do not expand scope)
+- Paste the exact command(s) run and the output summary (pass/fail)
+
+4) Telephony/Twilio status
+- List whether these routes exist and what they do:
+  /v1/telephony/twilio/voice
+  /v1/telephony/twilio/status
+  /v1/telephony/twilio/recording
+  /v1/telephony/twilio/sms
+- If not implemented yet, state clearly: “not implemented in this build.”
+
+5) Known gaps
+- A short list of what is NOT implemented yet that would be needed for production onboarding (e.g., firm provisioning wizard, phone number mapping UI, etc.), if applicable.
+
+REQUIRED VERIFICATION BEFORE STOPPING:
+- Provide 3–5 URLs to test visually:
+  /?debugPattern=1&debugFrame=1
+  /pricing?debugPattern=1&debugFrame=1
+  /solutions?debugPattern=1&debugFrame=1
+  /how-it-works?debugPattern=1&debugFrame=1
+  /design-audit
+- Confirm guilloche is unmistakable in debug mode.
+- Confirm SectionFrame appears multiple times on every marketing page.
+- Confirm BACKEND_PROOF_REPORT.md exists with the above sections.
+
+Create Replit checkpoint: cp10_1-visual-parity-and-backend-proof
+Then STOP.
