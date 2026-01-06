@@ -199,8 +199,10 @@ export async function registerRoutes(
   app.post("/v1/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
+      console.log("[LOGIN] Attempt for email:", email, "password length:", password?.length);
 
       if (!email || !password) {
+        console.log("[LOGIN] Missing email or password");
         return res.status(400).json({ error: "Email and password required" });
       }
 
@@ -208,13 +210,17 @@ export async function registerRoutes(
         where: { email },
         include: { organization: true },
       });
+      console.log("[LOGIN] User found:", !!user, user?.email);
 
       if (!user) {
+        console.log("[LOGIN] User not found for email:", email);
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
       const validPassword = await comparePassword(password, user.passwordHash);
+      console.log("[LOGIN] Password validation result:", validPassword);
       if (!validPassword) {
+        console.log("[LOGIN] Invalid password for user:", email);
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
@@ -235,6 +241,7 @@ export async function registerRoutes(
         { email: user.email, timestamp: new Date().toISOString() }
       );
 
+      console.log("[LOGIN] Success! Sending response for:", email);
       res.json({
         token,
         user: {
@@ -247,6 +254,7 @@ export async function registerRoutes(
           id: user.organization.id,
           name: user.organization.name,
           slug: user.organization.slug,
+          onboardingStatus: user.organization.onboardingStatus,
         },
       });
     } catch (error) {
