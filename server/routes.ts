@@ -3603,8 +3603,43 @@ export async function registerRoutes(
       }
 
       if (!phoneNumber) {
-        console.log(`[Twilio Voice] No phone number found for any variant of ${maskPhone(To)}, returning generic TwiML`);
-        console.log(`[Twilio Voice] Tried variants: ${toVariants.map(v => `"${v}"`).join(", ")}`);
+        // DIAGNOSTIC LOGGING - TASK A
+        const rawTo = To || "";
+        const trimmedTo = rawTo.trim();
+        const digitsOnly = trimmedTo.replace(/\D/g, "");
+        const ensurePlus = trimmedTo.startsWith("+") ? trimmedTo : "+" + digitsOnly;
+        const e164Guess = digitsOnly.length === 10 ? "+1" + digitsOnly : "+" + digitsOnly;
+        
+        console.log(`[Twilio Voice DIAG] ========== NOT CONFIGURED DEBUG ==========`);
+        console.log(`[Twilio Voice DIAG] Host: ${req.headers["host"]}`);
+        console.log(`[Twilio Voice DIAG] URL: ${req.originalUrl}`);
+        console.log(`[Twilio Voice DIAG] Content-Type: ${req.headers["content-type"]}`);
+        console.log(`[Twilio Voice DIAG] Raw To: "${maskPhone(rawTo)}"`);
+        console.log(`[Twilio Voice DIAG] Trimmed To: "${maskPhone(trimmedTo)}"`);
+        console.log(`[Twilio Voice DIAG] Digits Only: "${maskPhone(digitsOnly)}"`);
+        console.log(`[Twilio Voice DIAG] Ensure Plus: "${maskPhone(ensurePlus)}"`);
+        console.log(`[Twilio Voice DIAG] E164 Guess: "${maskPhone(e164Guess)}"`);
+        
+        // Try all candidate lookups
+        const candidates = [rawTo, trimmedTo, ensurePlus, e164Guess];
+        const uniqueCandidates = [...new Set(candidates.filter(c => c && c.length > 0))];
+        
+        console.log(`[Twilio Voice DIAG] Searching with candidates: ${uniqueCandidates.map(c => `"${maskPhone(c)}"`).join(", ")}`);
+        
+        // Fetch ALL phone numbers and check for any match
+        const allPhoneNumbers = await prisma.phoneNumber.findMany({
+          select: { id: true, e164: true, orgId: true, inboundEnabled: true },
+        });
+        console.log(`[Twilio Voice DIAG] Total phone_numbers in DB: ${allPhoneNumbers.length}`);
+        
+        for (const pn of allPhoneNumbers) {
+          const pnDigits = pn.e164.replace(/\D/g, "");
+          const matches = uniqueCandidates.some(c => c === pn.e164 || c.replace(/\D/g, "") === pnDigits);
+          console.log(`[Twilio Voice DIAG] DB row: e164="${maskPhone(pn.e164)}" orgId=${pn.orgId} inboundEnabled=${pn.inboundEnabled} matchesCandidate=${matches}`);
+        }
+        
+        console.log(`[Twilio Voice DIAG] ========== END DEBUG ==========`);
+        
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>

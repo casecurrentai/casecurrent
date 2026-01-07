@@ -60,6 +60,46 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // TASK B & C - Database fingerprint and phone number check on startup
+  try {
+    const dbUrl = process.env.DATABASE_URL || "";
+    if (dbUrl) {
+      // Parse DATABASE_URL for fingerprint (don't log credentials)
+      const urlMatch = dbUrl.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+      if (urlMatch) {
+        const host = urlMatch[1];
+        const dbName = urlMatch[3];
+        const dbFingerprint = dbName.length > 6 ? dbName.slice(-6) : dbName;
+        console.log(`[DB] Fingerprint - host=${host} db=...${dbFingerprint}`);
+      } else {
+        console.log(`[DB] Fingerprint - Could not parse DATABASE_URL`);
+      }
+    }
+    
+    // TASK C - Check for phone number on startup
+    const { PrismaClient } = await import("../apps/api/src/generated/prisma");
+    const { PrismaPg } = await import("@prisma/adapter-pg");
+    const startupPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: dbUrl }) });
+    
+    const phoneCheck = await startupPrisma.phoneNumber.findFirst({
+      where: { e164: "+18443214257" },
+      select: { e164: true, orgId: true, inboundEnabled: true },
+    });
+    
+    if (phoneCheck) {
+      console.log(`[DB STARTUP] Phone +18443214257 EXISTS: orgId=${phoneCheck.orgId} inboundEnabled=${phoneCheck.inboundEnabled}`);
+    } else {
+      console.log(`[DB STARTUP] Phone +18443214257 NOT FOUND in database`);
+    }
+    
+    const totalPhones = await startupPrisma.phoneNumber.count();
+    console.log(`[DB STARTUP] Total phone_numbers in database: ${totalPhones}`);
+    
+    await startupPrisma.$disconnect();
+  } catch (err: any) {
+    console.error(`[DB STARTUP] Error during DB check:`, err?.message || err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

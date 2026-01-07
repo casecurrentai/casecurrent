@@ -1,0 +1,45 @@
+We are still hearing “This number is not currently configured” when calling +18443214257. That response only happens when our /v1/telephony/twilio/voice handler fails to find a phone_numbers row for the inbound To value.
+
+I want definitive proof from the LIVE request path.
+
+TASK A — Add diagnostic logging (do NOT leak secrets)
+In server/routes.ts inside POST /v1/telephony/twilio/voice, right before the “not configured” TwiML is returned, log these fields (masked):
+- req.headers["host"]
+- req.originalUrl
+- content-type
+- req.body.To (raw)
+- req.body.To trimmed
+- normalized versions:
+  1) raw
+  2) trimmed
+  3) ensurePlus = startsWith("+") ? value : "+" + digits
+  4) digitsOnly (strip non-digits)
+  5) e164Guess = "+1" + digitsOnly if 10 digits else "+" + digitsOnly
+
+Then run the lookup using ALL candidates:
+WHERE e164 IN [raw, trimmed, ensurePlus, e164Guess]
+Also try digits-based fallback:
+WHERE REPLACE(e164,'+','') = digitsOnly OR REPLACE(REPLACE(e164,'+',''),'-','') = digitsOnly (or equivalent in Prisma: fetch candidates and compare in JS)
+
+Log whether any match was found and which e164 matched.
+
+TASK B — Prove which database the deployed server is connected to
+Add a single log line (masked) that prints a stable fingerprint of DATABASE_URL (NOT the full value).
+Example:
+- parse DATABASE_URL host + db name (or the last 6 chars of the db name), and log: “[DB] host=<host> db=<db>”
+Do not print username/password.
+
+TASK C — Prove the row exists in THAT database
+On server startup (or via a one-off script run in the same environment as the published server), query:
+SELECT e164, org_id, inbound_enabled FROM phone_numbers WHERE e164 = '+18443214257';
+(or Prisma equivalent)
+and log the result.
+
+TASK D — Re-test with a real call
+After deploying changes, call +18443214257 again and paste the production logs from the Twilio request showing:
+- The exact To value received
+- The DB fingerprint
+- Whether the phone number row exists / matched
+- Which match path succeeded/failed
+
+Do NOT claim success without the logs.
