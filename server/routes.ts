@@ -3458,11 +3458,22 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Invalid secret" });
       }
 
-      // Ensure organization exists (create if not)
+      // Ensure organization exists (create if not, or find by slug)
       let org = await prisma.organization.findUnique({
         where: { id: orgId },
       });
 
+      // If org not found by ID, try to find by slug
+      if (!org && orgSlug) {
+        org = await prisma.organization.findUnique({
+          where: { slug: orgSlug },
+        });
+        if (org) {
+          console.log(`[Bootstrap] Found existing org by slug "${orgSlug}": ${org.id}`);
+        }
+      }
+
+      // Create org if still not found
       if (!org && orgName && orgSlug) {
         org = await prisma.organization.create({
           data: {
@@ -3478,6 +3489,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Organization not found. Provide orgName and orgSlug to create." });
       }
 
+      // Use the actual org ID (may differ from provided if found by slug)
+      const actualOrgId = org.id;
+
       // Check if phone number already exists
       const existing = await prisma.phoneNumber.findFirst({
         where: { e164 },
@@ -3488,28 +3502,28 @@ export async function registerRoutes(
         const updated = await prisma.phoneNumber.update({
           where: { id: existing.id },
           data: { 
-            orgId, 
+            orgId: actualOrgId, 
             inboundEnabled: true,
             label: label || existing.label,
             provider: provider || existing.provider,
           },
         });
-        console.log(`[Bootstrap] Updated phone number ${maskPhone(e164)} for org ${orgId}`);
-        return res.json({ action: "updated", id: updated.id, e164: updated.e164, orgCreated: false });
+        console.log(`[Bootstrap] Updated phone number ${maskPhone(e164)} for org ${actualOrgId}`);
+        return res.json({ action: "updated", id: updated.id, e164: updated.e164, orgId: actualOrgId, orgCreated: false });
       }
 
       // Create new phone number
       const created = await prisma.phoneNumber.create({
         data: {
-          orgId,
+          orgId: actualOrgId,
           e164,
           label: label || "Inbound Line",
           provider: provider || "twilio",
           inboundEnabled: true,
         },
       });
-      console.log(`[Bootstrap] Created phone number ${maskPhone(e164)} for org ${orgId}`);
-      return res.json({ action: "created", id: created.id, e164: created.e164, orgCreated: !org });
+      console.log(`[Bootstrap] Created phone number ${maskPhone(e164)} for org ${actualOrgId}`);
+      return res.json({ action: "created", id: created.id, e164: created.e164, orgId: actualOrgId });
     } catch (error: any) {
       console.error("[Bootstrap] Error:", error?.message || error);
       res.status(500).json({ error: "Bootstrap failed", details: error?.message });
