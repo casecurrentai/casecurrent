@@ -3442,6 +3442,61 @@ export async function registerRoutes(
   );
 
   // ============================================
+  // BOOTSTRAP - ONE-TIME PHONE NUMBER SETUP
+  // ============================================
+
+  /**
+   * Bootstrap endpoint to ensure phone number exists in production
+   * Protected by SEED_SECRET to prevent unauthorized access
+   */
+  app.post("/v1/bootstrap/phone-number", async (req, res) => {
+    try {
+      const { secret, orgId, e164, label, provider } = req.body;
+      
+      // Validate secret
+      if (secret !== process.env.SEED_SECRET) {
+        return res.status(401).json({ error: "Invalid secret" });
+      }
+
+      // Check if already exists
+      const existing = await prisma.phoneNumber.findFirst({
+        where: { e164 },
+      });
+
+      if (existing) {
+        // Update if needed
+        const updated = await prisma.phoneNumber.update({
+          where: { id: existing.id },
+          data: { 
+            orgId, 
+            inboundEnabled: true,
+            label: label || existing.label,
+            provider: provider || existing.provider,
+          },
+        });
+        console.log(`[Bootstrap] Updated phone number ${maskPhone(e164)} for org ${orgId}`);
+        return res.json({ action: "updated", id: updated.id, e164: updated.e164 });
+      }
+
+      // Create new
+      const created = await prisma.phoneNumber.create({
+        data: {
+          orgId,
+          e164,
+          label: label || "Inbound Line",
+          provider: provider || "twilio",
+          inboundEnabled: true,
+        },
+      });
+      console.log(`[Bootstrap] Created phone number ${maskPhone(e164)} for org ${orgId}`);
+      return res.json({ action: "created", id: created.id, e164: created.e164 });
+    } catch (error) {
+      console.error("[Bootstrap] Error:", error);
+      res.status(500).json({ error: "Bootstrap failed" });
+    }
+  });
+
+  // ============================================
   // TELEPHONY - OPENAI REALTIME WEBHOOK
   // ============================================
 
