@@ -148,14 +148,18 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
     return;
   }
 
+  console.log(`[OpenAI Webhook DIAG] Starting signature verification...`);
   const isValid = verifyStandardWebhooksSignature(rawBody, webhookId, webhookTimestamp, webhookSignature);
+  console.log(`[OpenAI Webhook DIAG] Signature valid: ${isValid}`);
   if (!isValid) {
-    console.error("[OpenAI Webhook] Invalid signature");
+    console.error("[OpenAI Webhook] Invalid signature - REJECTING");
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
+  console.log(`[OpenAI Webhook DIAG] Signature verified OK, checking idempotency...`);
 
   const alreadyProcessed = await checkIdempotency(webhookId);
+  console.log(`[OpenAI Webhook DIAG] Already processed: ${alreadyProcessed}`);
   if (alreadyProcessed) {
     console.log(`[OpenAI Webhook] Duplicate webhook-id ${webhookId}, ignoring`);
     res.status(200).json({ received: true, duplicate: true });
@@ -164,7 +168,9 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 
   let event: OpenAIWebhookEvent;
   try {
+    console.log(`[OpenAI Webhook DIAG] Parsing JSON body...`);
     event = JSON.parse(rawBody.toString("utf-8"));
+    console.log(`[OpenAI Webhook DIAG] Parsed event type: ${event.type}`);
   } catch (error) {
     console.error("[OpenAI Webhook] Failed to parse event:", error);
     res.status(400).json({ error: "Invalid JSON" });
@@ -175,6 +181,7 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
     call_id: event.data?.call_id,
     webhookId,
   });
+  console.log(`[OpenAI Webhook DIAG] About to record webhook and process...`);
 
   await recordWebhookProcessed(webhookId, event.type);
 

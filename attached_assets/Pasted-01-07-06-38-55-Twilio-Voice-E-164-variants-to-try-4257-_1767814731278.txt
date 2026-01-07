@@ -1,0 +1,66 @@
+01-07 06:38:55
+[Twilio Voice] E.164 variants to try: +*******4257
+01-07 06:46:55
+[Twilio Voice] E.164 variants to try: +*******4257
+01-07 06:46:55
+[Twilio Voice] Incoming call - Raw To: "+*******4257", CallSid: CA84***d870
+01-07 06:50:32
+[Twilio Voice] E.164 variants to try: +*******4257
+01-07 06:50:32
+[Twilio Voice] Incoming call - Raw To: "+*******4257", CallSid: CAee***ac20
+01-07 07:00:39
+[Twilio Voice] E.164 variants to try: +*******4257
+01-07 07:00:39
+[Twilio Voice] Incoming call - Raw To: "+*******4257", CallSid: CA48***a867
+01-07 07:00:41
+[Twilio Voice] Phone number FOUND using variant: "+*******4257", orgId: aca4478f-97da-488a-863e-e9566d7b9cb7
+01-07 07:00:42
+[Twilio Voice] Bridging call CA48***a867 to OpenAI SIP: sip:proj***almg@sip.api.openai.com;transport=tls
+01-07 13:04:35
+[Twilio Voice] Incoming call - Raw To: "+*******4257", CallSid: CAd4***d596
+01-07 13:04:35
+[Twilio Voice] E.164 variants to try: +*******4257
+01-07 13:04:36
+[Twilio Voice] Phone number FOUND using variant: "+*******4257", orgId: aca4478f-97da-488a-863e-e9566d7b9cb7
+01-07 13:04:37
+[Twilio Voice] Bridging call CAd4***d596 to OpenAI SIP: sip:proj***almg@sip.api.openai.com;transport=tls
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] CallSid: "CA490bb69a045dd42a1401ae3800584dae"
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] Raw From: "+*******5237"
+01-07 13:08:06
+[Twilio Voice] ========== REQUEST 2OGAQ00C ==========
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] Raw To: "+18443214257"
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] DB: ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech/...neondb
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] phone_numbers count: 1
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] Candidates: "+18443214257"
+01-07 13:08:06
+[Twilio Voice] [2OGAQ00C] MATCH FOUND: e164=+18443214257 orgId=aca4478f-97da-488a-863e-e9566d7b9cb7
+01-07 13:08:06
+[Twilio Voice] Bridging call CA49***4dae to OpenAI SIP: sip:proj***almg@sip.api.openai.com;transport=tls
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] Raw From: "+*******5237"
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] DB: ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech/...neondb
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] phone_numbers count: 1
+01-07 13:19:00
+[Twilio Voice] ========== REQUEST NEUUFN4P ==========
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] CallSid: "CAd86169a78b4a3f9a3e36722c58d9a185"
+01-07 13:19:00
+[Twilio Voice] [NEUUFN4P] Raw To: "+18443214257"
+01-07 13:19:01
+[Twilio Voice] [NEUUFN4P] Candidates: "+18443214257"
+01-07 13:19:01
+[Twilio Voice] [NEUUFN4P] MATCH FOUND: e164=+18443214257 orgId=aca4478f-97da-488a-863e-e9566d7b9cb7
+01-07 13:19:01
+[Twilio Voice] Bridging call CAd8***a185 to OpenAI SIP: sip:proj***almg@sip.api.openai.com;transport=tls
