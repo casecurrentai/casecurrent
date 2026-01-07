@@ -1,0 +1,99 @@
+Replit Agent: We must correct the OpenAI Realtime SIP integration to match OpenAI’s current docs and be production-safe for multi-tenant CounselTech. Implement the following changes precisely.
+
+GOALS (must-haves)
+1) OpenAI SIP webhook MUST verify signatures using the Standard Webhooks scheme (webhook-id, webhook-timestamp, webhook-signature). Do NOT use X-OpenAI-Signature.
+2) On realtime.call.incoming, we MUST accept the call by POSTing to:
+   https://api.openai.com/v1/realtime/calls/{call_id}/accept
+   Include the full realtime configuration in that accept request: model, instructions, voice, tools, etc.
+3) After accepting the call, open the sideband WebSocket:
+   wss://api.openai.com/v1/realtime?call_id={call_id}
+   Then send response.create to start the conversation.
+4) Use model "gpt-realtime" (NOT gpt-4o-realtime-preview). Remove any "OpenAI-Beta: realtime=v1" headers from WebSocket connections. We must be compatible with GA and avoid Feb 27, 2026 shutdown risk.
+5) Multi-tenancy safety: NEVER default to the first active org. If we cannot reliably resolve org, REJECT the call (OpenAI reject endpoint), log, and do not proceed.
+6) Ensure call records + transcripts attach to the same providerCallId = the OpenAI call_id (not Twilio CallSid). If Twilio CallSid exists, store it separately, but the realtime session keying must be OpenAI call_id.
+
+REFERENCE BEHAVIOR FROM OPENAI DOCS (implement accordingly)
+- realtime.call.incoming event comes as an OpenAI webhook “event object” and the phone numbers are in event.data.sip_headers, not top-level fields.
+- Accept endpoint config sets the session. WS is for monitoring + issuing commands like response.create and tool handling.
+
+REQUIRED CODE CHANGES
+
+A) server/openai/webhook.ts
+- Replace custom HMAC verifier with OpenAI SDK webhook helper unwrap(), or implement Standard Webhooks verification exactly as documented.
+- Expect these headers: webhook-id, webhook-timestamp, webhook-signature.
+- Parse event as an "event object" with:
+  event.type
+  event.data.call_id
+  event.data.sip_headers (array of {name,value})
+- Implement idempotency using webhook-id: store processed webhook-id in DB (new table WebhookDelivery or reuse existing OutgoingWebhookDelivery-like pattern) and ignore duplicates with 200 OK.
+- On realtime.call.incoming:
+  1) Extract call_id = event.data.call_id
+  2) Extract caller + called numbers from sip_headers "From" and "To" (values look like sip:+1800555...@...)
+     - Normalize to E.164 if possible.
+  3) Resolve org by the called number (To). MUST match phone_numbers table. If no match:
+     - Call OpenAI reject endpoint with status_code 603 or 486.
+     - Return 200.
+  4) Create or find Contact + Lead + Interaction + Call records in DB using providerCallId = call_id and orgId from match.
+     - Set Call.startedAt = now.
+  5) Call OpenAI accept endpoint:
+     POST https://api.openai.com/v1/realtime/calls/{call_id}/accept
+     Authorization: Bearer OPENAI_API_KEY
+     Body includes:
+       {
+         "type": "realtime",
+         "model": "gpt-realtime",
+         "instructions": COUNSELTECH_INTAKE_PROMPT,
+         "voice": VOICE_SETTINGS.voice,
+         "tools": getToolSchemas(),
+         "tool_choice": "auto",
+         "temperature": ...,
+         "turn_detection": ...
+       }
+  6) If accept succeeds, start sideband WS monitoring (startRealtimeSession) and send initial response.create greeting.
+
+B) server/openai/realtime.ts
+- Assume the call was configured by accept endpoint. On WS connect:
+  - Do NOT send session.update as the primary configuration step for SIP. (You may still allow it for dynamic updates later, but not required to make the call work.)
+  - Immediately send response.create for the greeting and disclaimers.
+- Update tool-call handling to match realtime tool call event flow:
+  - Wait for response.function_call_arguments.done, then send conversation.item.create with function_call_output for that call_id.
+  - Do NOT double-execute tools (avoid executing once on arguments.done and again on response.done output). Ensure each tool call executes exactly once.
+- Store transcripts to prisma.call where providerCallId = call_id, and DO NOT write to the wrong org.
+
+C) server/routes.ts (Twilio)
+- Twilio voice endpoint should primarily bridge to OpenAI SIP endpoint using project id:
+  sip:{OPENAI_PROJECT_ID}@sip.api.openai.com;transport=tls
+- Keep voicemail fallback only if OPENAI_PROJECT_ID or OPENAI_API_KEY is missing, but do not treat fallback as success.
+- Remove AWS Polly voice attributes if not configured. Use plain <Say> unless you are sure Polly is enabled in Twilio account.
+
+D) server/index.ts raw body
+- Do NOT capture rawBody for all JSON routes globally if possible; scope raw-body capture to only the OpenAI webhook route to reduce attack surface and avoid overhead. Implement:
+  app.post("/v1/telephony/openai/webhook", express.raw({ type: "application/json" }), handler)
+  and ensure other routes still use express.json normally.
+- If refactor is risky, keep current verify approach but ensure it does not break other JSON endpoints.
+
+E) Environment variables
+- Ensure required: OPENAI_API_KEY, OPENAI_PROJECT_ID, OPENAI_WEBHOOK_SECRET
+- Add optional: OPENAI_WEBHOOK_TOLERANCE_SECONDS (default 300) if using timestamp verification.
+- Update replit.md with the exact steps to configure OpenAI webhook endpoint and Twilio SIP/trunking.
+
+OUTPUT REQUIREMENTS (for verification)
+After implementing, output a single copy/paste report containing:
+1) The final code for:
+   - server/openai/webhook.ts
+   - server/openai/realtime.ts
+   - the Twilio /v1/telephony/twilio/voice handler portion
+2) The curl commands to:
+   - verify webhook endpoint locally using a real OpenAI-style header set (webhook-id, webhook-timestamp, webhook-signature)
+   - accept endpoint is called (show log line or mock)
+3) A “Happy path” log trace for a real inbound call:
+   - webhook received
+   - signature verified
+   - org resolved
+   - call record created
+   - accept called 200 OK
+   - WS connected
+   - response.create sent
+   - tool call executed
+   - transcript saved
+Do not omit any of these.
