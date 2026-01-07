@@ -18,6 +18,8 @@ import {
   isPlatformAdmin,
   type AuthenticatedRequest,
 } from "./auth";
+import { handleOpenAIWebhook } from "./openai/webhook";
+import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
 
 function slugify(text: string): string {
   return text
@@ -3283,6 +3285,27 @@ export async function registerRoutes(
   );
 
   // ============================================
+  // TELEPHONY - OPENAI REALTIME WEBHOOK
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/telephony/openai/webhook:
+   *   post:
+   *     summary: Handle OpenAI Realtime call webhooks
+   *     tags: [Telephony]
+   *     description: Receives events from OpenAI when realtime calls come in via SIP
+   *     responses:
+   *       200:
+   *         description: Webhook acknowledged
+   *       401:
+   *         description: Invalid signature
+   */
+  app.post("/v1/telephony/openai/webhook", async (req, res) => {
+    await handleOpenAIWebhook(req, res);
+  });
+
+  // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
   // ============================================
 
@@ -3292,6 +3315,7 @@ export async function registerRoutes(
    *   post:
    *     summary: Handle incoming Twilio voice call webhook
    *     tags: [Telephony]
+   *     description: Routes inbound calls to OpenAI Realtime via SIP, or fallback to voicemail
    *     responses:
    *       200:
    *         description: TwiML response
@@ -3415,19 +3439,52 @@ export async function registerRoutes(
       });
 
       res.set("Content-Type", "text/xml");
-      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+
+      // Check if OpenAI Realtime is configured - if so, bridge to SIP
+      if (isOpenAIConfigured()) {
+        try {
+          const projectId = getOpenAIProjectId();
+          // Bridge call to OpenAI Realtime via SIP
+          // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls
+          const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls`;
+          
+          console.log(`[Twilio Voice] Bridging call ${CallSid} to OpenAI SIP: ${sipUri}`);
+          
+          res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. An AI assistant will be with you shortly.</Say>
+  <Say voice="Polly.Joanna">Thank you for calling. Connecting you to our AI assistant now.</Say>
+  <Dial timeout="30" callerId="${To}">
+    <Sip>${sipUri}</Sip>
+  </Dial>
+  <Say>We're sorry, the connection could not be completed. Please try again later.</Say>
+  <Hangup/>
+</Response>`);
+        } catch (sipError) {
+          console.error("[Twilio Voice] SIP bridge error:", sipError);
+          // Fallback to voicemail if SIP fails
+          res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Thank you for calling. Our AI assistant is currently unavailable. Please leave a message after the beep.</Say>
   <Pause length="1"/>
-  <Say>Please describe your legal matter after the beep.</Say>
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
+        }
+      } else {
+        // Fallback: OpenAI not configured, use voicemail capture
+        console.log(`[Twilio Voice] OpenAI not configured, using voicemail for call ${CallSid}`);
+        res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
+  <Pause length="1"/>
+  <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
+</Response>`);
+      }
     } catch (error) {
       console.error("Twilio voice webhook error:", error);
       res.set("Content-Type", "text/xml");
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>We encountered an error. Please try again later.</Say>
+  <Say voice="Polly.Joanna">We encountered an error. Please try again later.</Say>
   <Hangup/>
 </Response>`);
     }
