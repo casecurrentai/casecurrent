@@ -3419,7 +3419,7 @@ export async function registerRoutes(
           phoneNumberId: phoneNumber.id,
           direction: Direction?.toLowerCase() === "outbound-api" ? "outbound" : "inbound",
           provider: "twilio",
-          providerCallId: CallSid,
+          twilioCallSid: CallSid,
           fromE164: From,
           toE164: To,
           startedAt: new Date(),
@@ -3434,7 +3434,7 @@ export async function registerRoutes(
           action: "inbound_call_received",
           entityType: "call",
           entityId: call.id,
-          details: { providerCallId: CallSid, from: From, to: To },
+          details: { twilioCallSid: CallSid, from: From, to: To },
         },
       });
 

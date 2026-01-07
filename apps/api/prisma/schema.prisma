@@ -266,7 +266,8 @@ model Call {
   phoneNumberId   String    @map("phone_number_id")
   direction       String    // inbound, outbound
   provider        String
-  providerCallId  String    @map("provider_call_id")
+  providerCallId  String?   @map("provider_call_id") // OpenAI call_id (set when OpenAI webhook arrives)
+  twilioCallSid   String?   @map("twilio_call_sid")  // Twilio CallSid (set when Twilio webhook arrives)
   fromE164        String    @map("from_e164")
   toE164          String    @map("to_e164")
   startedAt       DateTime  @map("started_at")
@@ -285,6 +286,8 @@ model Call {
   interaction  Interaction  @relation(fields: [interactionId], references: [id], onDelete: Cascade)
   phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id])
 
+  @@index([twilioCallSid])
+  @@index([providerCallId])
   @@map("calls")
 }
 
@@ -615,4 +618,19 @@ model AuditLog {
   actorUser    User?        @relation(fields: [actorUserId], references: [id])
 
   @@map("audit_logs")
+}
+
+// ============================================
+// WEBHOOK RECEIPT (for idempotency)
+// ============================================
+
+model WebhookReceipt {
+  id          String   @id @default(uuid())
+  webhookId   String   @unique @map("webhook_id") // Standard Webhooks webhook-id header
+  source      String   // "openai", "twilio", etc.
+  eventType   String   @map("event_type")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([source, webhookId])
+  @@map("webhook_receipts")
 }

@@ -79,27 +79,18 @@ export function verifyStandardWebhooksSignature(
 }
 
 async function checkIdempotency(webhookId: string): Promise<boolean> {
-  const existing = await prisma.auditLog.findFirst({
-    where: {
-      action: "webhook_processed",
-      details: {
-        path: ["webhookId"],
-        equals: webhookId,
-      },
-    },
+  const existing = await prisma.webhookReceipt.findUnique({
+    where: { webhookId },
   });
   return !!existing;
 }
 
 async function recordWebhookProcessed(webhookId: string, eventType: string): Promise<void> {
-  await prisma.auditLog.create({
+  await prisma.webhookReceipt.create({
     data: {
-      orgId: "system",
-      actorType: "system",
-      action: "webhook_processed",
-      entityType: "openai_webhook",
-      entityId: webhookId,
-      details: { webhookId, eventType, processedAt: new Date().toISOString() },
+      webhookId,
+      source: "openai",
+      eventType,
     },
   });
 }
@@ -117,6 +108,19 @@ function getSipHeader(headers: SipHeader[] | undefined, name: string): string | 
   if (!headers) return null;
   const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
   return header ? header.value : null;
+}
+
+function extractTwilioCallSid(headers: SipHeader[] | undefined): string | null {
+  const xTwilioCallSid = getSipHeader(headers, "X-Twilio-CallSid");
+  if (xTwilioCallSid) return xTwilioCallSid;
+  
+  const pAssertedIdentity = getSipHeader(headers, "P-Asserted-Identity");
+  if (pAssertedIdentity) {
+    const match = pAssertedIdentity.match(/CA[a-f0-9]{32}/i);
+    if (match) return match[0];
+  }
+  
+  return null;
 }
 
 export async function handleOpenAIWebhook(req: Request, res: Response): Promise<void> {
@@ -189,11 +193,12 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
 
   const fromHeader = getSipHeader(event.data.sip_headers, "From");
   const toHeader = getSipHeader(event.data.sip_headers, "To");
+  const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
 
   const fromNumber = fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown";
   const toNumber = toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown";
 
-  console.log(`[OpenAI Webhook] Incoming call ${callId} from ${fromNumber} to ${toNumber}`);
+  console.log(`[OpenAI Webhook] Incoming call ${callId} from ${fromNumber} to ${toNumber}, twilioCallSid=${twilioCallSid}`);
 
   const org = await findOrgByPhoneNumber(toNumber);
   
@@ -205,14 +210,30 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
   }
 
   try {
-    const { contact, lead, interaction, call } = await createCallRecords(
-      org.id,
-      callId,
-      fromNumber,
-      toNumber
-    );
-
-    console.log(`[OpenAI Webhook] Created call record ${call.id} for org ${org.id}`);
+    let call: any;
+    
+    if (twilioCallSid) {
+      call = await prisma.call.findFirst({
+        where: { twilioCallSid },
+      });
+      
+      if (call) {
+        await prisma.call.update({
+          where: { id: call.id },
+          data: { 
+            providerCallId: callId,
+            provider: "openai_realtime",
+          },
+        });
+        console.log(`[OpenAI Webhook] Linked OpenAI call ${callId} to existing Twilio call ${twilioCallSid}`);
+      }
+    }
+    
+    if (!call) {
+      const result = await createCallRecords(org.id, callId, fromNumber, toNumber, twilioCallSid);
+      call = result.call;
+      console.log(`[OpenAI Webhook] Created new call record ${call.id} for org ${org.id}`);
+    }
 
     const accepted = await acceptCall(callId);
     
@@ -313,7 +334,8 @@ async function createCallRecords(
   orgId: string,
   callId: string,
   fromNumber: string,
-  toNumber: string
+  toNumber: string,
+  twilioCallSid?: string | null
 ): Promise<{ contact: any; lead: any; interaction: any; call: any }> {
   const phoneNumber = await prisma.phoneNumber.findFirst({
     where: { 
@@ -383,6 +405,7 @@ async function createCallRecords(
       direction: "inbound",
       provider: "openai_realtime",
       providerCallId: callId,
+      twilioCallSid: twilioCallSid || null,
       fromE164: fromNumber.startsWith("+") ? fromNumber : `+${fromNumber.replace(/\D/g, "")}`,
       toE164: phoneNumber.e164,
       startedAt: new Date(),
@@ -396,7 +419,7 @@ async function createCallRecords(
       action: "inbound_call_received",
       entityType: "call",
       entityId: call.id,
-      details: { providerCallId: callId, from: fromNumber, to: toNumber },
+      details: { providerCallId: callId, twilioCallSid, from: fromNumber, to: toNumber },
     },
   });
 
@@ -411,7 +434,8 @@ async function acceptCall(callId: string): Promise<boolean> {
   }
 
   const acceptConfig = {
-    model: "gpt-4o-realtime-preview",
+    type: "realtime",
+    model: "gpt-realtime",
     instructions: COUNSELTECH_INTAKE_PROMPT,
     voice: VOICE_SETTINGS.voice,
     modalities: VOICE_SETTINGS.modalities,
