@@ -3451,14 +3451,34 @@ export async function registerRoutes(
    */
   app.post("/v1/bootstrap/phone-number", async (req, res) => {
     try {
-      const { secret, orgId, e164, label, provider } = req.body;
+      const { secret, orgId, orgName, orgSlug, e164, label, provider } = req.body;
       
       // Validate secret
       if (secret !== process.env.SEED_SECRET) {
         return res.status(401).json({ error: "Invalid secret" });
       }
 
-      // Check if already exists
+      // Ensure organization exists (create if not)
+      let org = await prisma.organization.findUnique({
+        where: { id: orgId },
+      });
+
+      if (!org && orgName && orgSlug) {
+        org = await prisma.organization.create({
+          data: {
+            id: orgId,
+            name: orgName,
+            slug: orgSlug,
+          },
+        });
+        console.log(`[Bootstrap] Created organization: ${orgName} (${orgId})`);
+      }
+
+      if (!org) {
+        return res.status(400).json({ error: "Organization not found. Provide orgName and orgSlug to create." });
+      }
+
+      // Check if phone number already exists
       const existing = await prisma.phoneNumber.findFirst({
         where: { e164 },
       });
@@ -3475,10 +3495,10 @@ export async function registerRoutes(
           },
         });
         console.log(`[Bootstrap] Updated phone number ${maskPhone(e164)} for org ${orgId}`);
-        return res.json({ action: "updated", id: updated.id, e164: updated.e164 });
+        return res.json({ action: "updated", id: updated.id, e164: updated.e164, orgCreated: false });
       }
 
-      // Create new
+      // Create new phone number
       const created = await prisma.phoneNumber.create({
         data: {
           orgId,
@@ -3489,10 +3509,10 @@ export async function registerRoutes(
         },
       });
       console.log(`[Bootstrap] Created phone number ${maskPhone(e164)} for org ${orgId}`);
-      return res.json({ action: "created", id: created.id, e164: created.e164 });
-    } catch (error) {
-      console.error("[Bootstrap] Error:", error);
-      res.status(500).json({ error: "Bootstrap failed" });
+      return res.json({ action: "created", id: created.id, e164: created.e164, orgCreated: !org });
+    } catch (error: any) {
+      console.error("[Bootstrap] Error:", error?.message || error);
+      res.status(500).json({ error: "Bootstrap failed", details: error?.message });
     }
   });
 
