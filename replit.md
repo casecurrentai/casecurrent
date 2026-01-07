@@ -1,270 +1,46 @@
 # CounselTech
 
-AI-powered intake and lead capture platform for law firms.
-
 ## Overview
-
-CounselTech is a production-grade MVP that captures inbound phone/SMS/web leads, creates structured intakes, runs qualification scoring, sends notifications, and emits outbound webhooks. The platform includes "self-improving" capabilities with an experimentation engine (A/B testing) for intake scripts and explainable scoring stored in qualification reasons.
+CounselTech is an AI-powered MVP platform designed for law firms. It automates lead capture via phone, SMS, and web, creates structured intakes, performs qualification scoring, sends notifications, and dispatches outbound webhooks. The platform integrates "self-improving" capabilities through an experimentation engine for A/B testing intake scripts and provides explainable AI scoring with stored qualification reasons. Its core purpose is to streamline lead management and improve client intake efficiency for legal practices.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### UI/UX Decisions
+The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, built with shadcn/ui and Radix UI primitives. Styling is managed with Tailwind CSS, incorporating custom design tokens aligned with CounselTech.net branding. The design system features guilloche underlays, wireframe AI blueprint elements, and specific typography/spacing, creating a clean enterprise SaaS aesthetic.
 
-- **Framework**: Dual frontend setup with Vite + React (primary client in `/client`) and Next.js 14 App Router (`/apps/web`)
-- **UI Components**: shadcn/ui component library with Radix UI primitives
-- **Styling**: Tailwind CSS with custom design tokens matching CounselTech.net branding
-- **State Management**: TanStack React Query for server state
-- **Routing**: Wouter for the Vite client, Next.js App Router for the web app
-- **Design System**: Custom design guidelines with guilloche underlays, wireframe AI blueprint elements, and specific typography/spacing requirements
+### Technical Implementations
+- **Frontend**: Vite + React and Next.js 14 App Router. State management is handled by TanStack React Query, and routing by Wouter (Vite client) and Next.js App Router.
+- **Backend**: Primarily Express.js with TypeScript, with an alternative Fastify setup. It exposes a REST API under the `/api` prefix.
+- **Build System**: esbuild for server bundling and Vite for the client.
+- **Development**: `tsx` is used for TypeScript execution in development.
+- **Authentication & Authorization**: Role-based access control (RBAC) with JWT tokens and Express sessions storing in PostgreSQL. Supports roles like owner, admin, staff, and viewer, with platform admin impersonation capabilities.
+- **Monorepo Structure**: Organized into `client/`, `server/`, `shared/`, `apps/` (api, web), and `packages/` (shared, config) for modular development.
 
-### Backend Architecture
+### Feature Specifications
+- **Realtime Voice Integration**: Utilizes OpenAI Realtime Voice for phone calls, managing conversations, executing tools via Prisma, and logging interactions. The AI agent greets callers, collects essential lead information, creates database entries, and can request warm transfers.
+- **Telephony Ingest**: Handles inbound calls and SMS via Twilio webhooks, creating leads, interactions, and calls/messages. It manages call status, recordings, and enqueues transcription jobs.
+- **Structured Intake Flow**: Manages the lifecycle of lead intake, allowing initialization, updating of answers, and completion, with support for practice area-specific question sets.
+- **AI Pipeline & Qualification**: Provides endpoints for AI-driven lead qualification, including transcription, summarization, intake extraction, and scoring based on defined factors (e.g., contact info, practice area, intake completion). It generates detailed qualification reasons.
+- **Webhook System**: Offers CRUD operations for managing webhook endpoints, enabling real-time notifications for events like `lead.created`, `lead.updated`, and `intake.completed`. Features secure signing, retry logic, and delivery logging.
+- **Self-Improving System**: Incorporates A/B testing for intake scripts, qualification rules, and follow-up timings via an Experiments API. It also includes a Policy Tests API for regression testing AI qualification logic and a Follow-up Sequences API for automated multi-step communications.
+- **Platform Admin System**: Provides tools for platform administrators to manage organizations, provision new firms, invite users, impersonate organizations (with auditing), and monitor health snapshots.
 
-- **Framework**: Express.js with TypeScript (primary server in `/server`), with Fastify setup in `/apps/api`
-- **API Structure**: REST API with routes prefixed under `/api`
-- **Build System**: esbuild for server bundling, Vite for client
-- **Development**: tsx for TypeScript execution in development
-
-### Data Storage
-
-- **Database**: PostgreSQL with Prisma ORM (v7.2.0)
-- **Schema Location**: `/apps/api/prisma/schema.prisma` contains 18 base tables with multi-tenant org_id scoping
-- **Migrations**: Prisma Migrate (`/apps/api/prisma/migrations` directory)
-- **Prisma Config**: `/apps/api/prisma.config.ts` for Prisma 7 configuration
-- **Database Adapter**: `@prisma/adapter-pg` for PostgreSQL driver adapter
-- **Seed Script**: `/apps/api/prisma/seed.ts` creates demo organization, owner user, practice areas, intake question set, AI configuration, default policy test suite (6 cases), and default follow-up sequence (3-step SMS)
-
-### Database Tables (27 total)
-
-- **Core**: organizations, users, contacts
-- **Practice**: practice_areas, intake_question_sets, ai_configs
-- **Leads**: leads, interactions, calls, messages
-- **Intake**: intakes, qualifications
-- **Telephony**: phone_numbers
-- **Workflow**: tasks, notifications
-- **Webhooks**: outgoing_webhook_endpoints, outgoing_webhook_deliveries
-- **Audit**: audit_logs
-- **Marketing**: marketing_contact_submissions
-- **Platform Admin**: user_invites, org_health_snapshots
-- **Self-Improving**: experiments, experiment_assignments, experiment_metrics_daily, policy_test_suites, policy_test_runs, followup_sequences
-
-### Marketing Site (Checkpoint 4.5)
-
-Public marketing pages built into the Vite React client:
-- **Routes**: `/` (Home), `/how-it-works`, `/security`, `/solutions`, `/pricing`, `/resources`, `/contact`
-- **Components**: PageShell, Hero, FeatureCard, SectionFrame, UIFrame, PhoneFrame, PricingCard, TimelineStepper, TrustList
-- **Design**: Guilloche SVG patterns, dot-grid backgrounds, wireframe corner brackets, clean enterprise SaaS aesthetic
-- **Contact Form**: POST /v1/marketing/contact with honeypot spam protection and rate limiting (5 submissions/hour per IP)
-- **Admin View**: /admin/contact-submissions for viewing marketing submissions (requires admin role)
-- **SEO**: robots.txt and sitemap.xml in client/public/
-
-### Authentication & Authorization
-
-- **RBAC**: Role-based access control with JWT tokens
-- **Roles**: owner, admin, staff, viewer
-- **Platform Admin**: Identified by PLATFORM_ADMIN_EMAILS env var (comma-separated list)
-- **Session Management**: Express session with connect-pg-simple for PostgreSQL session storage
-- **Impersonation**: Platform admins can impersonate any org with 1-hour tokens (fully audited)
-
-### Platform Admin System (Checkpoint 4.5)
-
-- **Admin Access**: Controlled by PLATFORM_ADMIN_EMAILS environment variable
-- **Firm Provisioning**: Create orgs with owner via invite link or temporary password
-- **Invite System**: 7-day expiration, token-based, creates user on acceptance
-- **Impersonation**: Generate time-limited tokens to act as any organization (logged in audit_logs)
-- **Health Snapshots**: Compute and store metrics (leads, calls, webhook failures in last 24h)
-- **Admin Routes**: `/v1/admin/orgs`, `/v1/admin/orgs/:id`, `/v1/admin/orgs/:id/invites`, `/v1/admin/orgs/:id/impersonate`, `/v1/admin/orgs/:id/health`
-- **Setup Wizard**: 8-step onboarding (Firm Basics, Business Hours, Practice Areas, Phone Numbers, AI Voice, Intake Logic, Follow-up, Review)
-- **Frontend Pages**: `/admin/orgs`, `/admin/orgs/new`, `/admin/orgs/:id`, `/setup`, `/invite/:token`
-
-### Telephony Ingest (Checkpoint 5)
-
-- **Interactions API**: POST /v1/interactions (manual creation), GET /v1/leads/:id/interactions
-- **Twilio Voice Webhook**: POST /v1/telephony/twilio/voice
-  - Idempotent by provider_call_id (CallSid)
-  - Creates/attaches lead + interaction + call
-  - Returns TwiML placeholder response
-- **Twilio Status Webhook**: POST /v1/telephony/twilio/status
-  - Updates call status and duration
-  - Marks interaction as completed when call ends
-- **Twilio Recording Webhook**: POST /v1/telephony/twilio/recording
-  - Stores recording URL
-  - Enqueues transcription job (flag in transcriptJson)
-- **Twilio SMS Webhook**: POST /v1/telephony/twilio/sms
-  - Idempotent by providerMessageId (MessageSid)
-  - Creates message + interaction, attaches to lead
-  - Returns TwiML response
-- **Audit Logging**: All telephony events logged with entityType/entityId
-- **Lead Detail UI**: Shows interactions timeline, calls panel, messages panel
-
-### Structured Intake Flow (Checkpoint 6)
-
-- **GET /v1/leads/:id/intake**: Retrieve intake for a lead (includes question set schema)
-- **POST /v1/leads/:id/intake/init**: Initialize intake with question set selection
-  - Priority: practice area-specific question set > default question set
-  - Creates intake row with completion_status=partial
-- **PATCH /v1/leads/:id/intake**: Update intake answers (merge with existing)
-- **POST /v1/leads/:id/intake/complete**: Complete intake with webhook stub
-  - Sets completion_status=complete, completed_at
-  - Emits intake.completed webhook event (record-only stub)
-- **Audit Logging**: All intake operations logged (init, update, complete)
-- **UI Components**: IntakePanel with JSON editor, init/save/complete buttons
-
-### AI Pipeline & Qualification (Checkpoint 7)
-
-- **Qualification Endpoints**:
-  - GET /v1/leads/:id/qualification - Retrieve qualification
-  - POST /v1/leads/:id/qualification/run - Run AI qualification
-  - PATCH /v1/leads/:id/qualification - Human override
-- **AI Job Stubs** (inline for V1, job queue ready):
-  - POST /v1/ai/transcribe/:callId - Transcription stub
-  - POST /v1/ai/summarize/:callId - Summarization stub
-  - POST /v1/ai/extract/:leadId - Intake extraction stub
-  - POST /v1/ai/score/:leadId - Qualification scoring stub
-- **Qualification Reasons JSON Contract**:
-  ```json
-  {
-    "score_factors": [{"name": string, "weight": number, "evidence": string, "evidence_quote": string|null}],
-    "missing_fields": [string],
-    "disqualifiers": [string],
-    "routing": {"practice_area_id": string|null, "notes": string|null},
-    "model": {"provider": string, "model": string, "version": string|null},
-    "explanations": [string]
-  }
-  ```
-- **Scoring Factors**: Contact info (20), Practice area (15), Intake completion (25), Incident details (20), Communication history (20)
-- **Disposition Logic**: accept (score >= 70, <= 2 missing), decline (score < 30 or disqualifiers), review (default)
-- **UI Components**: QualificationPanel showing score, disposition, confidence, score_factors, missing_fields, disqualifiers, explanations
-
-### Webhook System (Checkpoint 8)
-
-- **Webhook Endpoints CRUD**:
-  - GET /v1/webhooks - List endpoints (secrets excluded)
-  - POST /v1/webhooks - Create endpoint (returns secret only on creation)
-  - GET /v1/webhooks/:id - Get endpoint details
-  - PATCH /v1/webhooks/:id - Update endpoint (url, events, active)
-  - DELETE /v1/webhooks/:id - Delete endpoint
-  - POST /v1/webhooks/:id/rotate-secret - Rotate signing secret
-  - GET /v1/webhooks/:id/deliveries - Get endpoint delivery history
-  - GET /v1/webhook-deliveries - Get all org delivery history
-  - POST /v1/webhooks/:id/test - Send test webhook
-- **Delivery System**:
-  - Records outgoing_webhook_deliveries with status tracking
-  - Retry logic: 3 attempts with exponential backoff (1s, 5s, 15s)
-  - HMAC SHA256 signing with X-CT-Signature header
-  - 10-second timeout per delivery attempt
-- **Events Emitted**:
-  - lead.created, lead.updated, lead.qualified
-  - intake.completed, call.completed, contact.created
-- **Security**:
-  - Secrets generated with crypto.randomBytes(32)
-  - Secrets only exposed on creation and rotation
-  - Secrets never logged or returned in list/get responses
-- **UI**: /settings/webhooks page for endpoint management and delivery logs
-
-### Self-Improving System (Checkpoint 9)
-
-- **Experiments API (A/B Testing)**:
-  - GET /v1/experiments - List experiments
-  - POST /v1/experiments - Create experiment (kind: intake_script, qualification_rules, follow_up_timing)
-  - GET /v1/experiments/:id - Get experiment details
-  - PATCH /v1/experiments/:id - Update experiment config
-  - DELETE /v1/experiments/:id - Delete experiment (draft only)
-  - POST /v1/experiments/:id/start - Start experiment
-  - POST /v1/experiments/:id/pause - Pause experiment
-  - POST /v1/experiments/:id/end - End experiment
-  - POST /v1/experiments/:id/assign - Assign lead to experiment
-  - POST /v1/experiments/:id/conversion - Record conversion event
-  - GET /v1/experiments/:id/report - Get variant performance report
-- **Variant Assignment**: Deterministic SHA256 hash of experimentId:leadId for consistent bucketing
-- **Variant Stats**: Track leads, conversions (qualification=accept), avgScore per variant
-- **Auto-Assignment**: Running experiments auto-assign leads on creation
-
-- **Policy Tests API (Qualification Regression Testing)**:
-  - GET /v1/policy-tests/suites - List test suites
-  - POST /v1/policy-tests/suites - Create suite with test cases
-  - GET /v1/policy-tests/suites/:id - Get suite details
-  - PATCH /v1/policy-tests/suites/:id - Update suite
-  - DELETE /v1/policy-tests/suites/:id - Delete suite
-  - POST /v1/policy-tests/suites/:id/run - Run all test cases
-  - GET /v1/policy-tests/runs - Get run history
-  - GET /v1/policy-tests/runs/:id - Get run details
-- **Test Case Format**: { id, name, input: { contact, practiceArea, intake, calls }, expectedDisposition, expectedMinScore? }
-- **Inline Mock Scoring**: Uses same factors as qualification (contact 20, practice 15, intake 25, incident 20, calls 20)
-- **Default Suite**: 6 test cases covering accept, review, decline scenarios
-
-- **Follow-up Sequences API**:
-  - GET /v1/followup-sequences - List sequences
-  - POST /v1/followup-sequences - Create sequence
-  - GET /v1/followup-sequences/:id - Get sequence details
-  - PATCH /v1/followup-sequences/:id - Update sequence
-  - DELETE /v1/followup-sequences/:id - Delete sequence
-  - POST /v1/followup-sequences/:id/trigger - Trigger sequence for a lead
-- **Sequence Steps**: Array of { delayMinutes, channel: 'sms'|'email', templateBody }
-- **Stop Rules**: { onResponse: boolean, onStatusChange: string[] } - stop on inbound message or lead status change
-- **Default Sequence**: 3-step SMS nurture (immediate, 1hr, 24hr)
-
-- **Database Tables Added**:
-  - experiments: id, orgId, name, description, kind, status, config, startedAt, endedAt
-  - experiment_assignments: id, experimentId, leadId, variant, assignedAt
-  - experiment_metrics_daily: id, experimentId, variant, date, leads, conversions, avgScore
-  - policy_test_suites: id, orgId, name, description, testCases, active
-  - policy_test_runs: id, suiteId, status, results, summary, startedAt, endedAt
-  - followup_sequences: id, orgId, name, description, trigger, steps, stopRules, active
-
-- **UI Pages**:
-  - /experiments - List, create, start/pause/end experiments
-  - /experiments/:id - View variant performance report
-  - /policy-tests - List suites, run tests, view history
-
-### Monorepo Structure
-
-```
-counseltech/
-├── client/           # Vite + React primary frontend
-├── server/           # Express.js backend API
-├── shared/           # Shared types, schemas, and utilities
-├── apps/
-│   ├── api/          # Fastify API (alternative backend)
-│   └── web/          # Next.js frontend (alternative)
-├── packages/
-│   ├── shared/       # Shared package for monorepo
-│   └── config/       # ESLint, Prettier, TypeScript configs
-```
+### System Design Choices
+- **Database**: PostgreSQL with Prisma ORM (v7.2.0) is used for data storage, including 27 base tables with multi-tenant `org_id` scoping. Migrations are managed via Prisma Migrate.
+- **AI Integration**: Deep integration with OpenAI for real-time voice interactions and AI-driven qualification, supported by specific environment variables.
+- **Modularity**: The monorepo structure and clear separation of concerns (frontend, backend, shared logic) promote maintainability and scalability.
 
 ## External Dependencies
 
-### Database
-- PostgreSQL (requires `DATABASE_URL` environment variable)
-- Drizzle ORM for type-safe database queries
-- drizzle-zod for schema validation
-
-### UI/Frontend Libraries
-- Radix UI primitives (dialogs, menus, forms, etc.)
-- Tailwind CSS with class-variance-authority
-- Lucide React for icons
-- react-day-picker for calendar components
-- embla-carousel-react for carousels
-- recharts for charts
-- vaul for drawer components
-
-### API/Backend Libraries
-- Express.js with CORS support
-- Fastify with Swagger documentation
-- Zod for runtime validation
-- Passport.js for authentication (planned)
-
-### Development Tools
-- TypeScript with strict mode
-- ESLint with TypeScript plugin
-- Prettier for code formatting
-- tsx for TypeScript execution
-- Vite with HMR for development
-
-### Replit-Specific
-- @replit/vite-plugin-runtime-error-modal
-- @replit/vite-plugin-cartographer
-- @replit/vite-plugin-dev-banner
+- **Database**: PostgreSQL
+- **ORM**: Prisma, Drizzle ORM
+- **UI Libraries**: Radix UI, shadcn/ui, Lucide React, react-day-picker, embla-carousel-react, recharts, vaul
+- **Styling**: Tailwind CSS, class-variance-authority
+- **Backend Frameworks**: Express.js, Fastify
+- **Validation**: Zod, drizzle-zod
+- **Authentication**: Passport.js (planned)
+- **Development Tools**: TypeScript, ESLint, Prettier, tsx, Vite
+- **Replit-Specific Plugins**: @replit/vite-plugin-runtime-error-modal, @replit/vite-plugin-cartographer, @replit/vite-plugin-dev-banner
