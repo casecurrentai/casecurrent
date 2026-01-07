@@ -223,16 +223,23 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
   const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
   const xTwilioCallSid = getSipHeader(event.data.sip_headers, "X-Twilio-CallSid");
   const pAssertedIdentity = getSipHeader(event.data.sip_headers, "P-Asserted-Identity");
+  
+  // Custom headers we're passing from Twilio TwiML
+  const xTwilioFromE164 = getSipHeader(event.data.sip_headers, "X-Twilio-FromE164");
+  const xTwilioToE164 = getSipHeader(event.data.sip_headers, "X-Twilio-ToE164");
 
   console.log(`[OpenAI Webhook DIAG] X-Twilio-CallSid header: ${xTwilioCallSid ? maskCallSid(xTwilioCallSid) : "NOT PRESENT"}`);
+  console.log(`[OpenAI Webhook DIAG] X-Twilio-FromE164 header: ${xTwilioFromE164 ? maskPhone(xTwilioFromE164) : "NOT PRESENT"}`);
+  console.log(`[OpenAI Webhook DIAG] X-Twilio-ToE164 header: ${xTwilioToE164 ? maskPhone(xTwilioToE164) : "NOT PRESENT"}`);
   console.log(`[OpenAI Webhook DIAG] P-Asserted-Identity header: ${pAssertedIdentity ? "present" : "NOT PRESENT"}`);
   console.log(`[OpenAI Webhook DIAG] Extracted twilioCallSid: ${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
 
-  const fromNumber = fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown";
-  const toNumber = toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown";
+  // Prefer our custom headers, fall back to SIP header extraction
+  const fromNumber = xTwilioFromE164 || (fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown");
+  const toNumber = xTwilioToE164 || (toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown");
 
-  console.log(`[OpenAI Webhook DIAG] Extracted fromNumber: ${maskPhone(fromNumber)}`);
-  console.log(`[OpenAI Webhook DIAG] Extracted toNumber: ${maskPhone(toNumber)}`);
+  console.log(`[OpenAI Webhook DIAG] Final fromNumber: ${maskPhone(fromNumber)}`);
+  console.log(`[OpenAI Webhook DIAG] Final toNumber: ${maskPhone(toNumber)}`);
 
   // === NEW PRIORITY: Try twilioCallSid lookup FIRST ===
   let orgId: string | null = null;

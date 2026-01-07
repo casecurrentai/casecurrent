@@ -1,0 +1,184 @@
+2026-01-07 15:39:16.30
+73a5af85
+User
+[OpenAI Webhook DIAG] webhook-timestamp: 1767821953
+2026-01-07 15:39:16.30
+73a5af85
+User
+[OpenAI Webhook DIAG] Starting signature verification...
+2026-01-07 15:39:16.30
+73a5af85
+User
+[OpenAI Webhook DIAG] webhook-id: wh_695ed280d42c8190afa0331e598bf9ac
+2026-01-07 15:39:16.30
+73a5af85
+User
+[OpenAI Webhook DIAG] Signature verified OK, checking idempotency...
+2026-01-07 15:39:16.30
+73a5af85
+User
+[OpenAI Webhook DIAG] Signature valid: true
+2026-01-07 15:39:16.35
+73a5af85
+User
+[OpenAI Webhook] Received event: realtime.call.incoming {
+2026-01-07 15:39:16.35
+73a5af85
+User
+[OpenAI Webhook DIAG] About to record webhook and process...
+2026-01-07 15:39:16.35
+73a5af85
+User
+[OpenAI Webhook DIAG] Parsing JSON body...
+2026-01-07 15:39:16.35
+73a5af85
+User
+}
+2026-01-07 15:39:16.35
+73a5af85
+User
+call_id: 'rtc_u0_e744ec7ded9949f6b9edf891b2e38174',
+2026-01-07 15:39:16.35
+73a5af85
+User
+webhookId: 'wh_695ed280d42c8190afa0331e598bf9ac'
+2026-01-07 15:39:16.35
+73a5af85
+User
+[OpenAI Webhook DIAG] Parsed event type: realtime.call.incoming
+2026-01-07 15:39:16.35
+73a5af85
+User
+[OpenAI Webhook DIAG] Already processed: false
+2026-01-07 15:39:16.40
+73a5af85
+User
+[OpenAI Webhook] Incoming call rtc_***8174 from +*******4257 to <sip:proj_vXJKisW*WX*OpOGWaVUGalmg@sip.api.openai.com;transport=tls>;tag=*a**fcdd-eae*-**ca-****-a******c37ec, twilioCallSid=CA5b***e8a5
+2026-01-07 15:39:16.45
+73a5af85
+User
+[OpenAI Webhook] No matching phone number found for ;tag=*a**fcdd-eae*-**ca-****-a******c37ec
+2026-01-07 15:39:16.45
+73a5af85
+User
+[OpenAI Webhook] No org found for phone number ;tag=*a**fcdd-eae*-**ca-****-a******c37ec, rejecting call
+2026-01-07 15:39:16.69
+73a5af85
+User
+[OpenAI Webhook] Rejected call rtc_***8174 with status 603
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] DialCallStatus: busy
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] DialSipResponseCode: 603
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] ErrorMessage: N/A
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] DialCallSid: CA5b***e8a5
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] Full payload keys: Called, ToState, DialCallStatus, CallerCountry, Direction, DialSipCallId, CallerState, ToZip, DialCallSid, CallSid, To, CallerZip, ToCountry, DialSipResponseCode, CalledZip, ApiVersion, CalledCity, CallStatus, From, DialBridged, AccountSid, CalledCountry, CallerCity, ToCity, FromCountry, Caller, FromCity, CalledState, FromZip, FromState
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] DialCallDuration: N/A
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] ========== END DIAL OUTCOME ==========
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] ========== DIAL OUTCOME ==========
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] ErrorCode: N/A
+2026-01-07 15:39:16.76
+73a5af85
+User
+[Twilio Dial Result] CallSid: CA91***4fc8
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] Full payload keys: Called, ParentCallSid, CallerCountry, Direction, Timestamp, CallbackSource, SipCallId, SipResponseCode, CallerState, CalledVia, SequenceNumber, CallSid, To, CallerZip, ApiVersion, CallStatus, Duration, From, CallDuration, AccountSid, CallerCity, FromCountry, Caller, FromCity, ForwardedFrom, FromZip, FromState
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] CallSid: CA5b***e8a5
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] ErrorMessage: N/A
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] ========== END SIP EVENT ==========
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] ========== SIP EVENT ==========
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] CallStatus: busy
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] SipResponseCode: 603
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] Timestamp: Wed, 07 Jan 2026 21:39:16 +0000
+2026-01-07 15:39:16.77
+73a5af85
+User
+[Twilio SIP Status] ErrorCode: N/A
+2026-01-07 15:51:02.29
+4bf1180d
+System
+forwarding local port 5000 to external port 80 (mapped as 1104)
+2026-01-07 15:51:02.29
+4bf1180d
+System
+metasidecar: loaded enterprise status from environment is_enterprise=false
+2026-01-07 15:51:02.29
+4bf1180d
+System
+starting up user application
+2026-01-07 15:51:03.78
+4bf1180d
+User
+[DB] Fingerprint - host=ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech db=...neondb
+2026-01-07 15:51:04.32
+4bf1180d
+User
+[DB STARTUP] Phone +18443214257 EXISTS: orgId=aca4478f-97da-488a-863e-e9566d7b9cb7 inboundEnabled=true
+2026-01-07 15:51:04.38
+4bf1180d
+User
+[DB STARTUP] Total phone_numbers in database: 1
+2026-01-07 15:51:04.47
+4bf1180d
+User
+9:51:04 PM [express] serving on port 5000
+2026-01-07 15:54:44.85
+73a5af85
+System
+system: received signal terminated
+2026-01-07 15:54:44.87
+73a5af85
+System
+command finished with error [node ./dist/index.cjs]: signal: terminated
+2026-01-07 15:54:44.91
+73a5af85
+System
+main done, exiting
