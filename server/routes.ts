@@ -3567,6 +3567,9 @@ export async function registerRoutes(
    *         description: TwiML response
    */
   app.post("/v1/telephony/twilio/voice", async (req, res) => {
+    // Generate unique request ID for log correlation
+    const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    
     try {
       const payload = req.body;
       const {
@@ -3578,13 +3581,30 @@ export async function registerRoutes(
         CallerName,
       } = payload;
 
-      // Enhanced logging for debugging phone number lookup
-      const { normalizeToE164Variants } = await import("./utils/logMasking");
-      const toVariants = normalizeToE164Variants(To || "");
-      console.log(`[Twilio Voice] Incoming call - Raw To: "${maskPhone(To || "")}", CallSid: ${maskCallSid(CallSid || "")}`);
-      console.log(`[Twilio Voice] E.164 variants to try: ${toVariants.map(v => maskPhone(v)).join(", ")}`);
+      // === STRUCTURED DIAGNOSTIC BLOCK ===
+      // Get DB fingerprint
+      const dbUrl = process.env.DATABASE_URL || "";
+      let dbFingerprint = "unknown";
+      const urlMatch = dbUrl.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+      if (urlMatch) {
+        const host = urlMatch[1];
+        const dbName = urlMatch[3];
+        dbFingerprint = `${host}/...${dbName.length > 6 ? dbName.slice(-6) : dbName}`;
+      }
+      
+      // Get phone_numbers count at request time
+      const phoneCount = await prisma.phoneNumber.count();
+      
+      console.log(`[Twilio Voice] ========== REQUEST ${requestId} ==========`);
+      console.log(`[Twilio Voice] [${requestId}] Raw To: "${To || ""}"`);
+      console.log(`[Twilio Voice] [${requestId}] Raw From: "${maskPhone(From || "")}"`);
+      console.log(`[Twilio Voice] [${requestId}] CallSid: "${CallSid || ""}"`);
+      console.log(`[Twilio Voice] [${requestId}] Content-Type: ${req.headers["content-type"]}`);
+      console.log(`[Twilio Voice] [${requestId}] DB: ${dbFingerprint}`);
+      console.log(`[Twilio Voice] [${requestId}] phone_numbers count: ${phoneCount}`);
 
       if (!CallSid || !From || !To) {
+        console.log(`[Twilio Voice] [${requestId}] ERROR: Missing required params`);
         return res.status(400).json({ error: "Missing required Twilio parameters" });
       }
 
@@ -3594,7 +3614,7 @@ export async function registerRoutes(
       });
 
       if (existingCall) {
-        console.log(`[Twilio Voice] Duplicate webhook for CallSid ${maskCallSid(CallSid)}, returning cached TwiML`);
+        console.log(`[Twilio Voice] [${requestId}] Duplicate webhook, returning cached TwiML`);
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3603,56 +3623,63 @@ export async function registerRoutes(
 </Response>`);
       }
 
-      // Try to find phone number using multiple E.164 variants
-      let phoneNumber = null;
-      for (const variant of toVariants) {
-        phoneNumber = await prisma.phoneNumber.findFirst({
-          where: { e164: variant, inboundEnabled: true },
-          include: { organization: true },
-        });
-        if (phoneNumber) {
-          console.log(`[Twilio Voice] Phone number FOUND using variant: "${maskPhone(variant)}", orgId: ${phoneNumber.orgId}`);
-          break;
+      // === NORMALIZE To VALUE ===
+      const rawTo = To || "";
+      let normalizedTo = rawTo.trim();
+      
+      // Handle sip: URI format (e.g., sip:+18443214257@...)
+      if (normalizedTo.toLowerCase().startsWith("sip:")) {
+        const sipMatch = normalizedTo.match(/^sip:([^@]+)@/i);
+        if (sipMatch) {
+          normalizedTo = sipMatch[1];
         }
       }
+      
+      const digitsOnly = normalizedTo.replace(/\D/g, "");
+      
+      // Build candidate list
+      const candidates: string[] = [];
+      
+      // a) exact trimmed (after sip extraction)
+      if (normalizedTo) candidates.push(normalizedTo);
+      
+      // b) "+" + digitsOnly
+      if (digitsOnly) candidates.push("+" + digitsOnly);
+      
+      // c) "+1" + digitsOnly (if 10 digits - US number without country code)
+      if (digitsOnly.length === 10) candidates.push("+1" + digitsOnly);
+      
+      // De-dupe candidates
+      const uniqueCandidates = [...new Set(candidates.filter(c => c && c.length > 0))];
+      
+      console.log(`[Twilio Voice] [${requestId}] Candidates: ${uniqueCandidates.map(c => `"${c}"`).join(", ")}`);
+
+      // === SINGLE LOOKUP WITH ALL CANDIDATES ===
+      const phoneNumber = await prisma.phoneNumber.findFirst({
+        where: {
+          inboundEnabled: true,
+          e164: { in: uniqueCandidates },
+        },
+        include: { organization: true },
+      });
 
       if (!phoneNumber) {
-        // DIAGNOSTIC LOGGING - TASK A
-        const rawTo = To || "";
-        const trimmedTo = rawTo.trim();
-        const digitsOnly = trimmedTo.replace(/\D/g, "");
-        const ensurePlus = trimmedTo.startsWith("+") ? trimmedTo : "+" + digitsOnly;
-        const e164Guess = digitsOnly.length === 10 ? "+1" + digitsOnly : "+" + digitsOnly;
+        // Log the failure with candidates
+        console.log(`[Twilio Voice] [${requestId}] NO MATCH FOUND`);
+        console.log(`[Twilio Voice] [${requestId}] Searched candidates: ${uniqueCandidates.join(", ")}`);
         
-        console.log(`[Twilio Voice DIAG] ========== NOT CONFIGURED DEBUG ==========`);
-        console.log(`[Twilio Voice DIAG] Host: ${req.headers["host"]}`);
-        console.log(`[Twilio Voice DIAG] URL: ${req.originalUrl}`);
-        console.log(`[Twilio Voice DIAG] Content-Type: ${req.headers["content-type"]}`);
-        console.log(`[Twilio Voice DIAG] Raw To: "${maskPhone(rawTo)}"`);
-        console.log(`[Twilio Voice DIAG] Trimmed To: "${maskPhone(trimmedTo)}"`);
-        console.log(`[Twilio Voice DIAG] Digits Only: "${maskPhone(digitsOnly)}"`);
-        console.log(`[Twilio Voice DIAG] Ensure Plus: "${maskPhone(ensurePlus)}"`);
-        console.log(`[Twilio Voice DIAG] E164 Guess: "${maskPhone(e164Guess)}"`);
-        
-        // Try all candidate lookups
-        const candidates = [rawTo, trimmedTo, ensurePlus, e164Guess];
-        const uniqueCandidates = [...new Set(candidates.filter(c => c && c.length > 0))];
-        
-        console.log(`[Twilio Voice DIAG] Searching with candidates: ${uniqueCandidates.map(c => `"${maskPhone(c)}"`).join(", ")}`);
-        
-        // Fetch ALL phone numbers and check for any match
-        const allPhoneNumbers = await prisma.phoneNumber.findMany({
-          select: { id: true, e164: true, orgId: true, inboundEnabled: true },
+        // Log top 5 phone_numbers rows (masked)
+        const topPhones = await prisma.phoneNumber.findMany({
+          take: 5,
+          select: { e164: true, orgId: true, inboundEnabled: true },
         });
-        console.log(`[Twilio Voice DIAG] Total phone_numbers in DB: ${allPhoneNumbers.length}`);
-        
-        for (const pn of allPhoneNumbers) {
-          const pnDigits = pn.e164.replace(/\D/g, "");
-          const matches = uniqueCandidates.some(c => c === pn.e164 || c.replace(/\D/g, "") === pnDigits);
-          console.log(`[Twilio Voice DIAG] DB row: e164="${maskPhone(pn.e164)}" orgId=${pn.orgId} inboundEnabled=${pn.inboundEnabled} matchesCandidate=${matches}`);
+        console.log(`[Twilio Voice] [${requestId}] Top 5 DB rows:`);
+        for (const pn of topPhones) {
+          const last4 = pn.e164.slice(-4);
+          console.log(`[Twilio Voice] [${requestId}]   e164=****${last4} orgId=${pn.orgId} enabled=${pn.inboundEnabled}`);
         }
         
-        console.log(`[Twilio Voice DIAG] ========== END DEBUG ==========`);
+        console.log(`[Twilio Voice] ========== END ${requestId} (NOT CONFIGURED) ==========`);
         
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -3661,6 +3688,8 @@ export async function registerRoutes(
   <Hangup/>
 </Response>`);
       }
+      
+      console.log(`[Twilio Voice] [${requestId}] MATCH FOUND: e164=${phoneNumber.e164} orgId=${phoneNumber.orgId}`);
 
       const orgId = phoneNumber.orgId;
 
