@@ -37,3 +37,60 @@ export function maskSecret(secret: string, forceUnmasked = false): string {
   if (secret.length <= 8) return "***";
   return secret.slice(0, 4) + "***";
 }
+
+/**
+ * Normalize a phone number to E.164 format variants for lookup.
+ * Returns an array of possible E.164 formats to try.
+ */
+export function normalizeToE164Variants(value: string): string[] {
+  if (!value) return [];
+  
+  const variants: string[] = [];
+  let cleaned = value.trim();
+  
+  // Add original raw value first
+  variants.push(value);
+  
+  // Add trimmed value if different
+  if (cleaned !== value) {
+    variants.push(cleaned);
+  }
+  
+  // Handle SIP URI format: sip:+18443214257@...
+  if (cleaned.toLowerCase().startsWith("sip:")) {
+    const sipMatch = cleaned.match(/^sip:([^@;]+)/i);
+    if (sipMatch) {
+      cleaned = sipMatch[1];
+      variants.push(cleaned);
+    }
+  }
+  
+  // Extract digits only
+  const digitsOnly = cleaned.replace(/\D/g, "");
+  
+  if (digitsOnly.length > 0) {
+    // Try with + prefix
+    const withPlus = "+" + digitsOnly;
+    if (!variants.includes(withPlus)) {
+      variants.push(withPlus);
+    }
+    
+    // If 11 digits starting with 1, it's likely US with country code
+    if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+      const usFormat = "+" + digitsOnly;
+      if (!variants.includes(usFormat)) {
+        variants.push(usFormat);
+      }
+    }
+    
+    // If 10 digits, assume US and add +1 prefix
+    if (digitsOnly.length === 10) {
+      const usWithCountry = "+1" + digitsOnly;
+      if (!variants.includes(usWithCountry)) {
+        variants.push(usWithCountry);
+      }
+    }
+  }
+  
+  return variants;
+}

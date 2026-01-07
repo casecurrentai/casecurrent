@@ -3489,6 +3489,12 @@ export async function registerRoutes(
         CallerName,
       } = payload;
 
+      // Enhanced logging for debugging phone number lookup
+      const { normalizeToE164Variants } = await import("./utils/logMasking");
+      const toVariants = normalizeToE164Variants(To || "");
+      console.log(`[Twilio Voice] Incoming call - Raw To: "${maskPhone(To || "")}", CallSid: ${maskCallSid(CallSid || "")}`);
+      console.log(`[Twilio Voice] E.164 variants to try: ${toVariants.map(v => maskPhone(v)).join(", ")}`);
+
       if (!CallSid || !From || !To) {
         return res.status(400).json({ error: "Missing required Twilio parameters" });
       }
@@ -3508,13 +3514,22 @@ export async function registerRoutes(
 </Response>`);
       }
 
-      const phoneNumber = await prisma.phoneNumber.findFirst({
-        where: { e164: To },
-        include: { organization: true },
-      });
+      // Try to find phone number using multiple E.164 variants
+      let phoneNumber = null;
+      for (const variant of toVariants) {
+        phoneNumber = await prisma.phoneNumber.findFirst({
+          where: { e164: variant, inboundEnabled: true },
+          include: { organization: true },
+        });
+        if (phoneNumber) {
+          console.log(`[Twilio Voice] Phone number FOUND using variant: "${maskPhone(variant)}", orgId: ${phoneNumber.orgId}`);
+          break;
+        }
+      }
 
       if (!phoneNumber) {
-        console.log(`[Twilio Voice] No phone number found for ${maskPhone(To)}, returning generic TwiML`);
+        console.log(`[Twilio Voice] No phone number found for any variant of ${maskPhone(To)}, returning generic TwiML`);
+        console.log(`[Twilio Voice] Tried variants: ${toVariants.map(v => `"${v}"`).join(", ")}`);
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
