@@ -3768,26 +3768,37 @@ export async function registerRoutes(
       res.set("Content-Type", "text/xml");
 
       // Check if OpenAI Realtime is configured - if so, bridge to SIP
-      if (isOpenAIConfigured()) {
+      const openaiConfigured = isOpenAIConfigured();
+      console.log(`[Twilio Voice] [${requestId}] isOpenAIConfigured: ${openaiConfigured}`);
+      
+      if (openaiConfigured) {
         try {
           const projectId = getOpenAIProjectId();
+          const projectIdMasked = projectId ? `${projectId.slice(0, 8)}...${projectId.slice(-4)}` : "MISSING";
+          
           // Bridge call to OpenAI Realtime via SIP
           // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls
           const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls`;
+          const sipUriMasked = `sip:${projectIdMasked}@sip.api.openai.com;transport=tls`;
+          const dialTimeout = 30;
           
-          console.log(`[Twilio Voice] Bridging call ${maskCallSid(CallSid)} to OpenAI SIP: ${maskSipUri(sipUri)}`);
+          console.log(`[Twilio Voice] [${requestId}] OPENAI_PROJECT_ID: ${projectIdMasked}`);
+          console.log(`[Twilio Voice] [${requestId}] SIP URI: ${sipUriMasked}`);
+          console.log(`[Twilio Voice] [${requestId}] Dial timeout: ${dialTimeout}s`);
+          console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Dial><Sip> and action callback`);
           
+          // Include action callback to capture dial result
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Connecting you to our assistant now.</Say>
-  <Dial timeout="30" callerId="${To}">
-    <Sip>${sipUri}</Sip>
+  <Dial timeout="${dialTimeout}" callerId="${To}" action="/v1/telephony/twilio/dial-result" method="POST">
+    <Sip statusCallback="/v1/telephony/twilio/sip-status" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${sipUri}</Sip>
   </Dial>
   <Say>We're sorry, the connection could not be completed. Please try again later.</Say>
   <Hangup/>
 </Response>`);
         } catch (sipError) {
-          console.error("[Twilio Voice] SIP bridge error:", sipError);
+          console.error(`[Twilio Voice] [${requestId}] SIP bridge error:`, sipError);
           // Fallback to voicemail if SIP fails
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3798,7 +3809,7 @@ export async function registerRoutes(
         }
       } else {
         // Fallback: OpenAI not configured, use voicemail capture
-        console.log(`[Twilio Voice] OpenAI not configured, using voicemail for call ${maskCallSid(CallSid)}`);
+        console.log(`[Twilio Voice] [${requestId}] OpenAI not configured, using voicemail`);
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
@@ -3806,6 +3817,8 @@ export async function registerRoutes(
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
       }
+      
+      console.log(`[Twilio Voice] ========== END ${requestId} ==========`);
     } catch (error) {
       console.error("Twilio voice webhook error:", error);
       res.set("Content-Type", "text/xml");
@@ -3815,6 +3828,82 @@ export async function registerRoutes(
   <Hangup/>
 </Response>`);
     }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/dial-result:
+   *   post:
+   *     summary: Handle Twilio Dial action callback (captures dial outcome)
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: TwiML response
+   */
+  app.post("/v1/telephony/twilio/dial-result", async (req, res) => {
+    const payload = req.body;
+    const {
+      CallSid,
+      DialCallSid,
+      DialCallStatus,
+      DialCallDuration,
+      DialSipResponseCode,
+      ErrorCode,
+      ErrorMessage,
+    } = payload;
+    
+    console.log(`[Twilio Dial Result] ========== DIAL OUTCOME ==========`);
+    console.log(`[Twilio Dial Result] CallSid: ${maskCallSid(CallSid || "")}`);
+    console.log(`[Twilio Dial Result] DialCallSid: ${maskCallSid(DialCallSid || "")}`);
+    console.log(`[Twilio Dial Result] DialCallStatus: ${DialCallStatus || "N/A"}`);
+    console.log(`[Twilio Dial Result] DialCallDuration: ${DialCallDuration || "N/A"}`);
+    console.log(`[Twilio Dial Result] DialSipResponseCode: ${DialSipResponseCode || "N/A"}`);
+    console.log(`[Twilio Dial Result] ErrorCode: ${ErrorCode || "N/A"}`);
+    console.log(`[Twilio Dial Result] ErrorMessage: ${ErrorMessage || "N/A"}`);
+    console.log(`[Twilio Dial Result] Full payload keys: ${Object.keys(payload).join(", ")}`);
+    console.log(`[Twilio Dial Result] ========== END DIAL OUTCOME ==========`);
+    
+    // Return empty TwiML - the fallback <Say> in the original TwiML will handle post-dial
+    res.set("Content-Type", "text/xml");
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>The call has ended. Thank you for calling.</Say>
+  <Hangup/>
+</Response>`);
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/sip-status:
+   *   post:
+   *     summary: Handle Twilio SIP status callback events
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Status acknowledged
+   */
+  app.post("/v1/telephony/twilio/sip-status", async (req, res) => {
+    const payload = req.body;
+    const {
+      CallSid,
+      CallStatus,
+      SipResponseCode,
+      ErrorCode,
+      ErrorMessage,
+      Timestamp,
+    } = payload;
+    
+    console.log(`[Twilio SIP Status] ========== SIP EVENT ==========`);
+    console.log(`[Twilio SIP Status] CallSid: ${maskCallSid(CallSid || "")}`);
+    console.log(`[Twilio SIP Status] CallStatus: ${CallStatus || "N/A"}`);
+    console.log(`[Twilio SIP Status] SipResponseCode: ${SipResponseCode || "N/A"}`);
+    console.log(`[Twilio SIP Status] ErrorCode: ${ErrorCode || "N/A"}`);
+    console.log(`[Twilio SIP Status] ErrorMessage: ${ErrorMessage || "N/A"}`);
+    console.log(`[Twilio SIP Status] Timestamp: ${Timestamp || "N/A"}`);
+    console.log(`[Twilio SIP Status] Full payload keys: ${Object.keys(payload).join(", ")}`);
+    console.log(`[Twilio SIP Status] ========== END SIP EVENT ==========`);
+    
+    res.status(200).json({ received: true });
   });
 
   /**
