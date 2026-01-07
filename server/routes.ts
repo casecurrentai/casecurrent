@@ -2519,6 +2519,162 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * @openapi
+   * /v1/admin/phone-numbers:
+   *   post:
+   *     summary: Create a phone number for an organization (Platform Admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - orgId
+   *               - e164
+   *             properties:
+   *               orgId:
+   *                 type: string
+   *                 description: Organization ID
+   *               e164:
+   *                 type: string
+   *                 description: Phone number in E.164 format (e.g., +15551234567)
+   *               label:
+   *                 type: string
+   *                 description: Optional label for the phone number
+   *               inboundEnabled:
+   *                 type: boolean
+   *                 default: true
+   *               provider:
+   *                 type: string
+   *                 default: twilio
+   *                 description: Telephony provider
+   *     responses:
+   *       201:
+   *         description: Phone number created
+   *       400:
+   *         description: Validation error
+   *       403:
+   *         description: Insufficient permissions
+   */
+  app.post(
+    "/v1/admin/phone-numbers",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { orgId, e164, label, inboundEnabled = true, provider = "twilio" } = req.body;
+
+        if (!orgId || !e164) {
+          return res.status(400).json({ error: "orgId and e164 required" });
+        }
+
+        if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
+          return res.status(400).json({ error: "Invalid E.164 format. Must start with + followed by 7-15 digits" });
+        }
+
+        const org = await prisma.organization.findUnique({
+          where: { id: orgId },
+        });
+
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const existingPhone = await prisma.phoneNumber.findFirst({
+          where: { e164 },
+        });
+
+        if (existingPhone) {
+          return res.status(400).json({ error: "Phone number already registered", existingOrgId: existingPhone.orgId });
+        }
+
+        const phoneNumber = await prisma.phoneNumber.create({
+          data: {
+            orgId,
+            e164,
+            label: label || "Inbound Line",
+            provider,
+            inboundEnabled,
+          },
+        });
+
+        await createPlatformAdminAuditLog(
+          req.user!.userId,
+          "phone_number.create",
+          "phone_number",
+          phoneNumber.id,
+          JSON.stringify({ orgId, e164: maskPhone(e164), label, inboundEnabled })
+        );
+
+        console.log(`[Admin] Created phone number ${maskPhone(e164)} for org ${orgId}`);
+
+        res.status(201).json({
+          id: phoneNumber.id,
+          orgId: phoneNumber.orgId,
+          e164: phoneNumber.e164,
+          label: phoneNumber.label,
+          provider: phoneNumber.provider,
+          inboundEnabled: phoneNumber.inboundEnabled,
+          createdAt: phoneNumber.createdAt,
+        });
+      } catch (error) {
+        console.error("Admin create phone number error:", error);
+        res.status(500).json({ error: "Failed to create phone number" });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/admin/phone-numbers:
+   *   get:
+   *     summary: List all phone numbers (Platform Admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: orgId
+   *         schema:
+   *           type: string
+   *         description: Filter by organization ID
+   *     responses:
+   *       200:
+   *         description: List of phone numbers
+   *       403:
+   *         description: Insufficient permissions
+   */
+  app.get(
+    "/v1/admin/phone-numbers",
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { orgId } = req.query;
+
+        const phoneNumbers = await prisma.phoneNumber.findMany({
+          where: orgId ? { orgId: String(orgId) } : undefined,
+          include: {
+            organization: {
+              select: { id: true, name: true, slug: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        res.json(phoneNumbers);
+      } catch (error) {
+        console.error("Admin list phone numbers error:", error);
+        res.status(500).json({ error: "Failed to list phone numbers" });
+      }
+    }
+  );
+
   // ============================================
   // INVITE ACCEPTANCE ROUTES (PUBLIC)
   // ============================================
