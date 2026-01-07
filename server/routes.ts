@@ -20,6 +20,7 @@ import {
 } from "./auth";
 import { handleOpenAIWebhook } from "./openai/webhook";
 import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
+import { maskPhone, maskCallSid, maskSipUri, maskProjectId } from "./utils/logMasking";
 
 function slugify(text: string): string {
   return text
@@ -3342,7 +3343,7 @@ export async function registerRoutes(
       });
 
       if (existingCall) {
-        console.log(`[Twilio Voice] Duplicate webhook for CallSid ${CallSid}, returning cached TwiML`);
+        console.log(`[Twilio Voice] Duplicate webhook for CallSid ${maskCallSid(CallSid)}, returning cached TwiML`);
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3357,7 +3358,7 @@ export async function registerRoutes(
       });
 
       if (!phoneNumber) {
-        console.log(`No phone number found for ${To}, returning generic TwiML`);
+        console.log(`[Twilio Voice] No phone number found for ${maskPhone(To)}, returning generic TwiML`);
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3450,7 +3451,7 @@ export async function registerRoutes(
           // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls
           const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls`;
           
-          console.log(`[Twilio Voice] Bridging call ${CallSid} to OpenAI SIP: ${sipUri}`);
+          console.log(`[Twilio Voice] Bridging call ${maskCallSid(CallSid)} to OpenAI SIP: ${maskSipUri(sipUri)}`);
           
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3473,7 +3474,7 @@ export async function registerRoutes(
         }
       } else {
         // Fallback: OpenAI not configured, use voicemail capture
-        console.log(`[Twilio Voice] OpenAI not configured, using voicemail for call ${CallSid}`);
+        console.log(`[Twilio Voice] OpenAI not configured, using voicemail for call ${maskCallSid(CallSid)}`);
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>

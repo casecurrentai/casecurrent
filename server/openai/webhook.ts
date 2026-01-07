@@ -5,6 +5,7 @@ import { startRealtimeSession } from "./realtime";
 import { prisma } from "../db";
 import { COUNSELTECH_INTAKE_PROMPT, VOICE_SETTINGS } from "../agent/prompt";
 import { getToolSchemas } from "../agent/tools";
+import { maskPhone, maskCallSid } from "../utils/logMasking";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS = parseInt(process.env.OPENAI_WEBHOOK_TOLERANCE_SECONDS || "300", 10);
@@ -198,12 +199,12 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
   const fromNumber = fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown";
   const toNumber = toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown";
 
-  console.log(`[OpenAI Webhook] Incoming call ${callId} from ${fromNumber} to ${toNumber}, twilioCallSid=${twilioCallSid}`);
+  console.log(`[OpenAI Webhook] Incoming call ${maskCallSid(callId)} from ${maskPhone(fromNumber)} to ${maskPhone(toNumber)}, twilioCallSid=${twilioCallSid ? maskCallSid(twilioCallSid) : null}`);
 
   const org = await findOrgByPhoneNumber(toNumber);
   
   if (!org) {
-    console.error(`[OpenAI Webhook] No org found for phone number ${toNumber}, rejecting call`);
+    console.error(`[OpenAI Webhook] No org found for phone number ${maskPhone(toNumber)}, rejecting call`);
     await rejectCall(callId, 603, "Decline - number not configured");
     res.status(200).json({ received: true, action: "rejected", reason: "no_org_match" });
     return;
@@ -225,7 +226,7 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
             provider: "openai_realtime",
           },
         });
-        console.log(`[OpenAI Webhook] Linked OpenAI call ${callId} to existing Twilio call ${twilioCallSid}`);
+        console.log(`[OpenAI Webhook] Linked OpenAI call ${maskCallSid(callId)} to existing Twilio call ${maskCallSid(twilioCallSid)}`);
       }
     }
     
@@ -326,7 +327,7 @@ async function findOrgByPhoneNumber(phoneNumber: string): Promise<{ id: string }
     return { id: phone.orgId };
   }
 
-  console.error(`[OpenAI Webhook] No matching phone number found for ${phoneNumber}`);
+  console.error(`[OpenAI Webhook] No matching phone number found for ${maskPhone(phoneNumber)}`);
   return null;
 }
 
@@ -462,7 +463,7 @@ async function acceptCall(callId: string): Promise<boolean> {
       return false;
     }
 
-    console.log(`[OpenAI Webhook] Accept call ${callId} succeeded`);
+    console.log(`[OpenAI Webhook] Accept call ${maskCallSid(callId)} succeeded`);
     return true;
   } catch (error) {
     console.error("[OpenAI Webhook] Accept call error:", error);
@@ -491,7 +492,7 @@ async function rejectCall(callId: string, statusCode: number, reason: string): P
       const errorText = await response.text();
       console.error(`[OpenAI Webhook] Reject call failed: ${response.status} ${errorText}`);
     } else {
-      console.log(`[OpenAI Webhook] Rejected call ${callId} with status ${statusCode}`);
+      console.log(`[OpenAI Webhook] Rejected call ${maskCallSid(callId)} with status ${statusCode}`);
     }
   } catch (error) {
     console.error("[OpenAI Webhook] Reject call error:", error);
