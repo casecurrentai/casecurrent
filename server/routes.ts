@@ -2254,6 +2254,241 @@ export async function registerRoutes(
     }
   );
 
+  /**
+   * @openapi
+   * /v1/admin/seed:
+   *   post:
+   *     summary: Seed demo organization and user (requires SEED_SECRET)
+   *     tags: [Platform Admin]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - secret
+   *             properties:
+   *               secret:
+   *                 type: string
+   *                 description: The SEED_SECRET environment variable value
+   *     responses:
+   *       200:
+   *         description: Seed completed successfully
+   *       401:
+   *         description: Invalid or missing secret
+   */
+  app.post("/v1/admin/seed", async (req, res) => {
+    try {
+      const { secret } = req.body;
+      const expectedSecret = process.env.SEED_SECRET;
+
+      if (!expectedSecret) {
+        return res.status(500).json({ error: "SEED_SECRET not configured on server" });
+      }
+
+      if (!secret || secret !== expectedSecret) {
+        return res.status(401).json({ error: "Invalid seed secret" });
+      }
+
+      // Check if demo org already exists
+      const existingOrg = await prisma.organization.findUnique({
+        where: { slug: "demo-law-firm" },
+      });
+
+      if (existingOrg) {
+        // Check if demo user exists
+        const existingUser = await prisma.user.findFirst({
+          where: { orgId: existingOrg.id, email: "owner@demo.com" },
+        });
+
+        if (existingUser) {
+          return res.json({
+            message: "Demo organization and user already exist",
+            organization: { id: existingOrg.id, name: existingOrg.name, slug: existingOrg.slug },
+            user: { email: existingUser.email, role: existingUser.role },
+            alreadySeeded: true,
+          });
+        }
+      }
+
+      // Create Organization
+      const org = await prisma.organization.upsert({
+        where: { slug: "demo-law-firm" },
+        update: {},
+        create: {
+          name: "Demo Law Firm",
+          slug: "demo-law-firm",
+          status: "active",
+          timezone: "America/New_York",
+        },
+      });
+
+      // Create Owner User
+      const passwordHash = await hashPassword("DemoPass123!");
+      const owner = await prisma.user.upsert({
+        where: {
+          orgId_email: {
+            orgId: org.id,
+            email: "owner@demo.com",
+          },
+        },
+        update: {},
+        create: {
+          orgId: org.id,
+          email: "owner@demo.com",
+          name: "Demo Owner",
+          role: "owner",
+          status: "active",
+          passwordHash: passwordHash,
+        },
+      });
+
+      // Create Practice Areas
+      const practiceAreas = await Promise.all([
+        prisma.practiceArea.upsert({
+          where: { id: "personal-injury-" + org.id },
+          update: {},
+          create: {
+            id: "personal-injury-" + org.id,
+            orgId: org.id,
+            name: "Personal Injury",
+            active: true,
+          },
+        }),
+        prisma.practiceArea.upsert({
+          where: { id: "criminal-defense-" + org.id },
+          update: {},
+          create: {
+            id: "criminal-defense-" + org.id,
+            orgId: org.id,
+            name: "Criminal Defense",
+            active: true,
+          },
+        }),
+      ]);
+
+      // Create Intake Question Set
+      await prisma.intakeQuestionSet.upsert({
+        where: { id: "default-intake-" + org.id },
+        update: {},
+        create: {
+          id: "default-intake-" + org.id,
+          orgId: org.id,
+          practiceAreaId: practiceAreas[0].id,
+          name: "Standard Personal Injury Intake",
+          version: 1,
+          active: true,
+          schema: {
+            version: "1.0",
+            sections: [
+              {
+                id: "contact_info",
+                title: "Contact Information",
+                questions: [
+                  { id: "full_name", type: "text", label: "Full Legal Name", required: true },
+                  { id: "phone", type: "phone", label: "Best Phone Number", required: true },
+                  { id: "email", type: "email", label: "Email Address", required: false },
+                ],
+              },
+              {
+                id: "incident_details",
+                title: "Incident Details",
+                questions: [
+                  { id: "incident_date", type: "date", label: "When did the incident occur?", required: true },
+                  { id: "incident_location", type: "text", label: "Where did the incident occur?", required: true },
+                  { id: "incident_description", type: "textarea", label: "Please describe what happened", required: true },
+                  { id: "injuries", type: "textarea", label: "What injuries did you sustain?", required: true },
+                  { id: "medical_treatment", type: "radio", label: "Have you sought medical treatment?", required: true, options: ["Yes", "No", "Planned"] },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      // Create AI Config
+      await prisma.aiConfig.upsert({
+        where: { orgId: org.id },
+        update: {},
+        create: {
+          orgId: org.id,
+          voiceGreeting: "Thank you for calling Demo Law Firm. My name is Alex, and I'm an AI assistant here to help you with your legal matter.",
+          disclaimerText: "Please note that I am an AI assistant and cannot provide legal advice. Our conversation will be recorded and reviewed by our legal team.",
+          toneProfile: { style: "professional", empathy_level: "high", formality: "moderate", pace: "calm" },
+          handoffRules: { 
+            emergency_keywords: ["emergency", "danger", "threat", "hurt", "police"], 
+            escalation_triggers: ["speak to attorney", "talk to lawyer", "human"],
+            business_hours: { start: "09:00", end: "17:00", timezone: "America/New_York", days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] }
+          },
+          qualificationRules: { 
+            min_score_for_accept: 70, 
+            min_score_for_review: 40,
+            required_fields: ["incident_date", "incident_location", "injuries"],
+            disqualifiers: ["statute_of_limitations_expired", "no_injury", "pre_existing_attorney"],
+            scoring_weights: { injury_severity: 0.3, liability_clarity: 0.25, damages_potential: 0.25, urgency: 0.2 }
+          },
+        },
+      });
+
+      // Create Default Policy Test Suite
+      await prisma.policyTestSuite.upsert({
+        where: { id: "default-policy-suite-" + org.id },
+        update: {},
+        create: {
+          id: "default-policy-suite-" + org.id,
+          orgId: org.id,
+          name: "Qualification Regression Tests",
+          description: "Default suite to validate qualification scoring logic",
+          active: true,
+          testCases: [
+            { id: "tc1", name: "Complete lead with phone+email accepts", input: { contact: { phone: "+15551234567", email: "test@example.com" }, practiceArea: true, intake: { complete: true }, calls: 2 }, expectedDisposition: "accept", expectedMinScore: 70 },
+            { id: "tc2", name: "Minimal info leads to review", input: { contact: { phone: "+15551234567" }, practiceArea: false, intake: { complete: false }, calls: 0 }, expectedDisposition: "review" },
+            { id: "tc3", name: "No contact info declines", input: { contact: {}, practiceArea: false, intake: { complete: false }, calls: 0 }, expectedDisposition: "decline" },
+            { id: "tc4", name: "Partial intake with practice area reviews", input: { contact: { email: "partial@test.com" }, practiceArea: true, intake: { complete: false }, calls: 1 }, expectedDisposition: "review" },
+            { id: "tc5", name: "Complete intake without calls accepts", input: { contact: { phone: "+15559876543", email: "complete@test.com" }, practiceArea: true, intake: { complete: true }, calls: 0 }, expectedDisposition: "accept" },
+            { id: "tc6", name: "High engagement with partial info reviews", input: { contact: { phone: "+15551112222" }, practiceArea: true, intake: { complete: false }, calls: 3 }, expectedDisposition: "review" },
+          ],
+        },
+      });
+
+      // Create Default Follow-up Sequence
+      await prisma.followupSequence.upsert({
+        where: { id: "default-followup-" + org.id },
+        update: {},
+        create: {
+          id: "default-followup-" + org.id,
+          orgId: org.id,
+          name: "New Lead Welcome Sequence",
+          description: "Automated follow-up for new leads",
+          trigger: "lead_created",
+          active: true,
+          steps: [
+            { delayMinutes: 0, channel: "sms", templateBody: "Thank you for contacting Demo Law Firm. We have received your inquiry and will be in touch shortly." },
+            { delayMinutes: 60, channel: "sms", templateBody: "Hi! Just following up on your inquiry. Is there any additional information you can share about your situation?" },
+            { delayMinutes: 1440, channel: "sms", templateBody: "We wanted to make sure you received our messages. Our team is ready to help. Reply or call us at your convenience." },
+          ],
+          stopRules: { onResponse: true, onStatusChange: ["disqualified", "closed"] },
+        },
+      });
+
+      console.log(`[SEED] Demo organization and user created: ${owner.email}`);
+
+      res.json({
+        message: "Seed completed successfully",
+        organization: { id: org.id, name: org.name, slug: org.slug },
+        user: { email: owner.email, role: owner.role },
+        credentials: {
+          email: "owner@demo.com",
+          password: "DemoPass123!",
+        },
+      });
+    } catch (error) {
+      console.error("Admin seed error:", error);
+      res.status(500).json({ error: "Failed to seed database" });
+    }
+  });
+
   // ============================================
   // INVITE ACCEPTANCE ROUTES (PUBLIC)
   // ============================================
