@@ -46,6 +46,7 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
   - **Twilio Configuration**: Configure Twilio number webhook to `https://your-domain.com/v1/telephony/twilio/voice`
   - **Phone Number Setup**: Each inbound number must exist in `phone_numbers` table with `inboundEnabled=true`
 - **Modularity**: The monorepo structure and clear separation of concerns (frontend, backend, shared logic) promote maintainability and scalability.
+- **Log Masking**: Sensitive data (phone numbers, SIP URIs, project IDs, call SIDs) is automatically masked in logs across ALL environments by default. To disable for debugging, set `DISABLE_LOG_MASKING=true`. Masking utilities are in `server/utils/logMasking.ts`.
 
 ## External Dependencies
 
