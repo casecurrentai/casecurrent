@@ -1,0 +1,40 @@
+We are live-testing Twilio → SIP → OpenAI Realtime and calls ring once then end. Twilio is dialing SIP successfully (it says “Connecting…”), but the SIP leg is being declined quickly.
+
+GOAL: Fix OpenAI inbound webhook handling so calls are accepted instead of rejected due to org lookup failure.
+
+WHAT TO DO (DO NOT HAND-WAVE):
+1) Add structured diagnostic logging in handleIncomingCall:
+   - log event.type, call_id
+   - log all sip_headers names received (mask values)
+   - explicitly log:
+     - extracted twilioCallSid (from X-Twilio-CallSid and/or P-Asserted-Identity)
+     - extracted toNumber/fromNumber
+     - whether a Call record was found by twilioCallSid
+     - final orgId used (or “NOT FOUND”)
+   Keep masking on.
+
+2) Change org resolution priority:
+   - FIRST: if twilioCallSid exists, find Call by twilioCallSid.
+       - If found, use call.orgId (do NOT try findOrgByPhoneNumber).
+       - Update providerCallId with OpenAI call_id if missing.
+       - Proceed to acceptCall(call_id) and startRealtimeSession(call_id, call.orgId).
+   - ONLY IF NO twilioCallSid match: then try findOrgByPhoneNumber(toNumber) as a fallback.
+
+3) Remove/avoid rejecting calls with 603 just because toNumber-based org lookup fails when we DO have twilioCallSid.
+   - Reject only if neither twilioCallSid match nor toNumber match yields an org.
+
+4) Verify Twilio voice handler is creating the Call record BEFORE bridging to SIP:
+   - Must persist twilioCallSid, orgId, toE164, fromE164.
+   - Ensure it is idempotent (upsert or findUnique by twilioCallSid).
+
+5) Improve SIP URI compatibility:
+   - Add secure media parameter in the SIP URI: ;secure=true (keep ;transport=tls).
+   - Log the final SIP URI (masked) that Twilio is dialing.
+
+6) After deploying, I will place a real call. I need logs showing:
+   - Twilio webhook hit and TwiML returned
+   - OpenAI realtime.call.incoming webhook hit
+   - acceptCall succeeded (not 404)
+   - if acceptCall fails, log response status + body
+
+Deliverable: commit changes + tell me exactly which log lines to look for (prefix them consistently like [OpenAI Webhook DIAG]).

@@ -3777,9 +3777,9 @@ export async function registerRoutes(
           const projectIdMasked = projectId ? `${projectId.slice(0, 8)}...${projectId.slice(-4)}` : "MISSING";
           
           // Bridge call to OpenAI Realtime via SIP
-          // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls
-          const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls`;
-          const sipUriMasked = `sip:${projectIdMasked}@sip.api.openai.com;transport=tls`;
+          // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls;secure=true
+          const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls;secure=true`;
+          const sipUriMasked = `sip:${projectIdMasked}@sip.api.openai.com;transport=tls;secure=true`;
           const dialTimeout = 30;
           
           console.log(`[Twilio Voice] [${requestId}] OPENAI_PROJECT_ID: ${projectIdMasked}`);
@@ -3788,11 +3788,16 @@ export async function registerRoutes(
           console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Dial><Sip> and action callback`);
           
           // Include action callback to capture dial result
+          // Add custom SIP headers via URI params so OpenAI webhook can link to our Call record
+          // Twilio passes these as X-* SIP headers
+          const sipUriWithHeaders = `${sipUri}?X-Twilio-CallSid=${encodeURIComponent(CallSid)}&X-Twilio-FromE164=${encodeURIComponent(From)}&X-Twilio-ToE164=${encodeURIComponent(To)}`;
+          console.log(`[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`);
+          console.log(`[Twilio Voice] [${requestId}] SIP URI includes X-Twilio-CallSid header param`);
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Connecting you to our assistant now.</Say>
   <Dial timeout="${dialTimeout}" callerId="${To}" action="/v1/telephony/twilio/dial-result" method="POST">
-    <Sip statusCallback="/v1/telephony/twilio/sip-status" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${sipUri}</Sip>
+    <Sip statusCallback="/v1/telephony/twilio/sip-status" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${sipUriWithHeaders}</Sip>
   </Dial>
   <Say>We're sorry, the connection could not be completed. Please try again later.</Say>
   <Hangup/>

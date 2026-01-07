@@ -204,7 +204,9 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 
 async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Promise<void> {
   console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall START ==========`);
+  console.log(`[OpenAI Webhook DIAG] event.type: ${event.type}`);
   const callId = event.data?.call_id;
+  console.log(`[OpenAI Webhook DIAG] call_id: ${callId ? maskCallSid(callId) : "MISSING"}`);
 
   if (!callId) {
     console.error("[OpenAI Webhook] Missing call_id in incoming call event");
@@ -212,90 +214,112 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
     return;
   }
 
-  // Log all SIP headers for debugging
-  console.log(`[OpenAI Webhook DIAG] SIP headers count: ${event.data.sip_headers?.length || 0}`);
-  if (event.data.sip_headers) {
-    for (const header of event.data.sip_headers) {
-      // Mask sensitive values but show header names
-      const value = header.name.toLowerCase().includes("from") || header.name.toLowerCase().includes("to") 
-        ? maskPhone(header.value) 
-        : header.value.substring(0, 50);
-      console.log(`[OpenAI Webhook DIAG] SIP header: ${header.name} = ${value}`);
-    }
-  }
+  // Log all SIP headers for debugging (names only, values masked)
+  const headerNames = event.data.sip_headers?.map(h => h.name) || [];
+  console.log(`[OpenAI Webhook DIAG] SIP headers received: [${headerNames.join(", ")}]`);
 
   const fromHeader = getSipHeader(event.data.sip_headers, "From");
   const toHeader = getSipHeader(event.data.sip_headers, "To");
   const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
+  const xTwilioCallSid = getSipHeader(event.data.sip_headers, "X-Twilio-CallSid");
+  const pAssertedIdentity = getSipHeader(event.data.sip_headers, "P-Asserted-Identity");
 
-  console.log(`[OpenAI Webhook DIAG] Raw fromHeader: ${fromHeader ? maskPhone(fromHeader) : "null"}`);
-  console.log(`[OpenAI Webhook DIAG] Raw toHeader: ${toHeader ? maskPhone(toHeader) : "null"}`);
+  console.log(`[OpenAI Webhook DIAG] X-Twilio-CallSid header: ${xTwilioCallSid ? maskCallSid(xTwilioCallSid) : "NOT PRESENT"}`);
+  console.log(`[OpenAI Webhook DIAG] P-Asserted-Identity header: ${pAssertedIdentity ? "present" : "NOT PRESENT"}`);
+  console.log(`[OpenAI Webhook DIAG] Extracted twilioCallSid: ${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
 
   const fromNumber = fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown";
   const toNumber = toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown";
 
   console.log(`[OpenAI Webhook DIAG] Extracted fromNumber: ${maskPhone(fromNumber)}`);
   console.log(`[OpenAI Webhook DIAG] Extracted toNumber: ${maskPhone(toNumber)}`);
-  console.log(`[OpenAI Webhook DIAG] Extracted twilioCallSid: ${twilioCallSid || "null"}`);
 
-  console.log(`[OpenAI Webhook] Incoming call ${maskCallSid(callId)} from ${maskPhone(fromNumber)} to ${maskPhone(toNumber)}, twilioCallSid=${twilioCallSid ? maskCallSid(twilioCallSid) : null}`);
+  // === NEW PRIORITY: Try twilioCallSid lookup FIRST ===
+  let orgId: string | null = null;
+  let existingCall: any = null;
 
-  console.log(`[OpenAI Webhook DIAG] Looking up org by phone number: ${maskPhone(toNumber)}`);
-  const org = await findOrgByPhoneNumber(toNumber);
-  console.log(`[OpenAI Webhook DIAG] Org lookup result: ${org ? org.id : "NOT FOUND"}`);
-  
-  if (!org) {
-    console.error(`[OpenAI Webhook] No org found for phone number ${maskPhone(toNumber)}, rejecting call with 603`);
-    console.log(`[OpenAI Webhook DIAG] About to call rejectCall with 603...`);
-    await rejectCall(callId, 603, "Decline - number not configured");
+  if (twilioCallSid) {
+    console.log(`[OpenAI Webhook DIAG] PRIORITY 1: Looking up Call by twilioCallSid...`);
+    existingCall = await prisma.call.findFirst({
+      where: { twilioCallSid },
+    });
+    
+    if (existingCall) {
+      orgId = existingCall.orgId;
+      console.log(`[OpenAI Webhook DIAG] FOUND Call by twilioCallSid! call.id=${existingCall.id}, orgId=${orgId}`);
+      
+      // Update with OpenAI call_id
+      await prisma.call.update({
+        where: { id: existingCall.id },
+        data: { 
+          providerCallId: callId,
+          provider: "openai_realtime",
+        },
+      });
+      console.log(`[OpenAI Webhook DIAG] Updated Call with providerCallId=${maskCallSid(callId)}`);
+    } else {
+      console.log(`[OpenAI Webhook DIAG] No Call found by twilioCallSid`);
+    }
+  } else {
+    console.log(`[OpenAI Webhook DIAG] No twilioCallSid available, skipping Priority 1`);
+  }
+
+  // === FALLBACK: Try phone number lookup only if twilioCallSid didn't work ===
+  if (!orgId) {
+    console.log(`[OpenAI Webhook DIAG] PRIORITY 2: Looking up org by toNumber: ${maskPhone(toNumber)}`);
+    const org = await findOrgByPhoneNumber(toNumber);
+    if (org) {
+      orgId = org.id;
+      console.log(`[OpenAI Webhook DIAG] FOUND org by phone number! orgId=${orgId}`);
+    } else {
+      console.log(`[OpenAI Webhook DIAG] No org found by phone number`);
+    }
+  }
+
+  // === REJECT only if BOTH lookups failed ===
+  if (!orgId) {
+    console.error(`[OpenAI Webhook DIAG] REJECT: No org found via twilioCallSid OR toNumber`);
+    console.log(`[OpenAI Webhook DIAG] twilioCallSid=${twilioCallSid || "none"}, toNumber=${maskPhone(toNumber)}`);
+    await rejectCall(callId, 603, "Decline - org not found");
     res.status(200).json({ received: true, action: "rejected", reason: "no_org_match" });
     console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall END (rejected) ==========`);
     return;
   }
 
+  console.log(`[OpenAI Webhook DIAG] Using orgId: ${orgId}`);
+
   try {
-    let call: any;
-    
-    if (twilioCallSid) {
-      call = await prisma.call.findFirst({
-        where: { twilioCallSid },
-      });
-      
-      if (call) {
-        await prisma.call.update({
-          where: { id: call.id },
-          data: { 
-            providerCallId: callId,
-            provider: "openai_realtime",
-          },
-        });
-        console.log(`[OpenAI Webhook] Linked OpenAI call ${maskCallSid(callId)} to existing Twilio call ${maskCallSid(twilioCallSid)}`);
-      }
-    }
-    
-    if (!call) {
-      const result = await createCallRecords(org.id, callId, fromNumber, toNumber, twilioCallSid);
-      call = result.call;
-      console.log(`[OpenAI Webhook] Created new call record ${call.id} for org ${org.id}`);
+    // Create call records if we didn't find existing
+    if (!existingCall) {
+      console.log(`[OpenAI Webhook DIAG] Creating new call records for orgId=${orgId}`);
+      const result = await createCallRecords(orgId, callId, fromNumber, toNumber, twilioCallSid);
+      existingCall = result.call;
+      console.log(`[OpenAI Webhook DIAG] Created call record: ${existingCall.id}`);
     }
 
+    // Accept the call
+    console.log(`[OpenAI Webhook DIAG] Calling acceptCall(${maskCallSid(callId)})...`);
     const accepted = await acceptCall(callId);
     
     if (!accepted) {
-      console.error(`[OpenAI Webhook] Failed to accept call ${callId}`);
+      console.error(`[OpenAI Webhook DIAG] acceptCall FAILED for ${maskCallSid(callId)}`);
       res.status(200).json({ received: true, action: "accept_failed" });
+      console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall END (accept_failed) ==========`);
       return;
     }
 
-    console.log(`[OpenAI Webhook] Call ${callId} accepted, starting sideband session`);
+    console.log(`[OpenAI Webhook DIAG] acceptCall SUCCEEDED for ${maskCallSid(callId)}`);
+    console.log(`[OpenAI Webhook DIAG] Starting sideband session...`);
 
-    await startRealtimeSession(callId, org.id);
+    await startRealtimeSession(callId, orgId);
 
+    console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall END (accepted) ==========`);
     res.status(200).json({ received: true, call_id: callId, action: "accepted" });
-  } catch (error) {
-    console.error("[OpenAI Webhook] Failed to handle incoming call:", error);
+  } catch (error: any) {
+    console.error(`[OpenAI Webhook DIAG] ERROR in handleIncomingCall: ${error?.message || error}`);
     await rejectCall(callId, 500, "Internal error");
     res.status(200).json({ received: true, action: "error" });
+    console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall END (error) ==========`);
   }
 }
 
@@ -502,14 +526,15 @@ async function acceptCall(callId: string): Promise<boolean> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[OpenAI Webhook] Accept call failed: ${response.status} ${errorText}`);
+      console.error(`[OpenAI Webhook DIAG] acceptCall FAILED: status=${response.status}, body=${errorText}`);
       return false;
     }
 
-    console.log(`[OpenAI Webhook] Accept call ${maskCallSid(callId)} succeeded`);
+    const responseData = await response.json().catch(() => ({}));
+    console.log(`[OpenAI Webhook DIAG] acceptCall SUCCEEDED: status=${response.status}`);
     return true;
-  } catch (error) {
-    console.error("[OpenAI Webhook] Accept call error:", error);
+  } catch (error: any) {
+    console.error(`[OpenAI Webhook DIAG] acceptCall EXCEPTION: ${error?.message || error}`);
     return false;
   }
 }
