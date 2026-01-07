@@ -1,0 +1,98 @@
+You are Replit Agent. We have a verified audit: CounselTech is a Node/TS monolith (Express + Vite/React + Prisma/Postgres). Twilio inbound is currently voicemail capture via <Record>. There is NO OpenAI integration, NO Realtime, NO SIP, NO WebSockets.
+
+Your task: implement the FIRST REAL “agentic voice” path for phone calls using OpenAI Realtime + SIP trunking, integrated into the existing codebase with clean boundaries.
+
+NON-NEGOTIABLES
+- Do not remove existing features (auth/RBAC/leads/intake/dashboard). Add voice capability without breaking anything.
+- No hand-waving. Every claim must be backed by code and runnable endpoints.
+- Use Node.js + TypeScript. Keep changes minimal but correct.
+- Security: verify OpenAI webhook signatures (raw body).
+- Store all call lifecycle data in Postgres via existing Prisma client.
+
+TARGET OUTCOME (DEMO-ABLE)
+A phone call can be answered by an actual realtime AI voice agent that:
+1) Greets caller with disclaimers (no legal advice, no attorney-client relationship).
+2) Collects basics (name, callback number, email if available, short description, urgency).
+3) Calls tools to create/update Lead + Intake in DB.
+4) Can trigger “warm transfer” stub (log intent; real transfer can be Phase 2).
+5) Writes an audit log for every major action.
+
+ARCHITECTURE TO IMPLEMENT (PHONE VIA SIP → OPENAI REALTIME)
+A) Twilio inbound call should no longer be <Record>. Instead, return TwiML that bridges to a SIP endpoint:
+- Use Twilio <Dial><Sip> to route the live call to OpenAI’s SIP gateway for Realtime:
+  sip:$OPENAI_PROJECT_ID@sip.api.openai.com;transport=tls
+(If Twilio SIP trunking config is needed, leave TODO docs, but implement the code + config placeholders.)
+
+B) OpenAI will send a webhook event when a call comes in:
+- Implement POST /v1/telephony/openai/webhook
+- Verify signature using OpenAI webhook secret and RAW body parsing (express.text({ type: "application/json" }))
+- Handle “realtime.call.incoming” events by starting a “sideband” WebSocket controller to the call.
+
+C) Sideband controller
+- Implement server-side WS connection to:
+  wss://api.openai.com/v1/realtime?call_id=<CALL_ID>
+- On connect: send session.update including:
+  - model: "gpt-realtime"
+  - instructions: CounselTech intake prompt (new file)
+  - tools: create_lead, update_lead, upsert_contact, save_intake_answers, schedule_callback, warm_transfer, end_call
+  - tool_choice: "auto"
+- Listen for response.done events and detect function_call outputs.
+- Execute the tool locally (Prisma writes), then send function_call_output back, and send response.create so the agent continues speaking.
+
+DATA MODEL REQUIREMENTS
+- Use existing Prisma models where possible: Lead, Contact, Call, Intake, Interaction, AuditLog.
+- Add minimal new fields/models only if necessary (e.g., CallSession table or call provider id mapping).
+- Persist:
+  - openaiCallId (providerCallId)
+  - call start/end timestamps
+  - transcript placeholder (Phase 1 can store incremental text events if available; otherwise leave null)
+  - tool call history (in AuditLog or a new CallEvent table)
+
+FILES/STRUCTURE (ADD THESE)
+Create:
+- server/openai/client.ts          (OpenAI SDK client)
+- server/openai/webhook.ts         (signature verification + webhook handler)
+- server/openai/realtime.ts        (sideband WS controller)
+- server/agent/prompt.ts           (system prompt for law-firm intake)
+- server/agent/tools.ts            (tool schemas)
+- server/agent/toolRunner.ts       (Prisma-backed tool execution)
+Update:
+- server/routes.ts                 (add new endpoints + modify Twilio voice TwiML to SIP)
+- server/index.ts                  (middleware: raw body for webhook route ONLY)
+
+ENV VARS (ADD TO README + REFERENCED IN CODE)
+- OPENAI_API_KEY (required)
+- OPENAI_WEBHOOK_SECRET (required)
+- OPENAI_PROJECT_ID (required for SIP URI)
+- PUBLIC_BASE_URL (required for webhook URLs if needed)
+- TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_NUMBER (optional now; inbound webhook already exists)
+
+IMPLEMENTATION STEPS (DO THEM IN ORDER)
+1) Add OpenAI SDK dependency (npm install openai) and create server/openai/client.ts
+2) Add /v1/telephony/openai/webhook with raw body + signature verification
+3) Implement sideband realtime WS controller that can:
+   - session.update
+   - parse events
+   - execute tool calls
+   - send function_call_output + response.create
+4) Implement tools backed by Prisma:
+   - create_lead: creates Contact + Lead + Interaction + Call if not exists
+   - save_intake_answers: upserts Intake.answers JSON
+   - update_lead: updates status/fields
+   - warm_transfer: create an Interaction + AuditLog “transfer_requested”
+5) Modify existing Twilio /v1/telephony/twilio/voice to return TwiML that routes the call to OpenAI via SIP (instead of <Record>)
+6) Add a small “dev simulator” script:
+   - scripts/simulate-openai-incoming-call.ts that POSTS a fake realtime.call.incoming event to the webhook endpoint to test sideband connection logic (without Twilio/SIP).
+
+OUTPUT REQUIREMENTS
+- After implementing, print:
+  - New/modified file list
+  - How to run locally
+  - How to test the webhook + sideband without Twilio
+  - The exact TwiML being returned now for /v1/telephony/twilio/voice
+
+DO NOT:
+- Implement WebRTC in this pass.
+- Implement real call transfer in this pass.
+- Implement email sending in this pass.
+Focus on making the FIRST LIVE AGENTIC PHONE CALL PATH real.

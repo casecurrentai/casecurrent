@@ -1,0 +1,99 @@
+You are Replit Agent. Your job is to produce a COMPLETE, strictly technical, current-state architecture + codebase rundown of the CounselTech project exactly as it exists in this workspace right now.
+
+NON-NEGOTIABLE RULES
+- Do NOT propose future work, redesigns, or “next steps” until after you have documented what already exists.
+- Do NOT hand-wave (“there should be…”, “likely…”, “assumed…”). If it exists, cite where. If it does not exist, say “NOT IMPLEMENTED.”
+- Every claim must be traceable to a file path and (when relevant) function/class name.
+- Prefer concrete evidence: file tree, key exports, route list, schemas, env vars, queue jobs, cron, background workers, and external integrations.
+
+DELIVERABLE FORMAT (use these exact sections)
+
+0) Executive Snapshot (technical)
+- What this system currently is (monolith vs services), runtime, language(s), framework(s)
+- How it is deployed in Replit (build/start commands, hosting mode)
+- What works end-to-end today (list only what you can prove)
+
+1) Full Repository Map
+- Print the full current file tree (top to bottom). No omissions.
+- Identify the “entrypoint” file(s) actually used at runtime.
+
+2) Runtime + Build Configuration
+- package.json: scripts, dependencies, devDependencies
+- tsconfig / build tooling / bundler settings
+- Replit config files (replit.nix, replit.yaml, .replit, etc.), and what they do
+- Node version / runtime assumptions
+
+3) Environment Variables + Secrets
+- List every env var referenced in code, with file path(s) and line references (or exact identifiers).
+- Indicate which are REQUIRED vs optional.
+- Identify how secrets are loaded (dotenv, Replit secrets, etc.)
+
+4) API Surface Area (Backend)
+- Enumerate ALL HTTP endpoints (method + path) and for each:
+  - file path + handler function name
+  - auth requirements (JWT/session/API key), middleware stack
+  - request/response schema (JSON shapes)
+  - side effects (DB writes, external API calls)
+- Include webhook endpoints (Twilio/OpenAI/etc.) explicitly.
+
+5) AuthN/AuthZ
+- Current auth strategy (sessions/JWT/OAuth/etc.)
+- User/firm/role model: how authorization decisions are made
+- Any admin/superadmin logic
+- Password handling / hashing / token rotation (if present)
+
+6) Data Layer
+- What database is used (Postgres/SQLite/etc.) and connection method
+- ORM/query builder (Prisma/Drizzle/etc.), schema/migrations location
+- List core tables/models with fields (firm, user, lead, call, message, voicemail, intake, etc.)
+- Any file storage (S3/local) and where used
+
+7) Telephony + Voice (MOST IMPORTANT)
+Give a precise rundown of EVERYTHING implemented for voice/telephony:
+- Twilio (or other carrier) configuration in code: inbound calls, webhooks, call status callbacks
+- SIP trunking status: implemented or not? show files/routes
+- OpenAI Realtime API usage: implemented or not? show code, WS endpoints, events handled
+- Speech-to-text / text-to-speech paths (Whisper, Realtime, etc.)
+- Call recording, transcription, voicemail ingestion pipeline
+- Warm transfer / call routing logic, if any
+For each item: show exact code location and data flow.
+
+8) Messaging (SMS/MMS/Email/Web Chat)
+- SMS sending + inbound handling
+- Web chat widget / website messaging
+- Email sending and templates
+- Any queues/retries/deduplication logic
+
+9) “Agentic” Intelligence Layer
+- Where prompts live (paths), how versioned, how loaded
+- Tool/function-calling implementation (if any)
+- RAG/knowledge base: ingestion, embeddings, retrieval (if any)
+- Guardrails/disclaimers logic and where enforced
+
+10) Frontend / Dashboard / Mobile
+- What UI(s) exist (marketing site vs dashboard vs mobile)
+- Framework(s) used (Next/React/etc.)
+- Auth integration with backend
+- Mobile responsiveness status (show routes/pages and CSS approach)
+
+11) Observability + Ops
+- Logging framework and where logs go
+- Error handling + alerting
+- Rate limiting, CORS, security headers, CSRF, input validation
+- Background jobs/workers/cron and where defined
+
+12) Tests
+- Test framework, what tests exist, how to run them
+- Coverage reality (if none, say NONE)
+
+13) Gaps / Not Implemented (hard truth)
+- Bullet list the missing pieces required for a sellable CounselTech voice agent platform
+- For each missing item, reference the closest related code area (or say “no related code exists”)
+
+OUTPUT REQUIREMENTS
+- This must be long, detailed, and technical.
+- Include code snippets ONLY when they prove a key claim (keep each snippet under ~40 lines).
+- Use exact file paths everywhere.
+- End with a concise “current maturity score” (0–10) for: telephony, realtime voice, agentic tools, dashboard, security.
+
+Now produce the report.

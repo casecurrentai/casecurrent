@@ -1,0 +1,95 @@
+You are Replit Agent. I need a VERIFIABLE, copy/paste-friendly technical audit of the CounselTech repo as it exists RIGHT NOW. Output ONE SINGLE CONTIGUOUS BLOCK of plain text that I can copy from mobile.
+
+NON-NEGOTIABLE ACCURACY RULES
+- NO guessing. If you cannot prove a claim with a file path or command output, write: NOT IMPLEMENTED.
+- Every feature claim must include: (a) file path(s), (b) function/handler name(s) when applicable, and (c) what it does.
+- Do NOT propose improvements until AFTER the audit is complete.
+
+FIRST: RUN AND INCLUDE THESE PROOF COMMANDS (paste the output inline)
+1) Repo inventory:
+   - `ls -la`
+   - `find . -maxdepth 4 -print`
+   - If git exists: `git rev-parse HEAD` (if not, say “NO GIT”)
+
+2) Runtime / build proof:
+   - Show root `package.json` scripts (paste the scripts section)
+   - Show any other `package.json` scripts used by apps (api/web/client/etc.)
+   - Show Replit config files if present: `.replit`, `replit.nix`, `replit.yaml` (paste relevant parts)
+   - State the exact command Replit runs in dev and in prod, and the true runtime entrypoint file(s) with paths.
+
+3) Full backend route inventory (PROVE IT)
+   - Provide a programmatic dump of all Express routes at runtime (METHOD + PATH), and paste the output.
+   - Provide grep inventory results:
+     - `rg "app\.(get|post|put|patch|delete)\(" -n server`
+     - `rg "router\.(get|post|put|patch|delete)\(" -n server`
+   - Then present a consolidated table: METHOD | PATH | AUTH REQUIRED | HANDLER FILE:LINE | DESCRIPTION
+
+4) Integration existence proof (grep results)
+   - OpenAI / Realtime / WebRTC / SIP:
+     - `rg "(openai|realtime|wss://api.openai.com|responses\.create|client_secrets|WebRTC|sip\.api\.openai\.com)" -n .`
+   - Twilio:
+     - `rg "(twilio|TwiML|<Response>|/v1/telephony/twilio)" -n server`
+   - WebSockets:
+     - `rg "(ws|WebSocket|socket\.io)" -n .`
+
+5) Database layer proof
+   - `rg "(PrismaClient|@prisma/client|prisma\.)" -n .`
+   - `rg "(drizzle|drizzle-kit)" -n .`
+   - State clearly which layer the runtime server actually uses (Prisma/Drizzle/Both/Neither) with file evidence.
+
+NOW: WRITE THE TECHNICAL ARCHITECTURE REPORT (single block) USING THESE EXACT SECTIONS
+
+0) Executive Snapshot (technical)
+- What this system currently is (monolith/services), runtime, languages, frameworks
+- What works end-to-end today (only what you can prove)
+
+1) Full Repository Map
+- Provide the file tree (top to bottom) derived from the `find` output, plus identify runtime entrypoints.
+
+2) Runtime + Build Configuration
+- Dependencies, scripts, TypeScript/build tooling, Replit deployment mode, port usage.
+
+3) Environment Variables + Secrets
+- Every env var referenced, REQUIRED vs OPTIONAL, with file:line references.
+
+4) API Surface Area (Backend)
+- The consolidated route table (METHOD | PATH | AUTH | HANDLER | DESCRIPTION)
+- Call out webhook endpoints separately.
+
+5) AuthN/AuthZ
+- JWT/session details, token payload shape, roles, middleware chain, impersonation.
+
+6) Data Layer
+- DB type, connection method, ORM usage, model/tables list (name + purpose), migrations, seed scripts.
+
+7) Telephony + Voice (CRITICAL)
+- Twilio: inbound voice, status, recording, SMS — exact behaviors + TwiML returned (paste full TwiML)
+- SIP trunking: implemented or NOT IMPLEMENTED (prove)
+- OpenAI Realtime voice: implemented or NOT IMPLEMENTED (prove)
+- Transcription/TTS pipeline: implemented or NOT IMPLEMENTED (prove)
+- Call transfer/routing: implemented or NOT IMPLEMENTED (prove)
+
+8) Messaging (SMS/MMS/Email/Web Chat)
+- Inbound/outbound status for each channel with code references.
+
+9) “Agentic” Intelligence Layer
+- Prompt storage/versioning, tools/function calling, RAG/KB, guardrails/disclaimers enforcement (prove or NOT IMPLEMENTED).
+
+10) Frontend / Dashboard / Mobile
+- Which frontend(s) are actually used, routes/pages, auth integration, mobile responsiveness approach.
+
+11) Observability + Ops
+- Logging, error handling, rate limiting, CORS, security headers, CSRF, background jobs/cron, retries.
+
+12) Tests
+- Test frameworks, what exists, how to run, what coverage is real.
+
+13) Gaps / NOT IMPLEMENTED (hard truth)
+- A bullet list of missing capabilities required for a sellable CounselTech real-time voice intake agent.
+- For each gap: the closest related code area or “no related code exists.”
+
+END WITH:
+- Maturity score (0–10) for: Telephony, Realtime Voice, Agentic Tools, Dashboard, Security.
+- A short “What is truly production-ready today vs what is prototype/stub.”
+
+Produce the report now as ONE continuous block.
