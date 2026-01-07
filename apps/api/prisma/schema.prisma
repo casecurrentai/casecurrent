@@ -266,8 +266,8 @@ model Call {
   phoneNumberId   String    @map("phone_number_id")
   direction       String    // inbound, outbound
   provider        String
-  providerCallId  String?   @map("provider_call_id") // OpenAI call_id (set when OpenAI webhook arrives)
-  twilioCallSid   String?   @map("twilio_call_sid")  // Twilio CallSid (set when Twilio webhook arrives)
+  providerCallId  String?   @unique @map("provider_call_id") // OpenAI call_id (set when OpenAI webhook arrives)
+  twilioCallSid   String?   @unique @map("twilio_call_sid")  // Twilio CallSid (set when Twilio webhook arrives)
   fromE164        String    @map("from_e164")
   toE164          String    @map("to_e164")
   startedAt       DateTime  @map("started_at")
@@ -286,8 +286,6 @@ model Call {
   interaction  Interaction  @relation(fields: [interactionId], references: [id], onDelete: Cascade)
   phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id])
 
-  @@index([twilioCallSid])
-  @@index([providerCallId])
   @@map("calls")
 }
 

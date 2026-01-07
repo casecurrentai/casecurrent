@@ -3336,11 +3336,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Missing required Twilio parameters" });
       }
 
-      const existingCall = await prisma.call.findFirst({
-        where: { providerCallId: CallSid },
+      // IDEMPOTENCY: Check if call already exists by twilioCallSid
+      const existingCall = await prisma.call.findUnique({
+        where: { twilioCallSid: CallSid },
       });
 
       if (existingCall) {
+        console.log(`[Twilio Voice] Duplicate webhook for CallSid ${CallSid}, returning cached TwiML`);
         res.set("Content-Type", "text/xml");
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
