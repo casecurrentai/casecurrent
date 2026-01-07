@@ -125,6 +125,17 @@ function extractTwilioCallSid(headers: SipHeader[] | undefined): string | null {
 }
 
 export async function handleOpenAIWebhook(req: Request, res: Response): Promise<void> {
+  // DIAGNOSTIC: Log every incoming request to this endpoint
+  console.log(`[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========`);
+  console.log(`[OpenAI Webhook DIAG] Method: ${req.method}`);
+  console.log(`[OpenAI Webhook DIAG] URL: ${req.originalUrl}`);
+  console.log(`[OpenAI Webhook DIAG] Content-Type: ${req.headers["content-type"]}`);
+  console.log(`[OpenAI Webhook DIAG] webhook-id: ${req.headers["webhook-id"] || "MISSING"}`);
+  console.log(`[OpenAI Webhook DIAG] webhook-timestamp: ${req.headers["webhook-timestamp"] || "MISSING"}`);
+  console.log(`[OpenAI Webhook DIAG] webhook-signature present: ${!!req.headers["webhook-signature"]}`);
+  console.log(`[OpenAI Webhook DIAG] rawBody present: ${!!(req as any).rawBody}`);
+  console.log(`[OpenAI Webhook DIAG] rawBody length: ${(req as any).rawBody?.length || 0}`);
+  
   const webhookId = req.headers["webhook-id"] as string;
   const webhookTimestamp = req.headers["webhook-timestamp"] as string;
   const webhookSignature = req.headers["webhook-signature"] as string;
@@ -132,6 +143,7 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 
   if (!rawBody || !webhookId || !webhookTimestamp || !webhookSignature) {
     console.error("[OpenAI Webhook] Missing required headers or body");
+    console.error(`[OpenAI Webhook DIAG] rawBody=${!!rawBody} webhookId=${!!webhookId} webhookTimestamp=${!!webhookTimestamp} webhookSignature=${!!webhookSignature}`);
     res.status(400).json({ error: "Missing required webhook headers" });
     return;
   }
