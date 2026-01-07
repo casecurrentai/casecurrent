@@ -116,26 +116,29 @@ async function createLead(
     where: { providerCallId: context.callId },
   });
 
-  let callRecord;
   if (!existingCall) {
     const phoneNumber = await prisma.phoneNumber.findFirst({
       where: { orgId: context.orgId, inboundEnabled: true },
     });
 
-    callRecord = await prisma.call.create({
-      data: {
-        orgId: context.orgId,
-        leadId: lead.id,
-        interactionId: interaction.id,
-        phoneNumberId: phoneNumber?.id || "",
-        direction: "inbound",
-        provider: "openai_realtime",
-        providerCallId: context.callId,
-        fromE164: phoneE164,
-        toE164: phoneNumber?.e164 || "",
-        startedAt: new Date(),
-      },
-    });
+    if (phoneNumber) {
+      await prisma.call.create({
+        data: {
+          orgId: context.orgId,
+          leadId: lead.id,
+          interactionId: interaction.id,
+          phoneNumberId: phoneNumber.id,
+          direction: "inbound",
+          provider: "openai_realtime",
+          providerCallId: context.callId,
+          fromE164: phoneE164,
+          toE164: phoneNumber.e164,
+          startedAt: new Date(),
+        },
+      });
+    } else {
+      console.warn(`[ToolRunner] No phone number configured for org ${context.orgId}, skipping call record creation`);
+    }
   }
 
   await createAuditLog(context.orgId, "create_lead", "lead", lead.id, {

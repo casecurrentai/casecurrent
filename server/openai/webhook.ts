@@ -96,7 +96,7 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
   console.log(`[OpenAI Webhook] Starting realtime session for call: ${callId}`);
 
   try {
-    startRealtimeSession(callId, fromNumber, toNumber);
+    await startRealtimeSession(callId, fromNumber, toNumber);
     res.status(200).json({ received: true, call_id: callId });
   } catch (error) {
     console.error("[OpenAI Webhook] Failed to start realtime session:", error);
