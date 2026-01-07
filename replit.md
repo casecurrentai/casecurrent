@@ -20,7 +20,13 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
 - **Monorepo Structure**: Organized into `client/`, `server/`, `shared/`, `apps/` (api, web), and `packages/` (shared, config) for modular development.
 
 ### Feature Specifications
-- **Realtime Voice Integration**: Utilizes OpenAI Realtime Voice for phone calls, managing conversations, executing tools via Prisma, and logging interactions. The AI agent greets callers, collects essential lead information, creates database entries, and can request warm transfers.
+- **Realtime Voice Integration**: Utilizes OpenAI Realtime Voice for phone calls via SIP trunking pattern:
+  - Twilio receives inbound call → returns TwiML with `<Dial><Sip>` to OpenAI SIP gateway
+  - OpenAI sends `realtime.call.incoming` webhook with Standard Webhooks signature (webhook-id, webhook-timestamp, webhook-signature)
+  - Server resolves org by called number, creates call records, calls OpenAI `/realtime/calls/{call_id}/accept` endpoint with session config
+  - Opens sideband WebSocket to `wss://api.openai.com/v1/realtime?call_id=...` for real-time conversation monitoring and tool execution
+  - AI agent greets callers, collects lead information, creates database entries via tools, can request warm transfers
+  - Multi-tenancy safety: rejects calls if org cannot be resolved from phone number
 - **Telephony Ingest**: Handles inbound calls and SMS via Twilio webhooks, creating leads, interactions, and calls/messages. It manages call status, recordings, and enqueues transcription jobs.
 - **Structured Intake Flow**: Manages the lifecycle of lead intake, allowing initialization, updating of answers, and completion, with support for practice area-specific question sets.
 - **AI Pipeline & Qualification**: Provides endpoints for AI-driven lead qualification, including transcription, summarization, intake extraction, and scoring based on defined factors (e.g., contact info, practice area, intake completion). It generates detailed qualification reasons.
@@ -30,7 +36,15 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
 
 ### System Design Choices
 - **Database**: PostgreSQL with Prisma ORM (v7.2.0) is used for data storage, including 27 base tables with multi-tenant `org_id` scoping. Migrations are managed via Prisma Migrate.
-- **AI Integration**: Deep integration with OpenAI for real-time voice interactions and AI-driven qualification, supported by specific environment variables.
+- **AI Integration**: Deep integration with OpenAI for real-time voice interactions and AI-driven qualification.
+  - **Required Environment Variables for Voice**:
+    - `OPENAI_API_KEY`: OpenAI API key with Realtime access
+    - `OPENAI_PROJECT_ID`: OpenAI project ID for SIP routing (format: `proj_xxxxx`)
+    - `OPENAI_WEBHOOK_SECRET`: Webhook signing secret from OpenAI (format: `whsec_xxxxx`)
+    - `OPENAI_WEBHOOK_TOLERANCE_SECONDS` (optional): Timestamp tolerance for webhook verification (default: 300)
+  - **Webhook Configuration**: Set OpenAI webhook URL to `https://your-domain.com/v1/telephony/openai/webhook`
+  - **Twilio Configuration**: Configure Twilio number webhook to `https://your-domain.com/v1/telephony/twilio/voice`
+  - **Phone Number Setup**: Each inbound number must exist in `phone_numbers` table with `inboundEnabled=true`
 - **Modularity**: The monorepo structure and clear separation of concerns (frontend, backend, shared logic) promote maintainability and scalability.
 
 ## External Dependencies

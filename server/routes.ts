@@ -3452,7 +3452,7 @@ export async function registerRoutes(
           
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for calling. Connecting you to our AI assistant now.</Say>
+  <Say>Thank you for calling. Connecting you to our assistant now.</Say>
   <Dial timeout="30" callerId="${To}">
     <Sip>${sipUri}</Sip>
   </Dial>
@@ -3464,7 +3464,7 @@ export async function registerRoutes(
           // Fallback to voicemail if SIP fails
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for calling. Our AI assistant is currently unavailable. Please leave a message after the beep.</Say>
+  <Say>Thank you for calling. Our assistant is currently unavailable. Please leave a message after the beep.</Say>
   <Pause length="1"/>
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
@@ -3474,7 +3474,7 @@ export async function registerRoutes(
         console.log(`[Twilio Voice] OpenAI not configured, using voicemail for call ${CallSid}`);
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
+  <Say>Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
   <Pause length="1"/>
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
@@ -3484,7 +3484,7 @@ export async function registerRoutes(
       res.set("Content-Type", "text/xml");
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">We encountered an error. Please try again later.</Say>
+  <Say>We encountered an error. Please try again later.</Say>
   <Hangup/>
 </Response>`);
     }

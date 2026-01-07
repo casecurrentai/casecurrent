@@ -1,6 +1,4 @@
 import WebSocket from "ws";
-import { COUNSELTECH_INTAKE_PROMPT, VOICE_SETTINGS } from "../agent/prompt";
-import { getToolSchemas } from "../agent/tools";
 import { executeToolCall, type ToolCallContext } from "../agent/toolRunner";
 import { prisma } from "../db";
 
@@ -12,16 +10,16 @@ interface RealtimeSession {
   context: ToolCallContext;
   connected: boolean;
   transcriptBuffer: string[];
+  processedToolCalls: Set<string>;
 }
 
 const activeSessions = new Map<string, RealtimeSession>();
 
 export async function startRealtimeSession(
   callId: string,
-  fromNumber: string,
-  toNumber: string
+  orgId: string
 ): Promise<void> {
-  console.log(`[Realtime] Starting session for call ${callId}`);
+  console.log(`[Realtime] Starting sideband session for call ${callId}, org ${orgId}`);
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -29,15 +27,9 @@ export async function startRealtimeSession(
     return;
   }
 
-  const org = await findOrgByPhoneNumber(toNumber);
-  if (!org) {
-    console.error(`[Realtime] No org found for phone number ${toNumber}`);
-    return;
-  }
-
   const context: ToolCallContext = {
     callId,
-    orgId: org.id,
+    orgId,
   };
 
   const wsUrl = `${OPENAI_REALTIME_URL}?call_id=${callId}`;
@@ -45,7 +37,6 @@ export async function startRealtimeSession(
   const ws = new WebSocket(wsUrl, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "OpenAI-Beta": "realtime=v1",
     },
   });
 
@@ -55,6 +46,7 @@ export async function startRealtimeSession(
     context,
     connected: false,
     transcriptBuffer: [],
+    processedToolCalls: new Set(),
   };
 
   activeSessions.set(callId, session);
@@ -62,7 +54,7 @@ export async function startRealtimeSession(
   ws.on("open", () => {
     console.log(`[Realtime] WebSocket connected for call ${callId}`);
     session.connected = true;
-    sendSessionUpdate(session);
+    sendInitialGreeting(session);
   });
 
   ws.on("message", (data: Buffer) => {
@@ -81,34 +73,15 @@ export async function startRealtimeSession(
   });
 }
 
-function sendSessionUpdate(session: RealtimeSession): void {
-  const sessionUpdate = {
-    type: "session.update",
-    session: {
-      model: "gpt-4o-realtime-preview",
-      instructions: COUNSELTECH_INTAKE_PROMPT,
-      voice: VOICE_SETTINGS.voice,
-      modalities: VOICE_SETTINGS.modalities,
-      temperature: VOICE_SETTINGS.temperature,
-      max_response_output_tokens: VOICE_SETTINGS.max_response_output_tokens,
-      turn_detection: VOICE_SETTINGS.turn_detection,
-      tools: getToolSchemas(),
-      tool_choice: "auto",
+function sendInitialGreeting(session: RealtimeSession): void {
+  sendMessage(session, {
+    type: "response.create",
+    response: {
+      modalities: ["text", "audio"],
+      instructions: "Greet the caller warmly and introduce yourself as CounselTech AI. State the required disclaimers about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.",
     },
-  };
-
-  sendMessage(session, sessionUpdate);
-  console.log(`[Realtime] Session update sent for call ${session.callId}`);
-
-  setTimeout(() => {
-    sendMessage(session, {
-      type: "response.create",
-      response: {
-        modalities: ["text", "audio"],
-        instructions: "Greet the caller warmly and introduce yourself as CounselTech AI. State the required disclaimers about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.",
-      },
-    });
-  }, 500);
+  });
+  console.log(`[Realtime] Initial greeting sent for call ${session.callId}`);
 }
 
 function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
@@ -135,15 +108,6 @@ function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
       console.log(`[Realtime] Response started for call ${session.callId}`);
       break;
 
-    case "response.output_item.added":
-      break;
-
-    case "response.content_part.added":
-      break;
-
-    case "response.audio.delta":
-      break;
-
     case "response.audio_transcript.delta":
       if (event.delta) {
         session.transcriptBuffer.push(`[AI]: ${event.delta}`);
@@ -167,16 +131,6 @@ function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
       handleFunctionCall(session, event);
       break;
 
-    case "response.done":
-      if (event.response?.output) {
-        for (const output of event.response.output) {
-          if (output.type === "function_call") {
-            handleFunctionCallOutput(session, output);
-          }
-        }
-      }
-      break;
-
     case "input_audio_buffer.speech_started":
       console.log(`[Realtime] Caller started speaking`);
       break;
@@ -195,7 +149,7 @@ function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
 }
 
 async function handleFunctionCall(session: RealtimeSession, event: any): Promise<void> {
-  const callId = event.call_id || event.item_id;
+  const itemId = event.item_id;
   const name = event.name;
   const argumentsStr = event.arguments;
 
@@ -204,7 +158,14 @@ async function handleFunctionCall(session: RealtimeSession, event: any): Promise
     return;
   }
 
-  console.log(`[Realtime] Function call: ${name}`, argumentsStr);
+  const toolCallKey = `${itemId}:${name}`;
+  if (session.processedToolCalls.has(toolCallKey)) {
+    console.log(`[Realtime] Skipping duplicate tool call: ${toolCallKey}`);
+    return;
+  }
+  session.processedToolCalls.add(toolCallKey);
+
+  console.log(`[Realtime] Executing tool: ${name}`, argumentsStr);
 
   let args: Record<string, unknown>;
   try {
@@ -216,43 +177,13 @@ async function handleFunctionCall(session: RealtimeSession, event: any): Promise
 
   const result = await executeToolCall(name, args, session.context);
 
-  sendMessage(session, {
-    type: "conversation.item.create",
-    item: {
-      type: "function_call_output",
-      call_id: callId,
-      output: JSON.stringify(result),
-    },
-  });
-
-  sendMessage(session, {
-    type: "response.create",
-  });
-}
-
-async function handleFunctionCallOutput(session: RealtimeSession, output: any): Promise<void> {
-  const name = output.name;
-  const callId = output.call_id;
-  const argumentsStr = output.arguments;
-
-  if (!name) return;
-
-  console.log(`[Realtime] Processing function output: ${name}`);
-
-  let args: Record<string, unknown>;
-  try {
-    args = JSON.parse(argumentsStr || "{}");
-  } catch {
-    args = {};
-  }
-
-  const result = await executeToolCall(name, args, session.context);
+  console.log(`[Realtime] Tool ${name} result:`, result);
 
   sendMessage(session, {
     type: "conversation.item.create",
     item: {
       type: "function_call_output",
-      call_id: callId,
+      call_id: itemId,
       output: JSON.stringify(result),
     },
   });
@@ -292,37 +223,21 @@ async function saveTranscript(session: RealtimeSession): Promise<void> {
         },
       });
       console.log(`[Realtime] Transcript saved for call ${session.callId}`);
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: call.orgId,
+          actorType: "system",
+          action: "transcript_saved",
+          entityType: "call",
+          entityId: call.id,
+          details: { segmentCount: session.transcriptBuffer.length },
+        },
+      });
     }
   } catch (error) {
     console.error(`[Realtime] Failed to save transcript:`, error);
   }
-}
-
-async function findOrgByPhoneNumber(phoneNumber: string): Promise<{ id: string } | null> {
-  const normalized = phoneNumber.replace(/\D/g, "");
-  
-  const phone = await prisma.phoneNumber.findFirst({
-    where: {
-      OR: [
-        { e164: phoneNumber },
-        { e164: `+${normalized}` },
-        { e164: `+1${normalized}` },
-      ],
-    },
-    select: { orgId: true },
-  });
-
-  if (phone) {
-    return { id: phone.orgId };
-  }
-
-  const defaultOrg = await prisma.organization.findFirst({
-    where: { status: "active" },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
-
-  return defaultOrg;
 }
 
 export function getActiveSession(callId: string): RealtimeSession | undefined {
