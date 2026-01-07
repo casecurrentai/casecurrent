@@ -1,0 +1,66 @@
+01-07 13:26:10
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 13:26:10
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 13:26:10
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 13:26:10
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 13:26:10
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 13:26:10
+[OpenAI Webhook DIAG] webhook-timestamp: 1767813969
+01-07 13:34:11
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 13:34:11
+[OpenAI Webhook DIAG] webhook-timestamp: 1767814450
+01-07 13:34:11
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 13:34:11
+[OpenAI Webhook DIAG] webhook-id: wh_695eb1a93f248190aba9c2d0b189d602
+01-07 13:34:11
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 13:34:11
+[OpenAI Webhook DIAG] Method: POST
+01-07 13:34:11
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 13:34:11
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 13:34:11
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 13:35:58
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 13:35:58
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 13:35:58
+[OpenAI Webhook DIAG] Method: POST
+01-07 13:35:58
+[OpenAI Webhook DIAG] webhook-timestamp: 1767814556
+01-07 13:35:58
+[OpenAI Webhook DIAG] rawBody length: 1650
+01-07 13:35:58
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 13:35:58
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 13:35:58
+[OpenAI Webhook DIAG] webhook-id: wh_695eae48cb588190b5ce61c95d58be00
+01-07 13:35:58
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 13:39:19
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 13:39:19
+[OpenAI Webhook DIAG] webhook-timestamp: 1767814757
+01-07 13:39:19
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 13:39:19
+[OpenAI Webhook DIAG] Method: POST
+01-07 13:39:19
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 13:39:19
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 13:39:19
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 13:39:19
+[OpenAI Webhook DIAG] webhook-id: wh_695eaf1a79788190908ad03f9bebf92f
+01-07 13:39:19
+[OpenAI Webhook DIAG] Content-Type: application/json
