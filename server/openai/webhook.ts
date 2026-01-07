@@ -203,6 +203,7 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 }
 
 async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Promise<void> {
+  console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall START ==========`);
   const callId = event.data?.call_id;
 
   if (!callId) {
@@ -211,21 +212,44 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
     return;
   }
 
+  // Log all SIP headers for debugging
+  console.log(`[OpenAI Webhook DIAG] SIP headers count: ${event.data.sip_headers?.length || 0}`);
+  if (event.data.sip_headers) {
+    for (const header of event.data.sip_headers) {
+      // Mask sensitive values but show header names
+      const value = header.name.toLowerCase().includes("from") || header.name.toLowerCase().includes("to") 
+        ? maskPhone(header.value) 
+        : header.value.substring(0, 50);
+      console.log(`[OpenAI Webhook DIAG] SIP header: ${header.name} = ${value}`);
+    }
+  }
+
   const fromHeader = getSipHeader(event.data.sip_headers, "From");
   const toHeader = getSipHeader(event.data.sip_headers, "To");
   const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
 
+  console.log(`[OpenAI Webhook DIAG] Raw fromHeader: ${fromHeader ? maskPhone(fromHeader) : "null"}`);
+  console.log(`[OpenAI Webhook DIAG] Raw toHeader: ${toHeader ? maskPhone(toHeader) : "null"}`);
+
   const fromNumber = fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown";
   const toNumber = toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown";
 
+  console.log(`[OpenAI Webhook DIAG] Extracted fromNumber: ${maskPhone(fromNumber)}`);
+  console.log(`[OpenAI Webhook DIAG] Extracted toNumber: ${maskPhone(toNumber)}`);
+  console.log(`[OpenAI Webhook DIAG] Extracted twilioCallSid: ${twilioCallSid || "null"}`);
+
   console.log(`[OpenAI Webhook] Incoming call ${maskCallSid(callId)} from ${maskPhone(fromNumber)} to ${maskPhone(toNumber)}, twilioCallSid=${twilioCallSid ? maskCallSid(twilioCallSid) : null}`);
 
+  console.log(`[OpenAI Webhook DIAG] Looking up org by phone number: ${maskPhone(toNumber)}`);
   const org = await findOrgByPhoneNumber(toNumber);
+  console.log(`[OpenAI Webhook DIAG] Org lookup result: ${org ? org.id : "NOT FOUND"}`);
   
   if (!org) {
-    console.error(`[OpenAI Webhook] No org found for phone number ${maskPhone(toNumber)}, rejecting call`);
+    console.error(`[OpenAI Webhook] No org found for phone number ${maskPhone(toNumber)}, rejecting call with 603`);
+    console.log(`[OpenAI Webhook DIAG] About to call rejectCall with 603...`);
     await rejectCall(callId, 603, "Decline - number not configured");
     res.status(200).json({ received: true, action: "rejected", reason: "no_org_match" });
+    console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCall END (rejected) ==========`);
     return;
   }
 
