@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Shield } from "lucide-react";
+import { AlertCircle, Shield, Sparkles, CheckCircle2 } from "lucide-react";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -12,6 +12,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedSuccess, setSeedSuccess] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,6 +26,40 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleSetupDemo() {
+    setIsSeeding(true);
+    setError("");
+    setSeedSuccess("");
+
+    try {
+      const response = await fetch("/v1/admin/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Database already has data. Contact support for demo access.");
+        }
+        throw new Error(data.error || "Failed to set up demo account");
+      }
+
+      setEmail("owner@demo.com");
+      setPassword("DemoPass123!");
+      setSeedSuccess(data.alreadySeeded 
+        ? "Demo account ready! Click Sign In to continue." 
+        : "Demo account created! Click Sign In to continue."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set up demo account");
+    } finally {
+      setIsSeeding(false);
     }
   }
 
@@ -52,6 +88,13 @@ export default function LoginPage() {
                 <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-md" data-testid="text-error">
                   <AlertCircle className="h-4 w-4" />
                   {error}
+                </div>
+              )}
+
+              {seedSuccess && (
+                <div className="flex items-center gap-2 p-3 text-sm text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/30 rounded-md" data-testid="text-seed-success">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {seedSuccess}
                 </div>
               )}
 
@@ -90,6 +133,27 @@ export default function LoginPage() {
                 data-testid="button-login"
               >
                 {isLoading ? "Signing in..." : "Sign In"}
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleSetupDemo}
+                disabled={isSeeding}
+                data-testid="button-setup-demo"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                {isSeeding ? "Setting up..." : "Setup Demo Account"}
               </Button>
             </form>
           </CardContent>

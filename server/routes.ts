@@ -2283,12 +2283,39 @@ export async function registerRoutes(
       const { secret } = req.body;
       const expectedSecret = process.env.SEED_SECRET;
 
-      if (!expectedSecret) {
-        return res.status(500).json({ error: "SEED_SECRET not configured on server" });
-      }
+      // Check if any organizations exist
+      const orgCount = await prisma.organization.count();
+      const isFirstTimeSetup = orgCount === 0;
 
-      if (!secret || secret !== expectedSecret) {
-        return res.status(401).json({ error: "Invalid seed secret" });
+      // If database already has data, require the secret
+      if (!isFirstTimeSetup) {
+        if (!expectedSecret) {
+          return res.status(500).json({ error: "SEED_SECRET not configured on server" });
+        }
+
+        if (!secret || secret !== expectedSecret) {
+          // Check if demo org already exists - allow returning status without secret
+          const existingOrg = await prisma.organization.findUnique({
+            where: { slug: "demo-law-firm" },
+          });
+
+          if (existingOrg) {
+            const existingUser = await prisma.user.findFirst({
+              where: { orgId: existingOrg.id, email: "owner@demo.com" },
+            });
+
+            if (existingUser) {
+              return res.json({
+                message: "Demo organization and user already exist",
+                organization: { id: existingOrg.id, name: existingOrg.name, slug: existingOrg.slug },
+                user: { email: existingUser.email, role: existingUser.role },
+                alreadySeeded: true,
+              });
+            }
+          }
+
+          return res.status(401).json({ error: "Invalid seed secret" });
+        }
       }
 
       // Check if demo org already exists
