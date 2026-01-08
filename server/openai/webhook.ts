@@ -195,7 +195,17 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
   });
   console.log(`[OpenAI Webhook DIAG] About to record webhook and process...`);
 
-  await recordWebhookProcessed(webhookId, event.type);
+  // CRITICAL: Wrap in try/catch - don't let DB errors prevent call acceptance
+  try {
+    await recordWebhookProcessed(webhookId, event.type);
+    console.log(`[OpenAI Webhook DIAG] recordWebhookProcessed succeeded`);
+  } catch (dbError: any) {
+    console.error(`[OpenAI Webhook DIAG] recordWebhookProcessed FAILED: ${dbError?.message || dbError}`);
+    console.error(`[OpenAI Webhook DIAG] Prisma error code: ${dbError?.code || "unknown"}`);
+    // Continue processing - don't let idempotency tracking failure block the call
+  }
+
+  console.log(`[OpenAI Webhook DIAG] Proceeding to switch on event.type=${event.type}`);
 
   switch (event.type) {
     case "realtime.call.incoming":
