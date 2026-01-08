@@ -3888,6 +3888,17 @@ export async function registerRoutes(
    *         description: Status acknowledged
    */
   app.post("/v1/telephony/twilio/sip-status", async (req, res) => {
+    console.log("===== TWILIO SIP-STATUS CALLBACK =====");
+    console.log("time=", new Date().toISOString());
+    
+    const safeHeaders = { ...req.headers };
+    if (safeHeaders.authorization) {
+      safeHeaders.authorization = "[REDACTED]";
+    }
+    console.log("headers=", JSON.stringify(safeHeaders, null, 2));
+    console.log("body=", JSON.stringify(req.body, null, 2));
+    console.log("=====================================");
+    
     const payload = req.body;
     const {
       CallSid,

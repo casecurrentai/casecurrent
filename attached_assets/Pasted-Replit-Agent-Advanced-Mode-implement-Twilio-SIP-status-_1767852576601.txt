@@ -1,0 +1,39 @@
+Replit Agent (Advanced Mode) — implement Twilio SIP status-callback logging so we can see the EXACT failure reason (e.g., DialSipResponseCode, DialCallStatus) in Replit logs.
+
+CONTEXT:
+Twilio is successfully POSTing to:
+  https://counseltech.legal/v1/telephony/twilio/sip-status
+and our handler currently responds with JSON like {"received": true}, but we are NOT seeing the request parameters that Twilio sends. We need to log Twilio’s POST BODY (form-encoded params) and headers on every callback so we can diagnose why the SIP leg is “Busy” / 603.
+
+YOUR TASKS (DO NOT SKIP):
+1) Find where the route "/v1/telephony/twilio/sip-status" is defined in the backend (Express + TypeScript). It may be in server/routes.ts or similar.
+2) Ensure the route uses express.urlencoded({ extended: false }) middleware (either globally for Twilio routes or specifically on this route) so req.body is populated for application/x-www-form-urlencoded posts.
+3) Add verbose logging INSIDE the handler that prints:
+   - an obvious banner (so we can find it in logs)
+   - ISO timestamp
+   - req.headers (JSON.stringify)
+   - req.body (JSON.stringify)
+   Example format:
+
+   console.log("===== TWILIO SIP-STATUS CALLBACK =====");
+   console.log("time=", new Date().toISOString());
+   console.log("headers=", JSON.stringify(req.headers, null, 2));
+   console.log("body=", JSON.stringify(req.body, null, 2));
+   console.log("=====================================");
+
+4) Keep the response exactly: res.status(200).json({ received: true });
+
+5) Add a small SAFETY: do not log the entire Authorization header if it exists; if present, mask it (e.g., replace value with "[REDACTED]"). (Twilio usually won’t send Authorization, but add masking anyway.)
+
+6) After implementing, show me:
+   - the exact file(s) changed
+   - the exact diff/patch (copy/paste)
+   - where this route is mounted (so we know it’s in the running server)
+
+7) Finally, tell me EXACTLY what you want me to paste back into ChatGPT after I place a test call.
+   Specifically say: “Paste the full ‘body= …’ JSON and any fields named DialSipResponseCode / DialCallStatus / CallSid.”
+
+IMPORTANT:
+- Do not refactor unrelated code.
+- Do not change other Twilio routes except to add urlencoded middleware if missing.
+- If there are multiple handlers for sip-status, update the one used in production domain counseltech.legal.
