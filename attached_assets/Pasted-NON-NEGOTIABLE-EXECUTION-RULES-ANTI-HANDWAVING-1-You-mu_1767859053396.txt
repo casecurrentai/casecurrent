@@ -1,0 +1,60 @@
+NON-NEGOTIABLE EXECUTION RULES (ANTI-HANDWAVING):
+1) You must follow instructions in order. Do not skip steps.
+2) You must NOT claim you did something unless you paste evidence (terminal output, curl output, logs, or diff).
+3) You must produce results, not plans. If something fails, fix it and re-run until you have proof.
+4) Use the exact output format requested. If any required section is missing, your response is invalid.
+5) Every code change must be shown as: files changed + diff snippet or exact line-number references.
+6) Every runtime claim must be backed by: executed curl + output pasted + relevant log lines pasted.
+7) If you cannot access something, you must say “CANNOT ACCESS” and provide an alternate proof path.
+8) No placeholders unless you also provide an immediate command Mike can run + expected output.
+9) End with a PASS/FAIL checklist for each required deliverable.
+
+TASK:
+Mike does NOT know where to find logs. You must generate the required artifacts and print everything into ONE final response formatted as a single fenced code block so it appears with a copy button.
+
+GOALS (in order, no skipping):
+GATE 1 (ROUTE CONFIRMATION): Confirm routes exist and are mounted:
+- POST /v1/telephony/openai/webhook
+- POST /v1/telephony/twilio/voice
+Evidence required: show the exact route registration snippet or file/line refs.
+
+GATE 2 (DEPLOY PROOF LOGS): Add unique deploy markers:
+- Module load: console.log("[DEPLOY_MARK] openai webhook module loaded v3 <ISO>")
+- Route entry: console.log("[DEPLOY_MARK] openai webhook hit v3")
+Evidence required: paste the exact log lines appearing during runtime.
+
+GATE 3 (ACK FAST + ACCEPT FIRST): Ensure OpenAI webhook responds 200 immediately and processes async. acceptCall() must occur BEFORE any DB write. DB write must be best-effort and never block acceptCall.
+Evidence required: paste log sequence showing: webhook hit -> accept attempted -> accept result -> DB write attempted/skipped -> completion.
+
+GATE 4 (ANTI-CRASH): Add unhandledRejection/uncaughtException logging at startup (once).
+Evidence required: show the code snippet and confirm it’s in the entrypoint (file/line ref).
+
+GATE 5 (PROOF RETRIEVAL FOR MIKE): Implement temporary diag endpoints with token gate:
+- GET /v1/diag/logs?token=DIAG_TOKEN  (returns last ~400 log lines)
+- GET /v1/diag/status?token=DIAG_TOKEN (returns dbOk/openaiOk/uptime/buildVersion/lastAcceptCallStatus)
+Enable ONLY if process.env.DIAG_TOKEN is set; otherwise 404.
+Mask secrets in logs.
+Evidence required: curl these endpoints and paste outputs.
+
+TESTS YOU MUST RUN NOW:
+1) Simulated Twilio voice webhook POST (curl) — paste response.
+2) Simulated OpenAI realtime.call.incoming POST (curl) — paste response.
+3) Fetch /v1/diag/logs — paste output containing [DEPLOY_MARK] and acceptCall logs.
+4) Fetch /v1/diag/status — paste JSON.
+
+If public domain is not reachable from inside Replit, run curls against localhost and state the base URL used.
+
+FINAL RESPONSE FORMAT (MANDATORY):
+One sentence outside the code block: “Here is the copy-ready package.”
+Then ONE fenced code block with:
+
+SECTION 1: WHERE TO CLICK IN REPLIT (step-by-step for dev logs + deployment logs)
+SECTION 2: DIAG_TOKEN (what to set, where in Secrets, and the exact URLs to visit)
+SECTION 3: ARTIFACT A — DEPLOY/LOG PROOF ([DEPLOY_MARK] lines pasted)
+SECTION 4: ARTIFACT B — FULL TEST WEBHOOK LOG (end-to-end log lines pasted)
+SECTION 5: ARTIFACT C — DID ACCEPT-FIRST / DB NON-BLOCKING FIX CONNECT THE CALL? (yes/no + evidence)
+SECTION 6: CURL COMMANDS (the 4 curls you ran, ready for Mike to rerun)
+SECTION 7: FILES CHANGED (paths + small diff snippets or line refs)
+SECTION 8: PASS/FAIL CHECKLIST (each gate + each artifact)
+
+Do not ask Mike questions. Do the work and produce the proof.
