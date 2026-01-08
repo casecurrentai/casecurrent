@@ -1,0 +1,58 @@
+You are helping me prepare code excerpts so I can paste them into ChatGPT Codex for debugging and a telephony migration plan. 
+Goal: output the critical files’ contents into a SINGLE copyable text block so iOS copy-select works reliably.
+
+IMPORTANT OUTPUT RULES
+- Put your final output in ONE single fenced code block (triple backticks), so it’s easy to copy in one gesture.
+- Inside that one code block, include file separators exactly like:
+  ===== FILE: path/to/file.ext =====
+  <full file contents>
+- Do NOT truncate unless a file is enormous. If you must truncate, say “(TRUNCATED)” and include the first ~200 lines and last ~200 lines.
+- Do NOT include secrets. If you detect keys/tokens, redact values but keep variable names.
+
+IF YOU CANNOT FIT EVERYTHING IN ONE BLOCK
+- Tell me at the top: “MULTI-PART OUTPUT: Part 1 of N”
+- Then still use the same single code block format for each part.
+- Make sure you number the parts and list which files are included in that part.
+- Also include a short “Copy plan” line telling me the order to paste into Codex.
+
+FILES TO COLLECT (priority order)
+1) Package and runtime:
+   - package.json
+   - package-lock.json or pnpm-lock.yaml or yarn.lock (whichever exists)
+   - tsconfig.json (if present)
+   - .env.example (if present) and any env schema/validation file (but redact values)
+
+2) App entry + server wiring (the most important):
+   - The main entry file (server.js/index.js/app.js, src/index.ts, src/server.ts — whatever actually starts the server)
+   - The file where routes are mounted (router index)
+   - Any middleware setup (especially raw body parsing, JSON parsing, webhook signature verification)
+
+3) Telephony + webhook routes:
+   - Any Twilio webhook handlers/routes (voice + sms + status callbacks)
+   - Any “telephony” folder, “twilio” folder, “webhook” folder, “voice” folder, or similar
+   - Any OpenAI realtime/voice integration files that interact with telephony
+
+4) Config + utilities:
+   - config files, constants, env loader, logger utilities
+   - any request validation utilities
+
+DISCOVERY STEP (do this before printing)
+- Search the repo for these keywords and include the files that contain them:
+  "twilio"
+  "Bandwidth"
+  "telephony"
+  "webhook"
+  "TwiML"
+  "BXML"
+  "X-Twilio-Signature"
+  "rawBody"
+  "express.raw"
+  "voice"
+  "/v1/telephony"
+  "openai"
+  "realtime"
+- After discovering, print the final file list you’re including (paths) BEFORE the big code block.
+
+DELIVERABLE
+- Output the list of included file paths.
+- Then output the one big copyable code block containing the files (with separators).
