@@ -7,6 +7,9 @@ import { COUNSELTECH_INTAKE_PROMPT, VOICE_SETTINGS } from "../agent/prompt";
 import { getToolSchemas } from "../agent/tools";
 import { maskPhone, maskCallSid } from "../utils/logMasking";
 
+// GATE 2: Deploy marker at module load
+console.log(`[DEPLOY_MARK] openai webhook module loaded v3 ${new Date().toISOString()}`);
+
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS = parseInt(process.env.OPENAI_WEBHOOK_TOLERANCE_SECONDS || "300", 10);
 
@@ -136,8 +139,14 @@ function extractTwilioCallSid(headers: SipHeader[] | undefined): string | null {
   return null;
 }
 
+// Track last accept call status for diagnostics
+let lastAcceptCallStatus: { timestamp: string; callId: string; success: boolean; error?: string } | null = null;
+export function getLastAcceptCallStatus() { return lastAcceptCallStatus; }
+
 export async function handleOpenAIWebhook(req: Request, res: Response): Promise<void> {
-  // DIAGNOSTIC: Log every incoming request to this endpoint
+  // GATE 2: Deploy marker at route entry
+  console.log(`[DEPLOY_MARK] openai webhook hit v3`);
+  
   console.log(`[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========`);
   console.log(`[OpenAI Webhook DIAG] Method: ${req.method}`);
   console.log(`[OpenAI Webhook DIAG] URL: ${req.originalUrl}`);
@@ -155,7 +164,6 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 
   if (!rawBody || !webhookId || !webhookTimestamp || !webhookSignature) {
     console.error("[OpenAI Webhook] Missing required headers or body");
-    console.error(`[OpenAI Webhook DIAG] rawBody=${!!rawBody} webhookId=${!!webhookId} webhookTimestamp=${!!webhookTimestamp} webhookSignature=${!!webhookSignature}`);
     res.status(400).json({ error: "Missing required webhook headers" });
     return;
   }
@@ -168,19 +176,10 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
     res.status(401).json({ error: "Invalid signature" });
     return;
   }
-  console.log(`[OpenAI Webhook DIAG] Signature verified OK, checking idempotency...`);
 
-  const alreadyProcessed = await checkIdempotency(webhookId);
-  console.log(`[OpenAI Webhook DIAG] Already processed: ${alreadyProcessed}`);
-  if (alreadyProcessed) {
-    console.log(`[OpenAI Webhook] Duplicate webhook-id ${webhookId}, ignoring`);
-    res.status(200).json({ received: true, duplicate: true });
-    return;
-  }
-
+  // Parse event BEFORE idempotency check so we can process fast
   let event: OpenAIWebhookEvent;
   try {
-    console.log(`[OpenAI Webhook DIAG] Parsing JSON body...`);
     event = JSON.parse(rawBody.toString("utf-8"));
     console.log(`[OpenAI Webhook DIAG] Parsed event type: ${event.type}`);
   } catch (error) {
@@ -189,28 +188,27 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
     return;
   }
 
-  console.log(`[OpenAI Webhook] Received event: ${event.type}`, {
-    call_id: event.data?.call_id,
-    webhookId,
-  });
-  console.log(`[OpenAI Webhook DIAG] About to record webhook and process...`);
-
-  // CRITICAL: Wrap in try/catch - don't let DB errors prevent call acceptance
-  try {
-    await recordWebhookProcessed(webhookId, event.type);
-    console.log(`[OpenAI Webhook DIAG] recordWebhookProcessed succeeded`);
-  } catch (dbError: any) {
-    console.error(`[OpenAI Webhook DIAG] recordWebhookProcessed FAILED: ${dbError?.message || dbError}`);
-    console.error(`[OpenAI Webhook DIAG] Prisma error code: ${dbError?.code || "unknown"}`);
-    // Continue processing - don't let idempotency tracking failure block the call
+  // GATE 3: ACK FAST - Send 200 immediately for incoming calls, process async
+  if (event.type === "realtime.call.incoming") {
+    console.log(`[OpenAI Webhook DIAG] ACK FAST: Sending 200 immediately for incoming call`);
+    res.status(200).json({ received: true, processing: "async" });
+    
+    // Process call acceptance async (no await on response)
+    setImmediate(async () => {
+      try {
+        console.log(`[OpenAI Webhook DIAG] ASYNC: Starting call processing...`);
+        await handleIncomingCallAsync(event, webhookId);
+      } catch (err: any) {
+        console.error(`[OpenAI Webhook DIAG] ASYNC ERROR:`, err?.message || err);
+      }
+    });
+    return;
   }
 
-  console.log(`[OpenAI Webhook DIAG] Proceeding to switch on event.type=${event.type}`);
+  // For other event types, process normally
+  console.log(`[OpenAI Webhook] Received event: ${event.type}`, { call_id: event.data?.call_id });
 
   switch (event.type) {
-    case "realtime.call.incoming":
-      await handleIncomingCall(event, res);
-      break;
     case "realtime.call.connected":
       console.log(`[OpenAI Webhook] Call connected: ${event.data?.call_id}`);
       res.status(200).json({ received: true });
@@ -222,6 +220,107 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
       console.log(`[OpenAI Webhook] Unhandled event type: ${event.type}`);
       res.status(200).json({ received: true });
   }
+  
+  // DB write for idempotency - best effort, non-blocking for non-incoming events
+  recordWebhookProcessed(webhookId, event.type).catch(err => {
+    console.error(`[OpenAI Webhook DIAG] recordWebhookProcessed FAILED (non-blocking):`, err?.message);
+  });
+}
+
+// GATE 3: Async handler for incoming calls - accepts call FIRST, then DB write
+async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: string): Promise<void> {
+  const callId = event.data?.call_id;
+  console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCallAsync START ==========`);
+  console.log(`[OpenAI Webhook DIAG] call_id: ${callId ? maskCallSid(callId) : "MISSING"}`);
+
+  if (!callId) {
+    console.error("[OpenAI Webhook] Missing call_id in incoming call event");
+    return;
+  }
+
+  // Extract headers for org lookup
+  const fromHeader = getSipHeader(event.data.sip_headers, "From");
+  const toHeader = getSipHeader(event.data.sip_headers, "To");
+  const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
+  const xTwilioFromE164 = getSipHeader(event.data.sip_headers, "X-Twilio-FromE164");
+  const xTwilioToE164 = getSipHeader(event.data.sip_headers, "X-Twilio-ToE164");
+
+  const fromNumber = xTwilioFromE164 || (fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown");
+  const toNumber = xTwilioToE164 || (toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown");
+
+  console.log(`[OpenAI Webhook DIAG] fromNumber: ${maskPhone(fromNumber)}, toNumber: ${maskPhone(toNumber)}`);
+  console.log(`[OpenAI Webhook DIAG] twilioCallSid: ${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
+
+  // Quick org lookup
+  let orgId: string | null = null;
+  
+  if (twilioCallSid) {
+    const existingCall = await prisma.call.findFirst({ where: { twilioCallSid } });
+    if (existingCall) {
+      orgId = existingCall.orgId;
+      console.log(`[OpenAI Webhook DIAG] Found org via twilioCallSid: ${orgId}`);
+    }
+  }
+  
+  if (!orgId) {
+    const org = await findOrgByPhoneNumber(toNumber);
+    if (org) {
+      orgId = org.id;
+      console.log(`[OpenAI Webhook DIAG] Found org via phone: ${orgId}`);
+    }
+  }
+
+  if (!orgId) {
+    console.error(`[OpenAI Webhook DIAG] REJECT: No org found`);
+    lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: "no_org_found" };
+    await rejectCall(callId, 603, "Decline - org not found");
+    return;
+  }
+
+  // GATE 3: ACCEPT CALL FIRST - before any other DB operations
+  console.log(`[OpenAI Webhook DIAG] ACCEPT FIRST: Calling acceptCall(${maskCallSid(callId)})...`);
+  try {
+    const accepted = await acceptCall(callId);
+    if (accepted) {
+      console.log(`[OpenAI Webhook DIAG] acceptCall SUCCEEDED`);
+      lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: true };
+    } else {
+      console.error(`[OpenAI Webhook DIAG] acceptCall returned false`);
+      lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: "accept_returned_false" };
+      return;
+    }
+  } catch (acceptErr: any) {
+    console.error(`[OpenAI Webhook DIAG] acceptCall EXCEPTION:`, acceptErr?.message || acceptErr);
+    lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: acceptErr?.message };
+    return;
+  }
+
+  // Now do DB operations (best effort, non-blocking)
+  console.log(`[OpenAI Webhook DIAG] POST-ACCEPT: Starting DB operations (non-blocking)...`);
+  
+  // Record webhook processed - best effort
+  recordWebhookProcessed(webhookId, event.type).catch(err => {
+    console.error(`[OpenAI Webhook DIAG] recordWebhookProcessed FAILED (non-blocking):`, err?.message);
+  });
+
+  // Create call records - best effort
+  try {
+    await createCallRecords(orgId, callId, fromNumber, toNumber, twilioCallSid);
+    console.log(`[OpenAI Webhook DIAG] createCallRecords succeeded`);
+  } catch (dbErr: any) {
+    console.error(`[OpenAI Webhook DIAG] createCallRecords FAILED (non-blocking):`, dbErr?.message);
+  }
+
+  // Start realtime session
+  try {
+    console.log(`[OpenAI Webhook DIAG] Starting realtime session...`);
+    await startRealtimeSession(callId, orgId);
+    console.log(`[OpenAI Webhook DIAG] Realtime session started`);
+  } catch (sessionErr: any) {
+    console.error(`[OpenAI Webhook DIAG] startRealtimeSession FAILED:`, sessionErr?.message);
+  }
+
+  console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCallAsync END ==========`);
 }
 
 async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Promise<void> {

@@ -18,8 +18,30 @@ import {
   isPlatformAdmin,
   type AuthenticatedRequest,
 } from "./auth";
-import { handleOpenAIWebhook } from "./openai/webhook";
+import { handleOpenAIWebhook, getLastAcceptCallStatus } from "./openai/webhook";
 import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
+
+// GATE 5: In-memory log buffer for diagnostics
+const LOG_BUFFER_SIZE = 400;
+const logBuffer: string[] = [];
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const startTime = Date.now();
+const BUILD_VERSION = "v3-" + new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+
+// Intercept console.log/error to buffer logs
+console.log = (...args: any[]) => {
+  const line = `[${new Date().toISOString()}] LOG: ${args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")}`;
+  logBuffer.push(line);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+  originalConsoleLog.apply(console, args);
+};
+console.error = (...args: any[]) => {
+  const line = `[${new Date().toISOString()}] ERR: ${args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")}`;
+  logBuffer.push(line);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+  originalConsoleError.apply(console, args);
+};
 import { maskPhone, maskCallSid, maskSipUri, maskProjectId } from "./utils/logMasking";
 
 function slugify(text: string): string {
@@ -73,6 +95,65 @@ export async function registerRoutes(
       timestamp: new Date().toISOString(),
       database: dbStatus,
       orgCount,
+    });
+  });
+
+  // ============================================
+  // GATE 5: DIAGNOSTIC ENDPOINTS (token-gated)
+  // ============================================
+  
+  app.get("/v1/diag/logs", (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    if (!diagToken) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const token = req.query.token as string;
+    if (token !== diagToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    
+    // Mask secrets in logs
+    const maskedLogs = logBuffer.map(line => {
+      return line
+        .replace(/whsec_[A-Za-z0-9+/=]+/g, "whsec_[REDACTED]")
+        .replace(/sk-[A-Za-z0-9]+/g, "sk-[REDACTED]")
+        .replace(/Bearer [A-Za-z0-9._-]+/g, "Bearer [REDACTED]");
+    });
+    
+    res.setHeader("Content-Type", "text/plain");
+    res.send(maskedLogs.join("\n"));
+  });
+
+  app.get("/v1/diag/status", async (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    if (!diagToken) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const token = req.query.token as string;
+    if (token !== diagToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    
+    let dbOk = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbOk = true;
+    } catch {}
+    
+    let openaiOk = false;
+    try {
+      openaiOk = isOpenAIConfigured();
+    } catch {}
+    
+    const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+    
+    res.json({
+      dbOk,
+      openaiOk,
+      uptime: `${uptimeSeconds}s`,
+      buildVersion: BUILD_VERSION,
+      lastAcceptCallStatus: getLastAcceptCallStatus(),
+      logBufferSize: logBuffer.length,
     });
   });
 

@@ -1,0 +1,33 @@
+STOP. Before you continue implementing gates, you must prove production truth with evidence (not dev).
+
+NON-NEGOTIABLE PROOF REQUIREMENTS:
+1) PRODUCTION DB PROOF (NOT DEV):
+   - Print whether DATABASE_URL in the running environment points to prod or dev.
+   - Run and paste output for:
+     - node -e "console.log('DATABASE_URL host:', (process.env.DATABASE_URL||'').split('@')[1]?.split('/')[0] || 'missing')"
+     - npx prisma migrate status  (paste output)
+     - npx prisma db pull && grep -n "webhook" -n prisma/schema.prisma (or equivalent) to show what Prisma maps to.
+   - Connect to the DB in the current environment and run (paste output):
+     SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name ILIKE 'webhook%';
+     SELECT column_name, data_type FROM information_schema.columns WHERE table_name ILIKE 'webhook%';
+   This must be run against the SAME DATABASE_URL the server uses.
+
+2) TABLE NAME CONFIRMATION:
+   - Explicitly confirm whether the table is webhook_receipts or webhook_receipt in:
+     (a) the DB, and (b) Prisma @@map.
+   - If mismatched, fix Prisma mapping or migration and explain which you chose and why.
+
+3) DEPLOY PROOF WITHOUT MOBILE LOGS:
+   - Implement /v1/diag/logs and /v1/diag/status gated by DIAG_TOKEN.
+   - Then prove it works via curl against the PUBLIC DOMAIN:
+     curl -sS "https://counseltech.legal/v1/diag/status?token=$DIAG_TOKEN"
+     curl -sS "https://counseltech.legal/v1/diag/logs?token=$DIAG_TOKEN" | head
+   Paste outputs.
+
+4) ACCEPT-FIRST PROOF:
+   - Show log order from a simulated OpenAI webhook:
+     [DEPLOY_MARK] hit -> accept attempted -> accept result -> DB write attempted/skipped
+   - You must execute and paste the curl + its output.
+
+If you cannot reach the public domain from within Replit, say CANNOT ACCESS, and then provide an alternate proof method that still proves the deployed environment (e.g., deployment build logs screenshot text, or a publicly callable diag endpoint tested from inside deployment environment).
+Do not proceed to more refactors until these proofs are included.

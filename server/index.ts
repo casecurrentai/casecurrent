@@ -3,6 +3,16 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
+// GATE 4: Global crash handlers (anti-crash)
+process.on("unhandledRejection", (reason, promise) => {
+  console.error(`[CRASH_GUARD] Unhandled Rejection at:`, promise, `reason:`, reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error(`[CRASH_GUARD] Uncaught Exception:`, error);
+});
+
+console.log(`[DEPLOY_MARK] server/index.ts loaded v3 ${new Date().toISOString()}`);
+
 const app = express();
 const httpServer = createServer(app);
 

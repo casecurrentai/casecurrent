@@ -50,3 +50,4 @@ waitForPort = 5000
 
 [userenv.shared]
 SEED_SECRET = "counseltech-demo-seed-2026"
+DIAG_TOKEN = "counseltech-diag-2026"
