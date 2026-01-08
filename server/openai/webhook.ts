@@ -6,9 +6,10 @@ import { prisma } from "../db";
 import { COUNSELTECH_INTAKE_PROMPT, VOICE_SETTINGS } from "../agent/prompt";
 import { getToolSchemas } from "../agent/tools";
 import { maskPhone, maskCallSid } from "../utils/logMasking";
+import { recordEvent } from "../flightRecorder";
 
 // GATE 2: Deploy marker at module load
-console.log(`[DEPLOY_MARK] openai webhook module loaded v3 ${new Date().toISOString()}`);
+console.log(`[DEPLOY_MARK] openai webhook module loaded v4 ${new Date().toISOString()}`);
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const WEBHOOK_TOLERANCE_SECONDS = parseInt(process.env.OPENAI_WEBHOOK_TOLERANCE_SECONDS || "300", 10);
@@ -144,18 +145,11 @@ let lastAcceptCallStatus: { timestamp: string; callId: string; success: boolean;
 export function getLastAcceptCallStatus() { return lastAcceptCallStatus; }
 
 export async function handleOpenAIWebhook(req: Request, res: Response): Promise<void> {
-  // GATE 2: Deploy marker at route entry
-  console.log(`[DEPLOY_MARK] openai webhook hit v3`);
+  const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
+  console.log(`[DEPLOY_MARK] openai webhook hit v4`);
   
-  console.log(`[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========`);
-  console.log(`[OpenAI Webhook DIAG] Method: ${req.method}`);
-  console.log(`[OpenAI Webhook DIAG] URL: ${req.originalUrl}`);
-  console.log(`[OpenAI Webhook DIAG] Content-Type: ${req.headers["content-type"]}`);
-  console.log(`[OpenAI Webhook DIAG] webhook-id: ${req.headers["webhook-id"] || "MISSING"}`);
-  console.log(`[OpenAI Webhook DIAG] webhook-timestamp: ${req.headers["webhook-timestamp"] || "MISSING"}`);
-  console.log(`[OpenAI Webhook DIAG] webhook-signature present: ${!!req.headers["webhook-signature"]}`);
-  console.log(`[OpenAI Webhook DIAG] rawBody present: ${!!(req as any).rawBody}`);
-  console.log(`[OpenAI Webhook DIAG] rawBody length: ${(req as any).rawBody?.length || 0}`);
+  console.log(`[OpenAI Webhook] [${requestId}] Method=${req.method} URL=${req.originalUrl} Content-Type=${req.headers["content-type"]}`);
+  console.log(`[OpenAI Webhook] [${requestId}] webhook-id=${req.headers["webhook-id"] || "MISSING"} rawBody=${(req as any).rawBody?.length || 0}b`);
   
   const webhookId = req.headers["webhook-id"] as string;
   const webhookTimestamp = req.headers["webhook-timestamp"] as string;
@@ -190,16 +184,23 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 
   // GATE 3: ACK FAST - Send 200 immediately for incoming calls, process async
   if (event.type === "realtime.call.incoming") {
-    console.log(`[OpenAI Webhook DIAG] ACK FAST: Sending 200 immediately for incoming call`);
+    const callId = event.data?.call_id;
+    recordEvent({
+      source: "openai-webhook",
+      requestId,
+      callId,
+      summary: `realtime.call.incoming received, ACK fast`,
+      payload: { type: event.type, call_id: callId, sip_headers_count: event.data.sip_headers?.length || 0 },
+    });
+    
+    console.log(`[OpenAI Webhook] [${requestId}] ACK FAST for realtime.call.incoming call_id=${maskCallSid(callId || "")}`);
     res.status(200).json({ received: true, processing: "async" });
     
-    // Process call acceptance async (no await on response)
     setImmediate(async () => {
       try {
-        console.log(`[OpenAI Webhook DIAG] ASYNC: Starting call processing...`);
-        await handleIncomingCallAsync(event, webhookId);
+        await handleIncomingCallAsync(event, webhookId, requestId);
       } catch (err: any) {
-        console.error(`[OpenAI Webhook DIAG] ASYNC ERROR:`, err?.message || err);
+        console.error(`[OpenAI Webhook] [${requestId}] ASYNC ERROR:`, err?.message || err);
       }
     });
     return;
@@ -228,17 +229,15 @@ export async function handleOpenAIWebhook(req: Request, res: Response): Promise<
 }
 
 // GATE 3: Async handler for incoming calls - accepts call FIRST, then DB write
-async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: string): Promise<void> {
+async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: string, requestId: string): Promise<void> {
   const callId = event.data?.call_id;
-  console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCallAsync START ==========`);
-  console.log(`[OpenAI Webhook DIAG] call_id: ${callId ? maskCallSid(callId) : "MISSING"}`);
+  console.log(`[OpenAI Webhook] [${requestId}] handleIncomingCallAsync START call_id=${callId ? maskCallSid(callId) : "MISSING"}`);
 
   if (!callId) {
-    console.error("[OpenAI Webhook] Missing call_id in incoming call event");
+    console.error(`[OpenAI Webhook] [${requestId}] Missing call_id`);
     return;
   }
 
-  // Extract headers for org lookup
   const fromHeader = getSipHeader(event.data.sip_headers, "From");
   const toHeader = getSipHeader(event.data.sip_headers, "To");
   const twilioCallSid = extractTwilioCallSid(event.data.sip_headers);
@@ -248,8 +247,7 @@ async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: str
   const fromNumber = xTwilioFromE164 || (fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown");
   const toNumber = xTwilioToE164 || (toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown");
 
-  console.log(`[OpenAI Webhook DIAG] fromNumber: ${maskPhone(fromNumber)}, toNumber: ${maskPhone(toNumber)}`);
-  console.log(`[OpenAI Webhook DIAG] twilioCallSid: ${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
+  console.log(`[OpenAI Webhook] [${requestId}] from=${maskPhone(fromNumber)} to=${maskPhone(toNumber)} twilioCallSid=${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
 
   // Quick org lookup
   let orgId: string | null = null;
@@ -271,56 +269,63 @@ async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: str
   }
 
   if (!orgId) {
-    console.error(`[OpenAI Webhook DIAG] REJECT: No org found`);
+    console.error(`[OpenAI Webhook] [${requestId}] REJECT: No org found`);
+    recordEvent({
+      source: "openai-webhook",
+      requestId,
+      callId,
+      e164: toNumber,
+      summary: `REJECTED - no org found for ${toNumber}`,
+      payload: { reason: "no_org_found", toNumber },
+    });
     lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: "no_org_found" };
     await rejectCall(callId, 603, "Decline - org not found");
     return;
   }
 
-  // GATE 3: ACCEPT CALL FIRST - before any other DB operations
-  console.log(`[OpenAI Webhook DIAG] ACCEPT FIRST: Calling acceptCall(${maskCallSid(callId)})...`);
-  try {
-    const accepted = await acceptCall(callId);
-    if (accepted) {
-      console.log(`[OpenAI Webhook DIAG] acceptCall SUCCEEDED`);
-      lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: true };
-    } else {
-      console.error(`[OpenAI Webhook DIAG] acceptCall returned false`);
-      lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: "accept_returned_false" };
-      return;
-    }
-  } catch (acceptErr: any) {
-    console.error(`[OpenAI Webhook DIAG] acceptCall EXCEPTION:`, acceptErr?.message || acceptErr);
-    lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: acceptErr?.message };
+  // GATE 3: ACCEPT CALL FIRST - with retry logic
+  console.log(`[OpenAI Webhook] [${requestId}] ACCEPT FIRST: calling acceptCallWithRetry...`);
+  const acceptResult = await acceptCallWithRetry(callId, requestId);
+  
+  recordEvent({
+    source: "openai-accept",
+    requestId,
+    callId,
+    orgId,
+    e164: toNumber,
+    summary: acceptResult.success ? `ACCEPTED after ${acceptResult.attempts} attempt(s)` : `FAILED after ${acceptResult.attempts} attempt(s): ${acceptResult.error}`,
+    payload: { success: acceptResult.success, attempts: acceptResult.attempts, status: acceptResult.status, error: acceptResult.error },
+  });
+  
+  if (acceptResult.success) {
+    lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: true };
+  } else {
+    lastAcceptCallStatus = { timestamp: new Date().toISOString(), callId, success: false, error: acceptResult.error };
     return;
   }
 
   // Now do DB operations (best effort, non-blocking)
-  console.log(`[OpenAI Webhook DIAG] POST-ACCEPT: Starting DB operations (non-blocking)...`);
+  console.log(`[OpenAI Webhook] [${requestId}] POST-ACCEPT: DB operations...`);
   
-  // Record webhook processed - best effort
   recordWebhookProcessed(webhookId, event.type).catch(err => {
-    console.error(`[OpenAI Webhook DIAG] recordWebhookProcessed FAILED (non-blocking):`, err?.message);
+    console.error(`[OpenAI Webhook] [${requestId}] recordWebhookProcessed FAILED:`, err?.message);
   });
 
-  // Create call records - best effort
   try {
     await createCallRecords(orgId, callId, fromNumber, toNumber, twilioCallSid);
-    console.log(`[OpenAI Webhook DIAG] createCallRecords succeeded`);
+    console.log(`[OpenAI Webhook] [${requestId}] createCallRecords succeeded`);
   } catch (dbErr: any) {
-    console.error(`[OpenAI Webhook DIAG] createCallRecords FAILED (non-blocking):`, dbErr?.message);
+    console.error(`[OpenAI Webhook] [${requestId}] createCallRecords FAILED:`, dbErr?.message);
   }
 
-  // Start realtime session
   try {
-    console.log(`[OpenAI Webhook DIAG] Starting realtime session...`);
     await startRealtimeSession(callId, orgId);
-    console.log(`[OpenAI Webhook DIAG] Realtime session started`);
+    console.log(`[OpenAI Webhook] [${requestId}] realtimeSession started`);
   } catch (sessionErr: any) {
-    console.error(`[OpenAI Webhook DIAG] startRealtimeSession FAILED:`, sessionErr?.message);
+    console.error(`[OpenAI Webhook] [${requestId}] startRealtimeSession FAILED:`, sessionErr?.message);
   }
 
-  console.log(`[OpenAI Webhook DIAG] ========== handleIncomingCallAsync END ==========`);
+  console.log(`[OpenAI Webhook] [${requestId}] handleIncomingCallAsync END`);
 }
 
 async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Promise<void> {
@@ -622,11 +627,20 @@ async function createCallRecords(
   return { contact, lead, interaction, call };
 }
 
-async function acceptCall(callId: string): Promise<boolean> {
+interface AcceptResult {
+  success: boolean;
+  attempts: number;
+  status?: number;
+  error?: string;
+}
+
+const RETRY_DELAYS = [250, 750, 1500];
+
+async function acceptCallWithRetry(callId: string, requestId: string): Promise<AcceptResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.error("[OpenAI Webhook] OPENAI_API_KEY not configured");
-    return false;
+    console.error(`[OpenAI Accept] [${requestId}] OPENAI_API_KEY not configured`);
+    return { success: false, attempts: 0, error: "no_api_key" };
   }
 
   const acceptConfig = {
@@ -642,29 +656,67 @@ async function acceptCall(callId: string): Promise<boolean> {
     tool_choice: "auto",
   };
 
-  try {
-    const response = await fetch(`${OPENAI_API_BASE}/realtime/calls/${callId}/accept`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(acceptConfig),
-    });
+  let lastError = "";
+  let lastStatus = 0;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[OpenAI Webhook DIAG] acceptCall FAILED: status=${response.status}, body=${errorText}`);
-      return false;
+  for (let attempt = 1; attempt <= RETRY_DELAYS.length + 1; attempt++) {
+    try {
+      console.log(`[OpenAI Accept] [${requestId}] Attempt ${attempt} for call_id=${maskCallSid(callId)}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`${OPENAI_API_BASE}/realtime/calls/${callId}/accept`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(acceptConfig),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      lastStatus = response.status;
+
+      if (response.ok) {
+        console.log(`[OpenAI Accept] [${requestId}] SUCCESS on attempt ${attempt}, status=${response.status}`);
+        return { success: true, attempts: attempt, status: response.status };
+      }
+
+      const errorText = await response.text().catch(() => "");
+      lastError = `status=${response.status} body=${errorText.substring(0, 200)}`;
+      console.error(`[OpenAI Accept] [${requestId}] Attempt ${attempt} FAILED: ${lastError}`);
+
+      if (response.status >= 500 || response.status === 429) {
+        if (attempt <= RETRY_DELAYS.length) {
+          const delay = RETRY_DELAYS[attempt - 1];
+          console.log(`[OpenAI Accept] [${requestId}] Retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+      } else {
+        return { success: false, attempts: attempt, status: response.status, error: lastError };
+      }
+    } catch (err: any) {
+      lastError = err?.name === "AbortError" ? "timeout" : (err?.message || String(err));
+      console.error(`[OpenAI Accept] [${requestId}] Attempt ${attempt} EXCEPTION: ${lastError}`);
+      
+      if (attempt <= RETRY_DELAYS.length) {
+        const delay = RETRY_DELAYS[attempt - 1];
+        console.log(`[OpenAI Accept] [${requestId}] Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
     }
-
-    const responseData = await response.json().catch(() => ({}));
-    console.log(`[OpenAI Webhook DIAG] acceptCall SUCCEEDED: status=${response.status}`);
-    return true;
-  } catch (error: any) {
-    console.error(`[OpenAI Webhook DIAG] acceptCall EXCEPTION: ${error?.message || error}`);
-    return false;
   }
+
+  return { success: false, attempts: RETRY_DELAYS.length + 1, status: lastStatus, error: lastError };
+}
+
+async function acceptCall(callId: string): Promise<boolean> {
+  const result = await acceptCallWithRetry(callId, "legacy");
+  return result.success;
 }
 
 async function rejectCall(callId: string, statusCode: number, reason: string): Promise<void> {

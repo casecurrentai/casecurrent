@@ -20,6 +20,7 @@ import {
 } from "./auth";
 import { handleOpenAIWebhook, getLastAcceptCallStatus } from "./openai/webhook";
 import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
+import { recordEvent, getRecentEvents, getEventCount } from "./flightRecorder";
 
 // GATE 5: In-memory log buffer for diagnostics
 const LOG_BUFFER_SIZE = 400;
@@ -27,7 +28,7 @@ const logBuffer: string[] = [];
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const startTime = Date.now();
-const BUILD_VERSION = "v3-" + new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+const BUILD_VERSION = "v4-" + new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
 
 // Intercept console.log/error to buffer logs
 console.log = (...args: any[]) => {
@@ -154,6 +155,32 @@ export async function registerRoutes(
       buildVersion: BUILD_VERSION,
       lastAcceptCallStatus: getLastAcceptCallStatus(),
       logBufferSize: logBuffer.length,
+      flightRecorderSize: getEventCount(),
+    });
+  });
+
+  app.get("/v1/diag/timeline", (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    if (!diagToken) {
+      if (process.env.NODE_ENV === "production") {
+        console.warn("[DIAG] DIAG_TOKEN not set in production - timeline endpoint disabled");
+        return res.status(404).json({ error: "Not found" });
+      }
+      console.warn("[DIAG] DIAG_TOKEN not set - using dev default");
+    }
+    const token = req.query.token as string;
+    const expectedToken = diagToken || "dev-diag-token";
+    if (token !== expectedToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const events = getRecentEvents(limit);
+    
+    res.json({
+      count: events.length,
+      totalRecorded: getEventCount(),
+      events,
     });
   });
 
@@ -3648,19 +3675,20 @@ export async function registerRoutes(
    *         description: TwiML response
    */
   app.post("/v1/telephony/twilio/voice", async (req, res) => {
-    // Generate unique request ID for log correlation
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     
     try {
       const payload = req.body;
-      const {
-        CallSid,
-        From,
-        To,
-        CallStatus,
-        Direction,
-        CallerName,
-      } = payload;
+      const { CallSid, From, To, CallStatus, Direction, CallerName } = payload;
+
+      recordEvent({
+        source: "twilio-voice-webhook",
+        requestId,
+        callSid: CallSid,
+        e164: To,
+        summary: `Inbound call from ${From} to ${To}`,
+        payload: { CallSid, From, To, CallStatus, Direction, method: req.method, url: req.originalUrl, contentType: req.headers["content-type"] },
+      });
 
       // === STRUCTURED DIAGNOSTIC BLOCK ===
       // Get DB fingerprint
@@ -3874,7 +3902,8 @@ export async function registerRoutes(
           const sipUriWithHeaders = `${sipUri}?X-Twilio-CallSid=${encodeURIComponent(CallSid)}&X-Twilio-FromE164=${encodeURIComponent(From)}&X-Twilio-ToE164=${encodeURIComponent(To)}`;
           console.log(`[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`);
           console.log(`[Twilio Voice] [${requestId}] SIP URI includes X-Twilio-CallSid header param`);
-          res.send(`<?xml version="1.0" encoding="UTF-8"?>
+          
+          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Connecting you to our assistant now.</Say>
   <Dial timeout="${dialTimeout}" callerId="${To}" action="/v1/telephony/twilio/dial-result" method="POST">
@@ -3882,7 +3911,19 @@ export async function registerRoutes(
   </Dial>
   <Say>We're sorry, the connection could not be completed. Please try again later.</Say>
   <Hangup/>
-</Response>`);
+</Response>`;
+          
+          recordEvent({
+            source: "twilio-voice-webhook",
+            requestId,
+            callSid: CallSid,
+            orgId,
+            e164: To,
+            summary: `TwiML returned with SIP dial to OpenAI`,
+            payload: { sipUri: sipUriMasked, dialTimeout, twiml },
+          });
+          
+          res.send(twiml);
         } catch (sipError) {
           console.error(`[Twilio Voice] [${requestId}] SIP bridge error:`, sipError);
           // Fallback to voicemail if SIP fails
@@ -3927,29 +3968,20 @@ export async function registerRoutes(
    *         description: TwiML response
    */
   app.post("/v1/telephony/twilio/dial-result", async (req, res) => {
+    const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const payload = req.body;
-    const {
-      CallSid,
-      DialCallSid,
-      DialCallStatus,
-      DialCallDuration,
-      DialSipResponseCode,
-      ErrorCode,
-      ErrorMessage,
-    } = payload;
+    const { CallSid, DialCallSid, DialCallStatus, DialCallDuration, DialSipResponseCode, ErrorCode, ErrorMessage } = payload;
     
-    console.log(`[Twilio Dial Result] ========== DIAL OUTCOME ==========`);
-    console.log(`[Twilio Dial Result] CallSid: ${maskCallSid(CallSid || "")}`);
-    console.log(`[Twilio Dial Result] DialCallSid: ${maskCallSid(DialCallSid || "")}`);
-    console.log(`[Twilio Dial Result] DialCallStatus: ${DialCallStatus || "N/A"}`);
-    console.log(`[Twilio Dial Result] DialCallDuration: ${DialCallDuration || "N/A"}`);
-    console.log(`[Twilio Dial Result] DialSipResponseCode: ${DialSipResponseCode || "N/A"}`);
-    console.log(`[Twilio Dial Result] ErrorCode: ${ErrorCode || "N/A"}`);
-    console.log(`[Twilio Dial Result] ErrorMessage: ${ErrorMessage || "N/A"}`);
-    console.log(`[Twilio Dial Result] Full payload keys: ${Object.keys(payload).join(", ")}`);
-    console.log(`[Twilio Dial Result] ========== END DIAL OUTCOME ==========`);
+    recordEvent({
+      source: "twilio-dial-result",
+      requestId,
+      callSid: CallSid,
+      summary: `Dial result: ${DialCallStatus || "unknown"} (SIP ${DialSipResponseCode || "N/A"})`,
+      payload: { CallSid, DialCallSid, DialCallStatus, DialCallDuration, DialSipResponseCode, ErrorCode, ErrorMessage },
+    });
     
-    // Return empty TwiML - the fallback <Say> in the original TwiML will handle post-dial
+    console.log(`[Twilio Dial Result] CallSid=${maskCallSid(CallSid || "")} Status=${DialCallStatus} SipCode=${DialSipResponseCode} Error=${ErrorCode}/${ErrorMessage}`);
+    
     res.set("Content-Type", "text/xml");
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3969,36 +4001,19 @@ export async function registerRoutes(
    *         description: Status acknowledged
    */
   app.post("/v1/telephony/twilio/sip-status", async (req, res) => {
-    console.log("===== TWILIO SIP-STATUS CALLBACK =====");
-    console.log("time=", new Date().toISOString());
-    
-    const safeHeaders = { ...req.headers };
-    if (safeHeaders.authorization) {
-      safeHeaders.authorization = "[REDACTED]";
-    }
-    console.log("headers=", JSON.stringify(safeHeaders, null, 2));
-    console.log("body=", JSON.stringify(req.body, null, 2));
-    console.log("=====================================");
-    
+    const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const payload = req.body;
-    const {
-      CallSid,
-      CallStatus,
-      SipResponseCode,
-      ErrorCode,
-      ErrorMessage,
-      Timestamp,
-    } = payload;
+    const { CallSid, CallStatus, SipResponseCode, ErrorCode, ErrorMessage, Timestamp, ParentCallSid } = payload;
     
-    console.log(`[Twilio SIP Status] ========== SIP EVENT ==========`);
-    console.log(`[Twilio SIP Status] CallSid: ${maskCallSid(CallSid || "")}`);
-    console.log(`[Twilio SIP Status] CallStatus: ${CallStatus || "N/A"}`);
-    console.log(`[Twilio SIP Status] SipResponseCode: ${SipResponseCode || "N/A"}`);
-    console.log(`[Twilio SIP Status] ErrorCode: ${ErrorCode || "N/A"}`);
-    console.log(`[Twilio SIP Status] ErrorMessage: ${ErrorMessage || "N/A"}`);
-    console.log(`[Twilio SIP Status] Timestamp: ${Timestamp || "N/A"}`);
-    console.log(`[Twilio SIP Status] Full payload keys: ${Object.keys(payload).join(", ")}`);
-    console.log(`[Twilio SIP Status] ========== END SIP EVENT ==========`);
+    recordEvent({
+      source: "twilio-sip-status",
+      requestId,
+      callSid: CallSid,
+      summary: `SIP status: ${CallStatus || "unknown"} (SIP ${SipResponseCode || "N/A"})`,
+      payload: { CallSid, ParentCallSid, CallStatus, SipResponseCode, ErrorCode, ErrorMessage, Timestamp },
+    });
+    
+    console.log(`[Twilio SIP Status] CallSid=${maskCallSid(CallSid || "")} Status=${CallStatus} SipCode=${SipResponseCode} Error=${ErrorCode}/${ErrorMessage}`);
     
     res.status(200).json({ received: true });
   });

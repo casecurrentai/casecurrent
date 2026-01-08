@@ -1,0 +1,42 @@
+You are working in the CounselTech server codebase. Implement a "Flight Recorder" diagnostic system for Twilio + OpenAI realtime SIP calls that works from a phone.
+
+GOALS
+1) Persist the last 200 telephony events (in memory ring buffer is fine; DB optional) with:
+   - ts (ISO), source ("twilio-voice-webhook" | "twilio-status-callback" | "openai-webhook" | "openai-accept"), 
+   - requestId, CallSid (if available), call_id (if available), orgId/e164 (if available), 
+   - summary, and payload (redact secrets).
+2) Add a token-protected endpoint:
+   GET /v1/diag/timeline?token=DIAG_TOKEN
+   Returns JSON of last 50 events newest-first.
+3) Ensure Twilio inbound webhook handler logs:
+   - incoming headers, method, url
+   - parsed CallSid, From, To
+   - whether org match succeeded
+   - the exact SIP URI you are dialing
+   - TwiML returned (as string)
+   Return TwiML quickly.
+4) Add/ensure Twilio <Dial> includes statusCallback so we capture SIP leg result:
+   - statusCallback: https://counseltech.legal/v1/telephony/twilio/status
+   - statusCallbackMethod: POST
+   - statusCallbackEvent: initiated ringing answered completed
+   Implement POST /v1/telephony/twilio/status to log CallSid, ParentCallSid, DialCallSid, DialCallStatus, SipResponseCode (if present), ErrorCode, ErrorMessage, and raw payload.
+5) OpenAI webhook handler MUST:
+   - log every event type received (especially realtime.call.incoming)
+   - on realtime.call.incoming: extract call_id and immediately attempt accept:
+     POST https://api.openai.com/v1/realtime/calls/{call_id}/accept
+     Use OPENAI_API_KEY. Log accept attempt + response status/body (redacted).
+     Retry accept up to 3 times with exponential backoff (250ms, 750ms, 1500ms) on 5xx/timeouts.
+   Respond 200 immediately to OpenAI webhook after enqueueing/starting accept (do not block long).
+6) Add env var DIAG_TOKEN; if missing, generate a warning and set DIAG_TOKEN to a safe dev default only in development, never in production.
+7) Add a short README section: "Mobile Debugging" with the exact URL to open (timeline endpoint) and what to look for (Twilio webhook event, OpenAI incoming event, OpenAI accept success, Twilio status callback with SIP response code).
+
+CONSTRAINTS
+- Do not break existing routes.
+- Keep dependencies minimal.
+- Ensure body parsing supports Twilio application/x-www-form-urlencoded and OpenAI JSON.
+- Redact secrets from logs and timeline output.
+
+After implementation, print: 
+A) the exact new endpoints, 
+B) the environment variables needed, 
+C) example curl commands for timeline and a sample Twilio status payload.
