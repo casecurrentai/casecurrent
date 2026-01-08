@@ -1,0 +1,66 @@
+01-07 15:15:23
+[OpenAI Webhook DIAG] Parsing JSON body...
+01-07 15:26:17
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 15:26:17
+[OpenAI Webhook DIAG] webhook-id: wh_695eb1a93f248190aba9c2d0b189d602
+01-07 15:26:17
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 15:26:17
+[OpenAI Webhook DIAG] Signature verified OK, checking idempotency...
+01-07 15:26:17
+[OpenAI Webhook DIAG] Method: POST
+01-07 15:26:17
+[OpenAI Webhook DIAG] Signature valid: true
+01-07 15:26:17
+[OpenAI Webhook DIAG] webhook-timestamp: 1767821175
+01-07 15:26:17
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 15:26:17
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 15:26:17
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 15:26:17
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 15:26:17
+[OpenAI Webhook DIAG] Starting signature verification...
+01-07 15:26:17
+[OpenAI Webhook DIAG] Parsed event type: realtime.call.incoming
+01-07 15:26:17
+[OpenAI Webhook DIAG] Parsing JSON body...
+01-07 15:26:17
+[OpenAI Webhook DIAG] Already processed: false
+01-07 15:26:17
+[OpenAI Webhook DIAG] About to record webhook and process...
+01-07 15:39:16
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 15:39:16
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 15:39:16
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 15:39:16
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 15:39:16
+[OpenAI Webhook DIAG] webhook-id: wh_695ed280d42c8190afa0331e598bf9ac
+01-07 15:39:16
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 15:39:16
+[OpenAI Webhook DIAG] Method: POST
+01-07 15:39:16
+[OpenAI Webhook DIAG] webhook-timestamp: 1767821953
+01-07 15:39:16
+[OpenAI Webhook DIAG] Starting signature verification...
+01-07 15:39:16
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 15:39:16
+[OpenAI Webhook DIAG] Signature valid: true
+01-07 15:39:16
+[OpenAI Webhook DIAG] Signature verified OK, checking idempotency...
+01-07 15:39:16
+[OpenAI Webhook DIAG] Already processed: false
+01-07 15:39:16
+[OpenAI Webhook DIAG] Parsed event type: realtime.call.incoming
+01-07 15:39:16
+[OpenAI Webhook DIAG] Parsing JSON body...
+01-07 15:39:16
+[OpenAI Webhook DIAG] About to record webhook and process...
