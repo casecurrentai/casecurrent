@@ -1,0 +1,23 @@
+[2026-01-08T08:37:56.061Z] LOG: [DEPLOY_MARK] server/index.ts loaded v3 2026-01-08T08:37:56.061Z
+[2026-01-08T08:37:56.064Z] LOG: [DB] Fingerprint - host=ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech db=...neondb
+[2026-01-08T08:37:58.970Z] LOG: [DB STARTUP] Phone +18443214257 EXISTS: orgId=aca4478f-97da-488a-863e-e9566d7b9cb7 inboundEnabled=true
+[2026-01-08T08:37:59.025Z] LOG: [DB STARTUP] Total phone_numbers in database: 1
+[2026-01-08T08:37:59.113Z] LOG: 8:37:59 AM [express] serving on port 5000
+[2026-01-08T09:02:30.856Z] LOG: [Twilio Voice] ========== REQUEST 6TRV49FP ==========
+[2026-01-08T09:02:30.856Z] LOG: [Twilio Voice] [6TRV49FP] Raw To: " 18443214257"
+[2026-01-08T09:02:30.857Z] LOG: [Twilio Voice] [6TRV49FP] Raw From: " *******4567"
+[2026-01-08T09:02:30.857Z] LOG: [Twilio Voice] [6TRV49FP] CallSid: "TEST"
+[2026-01-08T09:02:30.857Z] LOG: [Twilio Voice] [6TRV49FP] Content-Type: application/x-www-form-urlencoded
+[2026-01-08T09:02:30.857Z] LOG: [Twilio Voice] [6TRV49FP] DB: ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech/...neondb
+[2026-01-08T09:02:30.857Z] LOG: [Twilio Voice] [6TRV49FP] phone_numbers count: 1
+[2026-01-08T09:02:30.923Z] LOG: [Twilio Voice] [6TRV49FP] Candidates: "18443214257", "+18443214257"
+[2026-01-08T09:02:31.036Z] LOG: [Twilio Voice] [6TRV49FP] MATCH FOUND: e164=+18443214257 orgId=aca4478f-97da-488a-863e-e9566d7b9cb7
+[2026-01-08T09:02:31.423Z] LOG: [Twilio Voice] [6TRV49FP] isOpenAIConfigured: true
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] OPENAI_PROJECT_ID: proj_vXJ...almg
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] SIP URI: sip:proj_vXJ...almg@sip.api.openai.com;transport=tls;secure=true
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] Dial timeout: 30s
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] Sending TwiML with <Dial><Sip> and action callback
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] Call record created with twilioCallSid=CA*** BEFORE TwiML returned
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] [6TRV49FP] SIP URI includes X-Twilio-CallSid header param
+[2026-01-08T09:02:31.424Z] LOG: [Twilio Voice] ========== END 6TRV49FP ==========
+[2026-01-08T09:05:08.414Z] LOG: 9:05:08 AM [express] GET /api/v1/guest/comm/config 200 in 3ms
