@@ -1,0 +1,88 @@
+01-07 14:07:59
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 14:07:59
+[OpenAI Webhook DIAG] webhook-timestamp: 1767816478
+01-07 14:07:59
+[OpenAI Webhook] No matching signature found
+01-07 14:07:59
+[OpenAI Webhook] Invalid signature
+01-07 14:11:20
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 14:11:20
+[OpenAI Webhook] No matching signature found
+01-07 14:11:20
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 14:11:20
+[OpenAI Webhook DIAG] webhook-timestamp: 1767816679
+01-07 14:11:20
+[OpenAI Webhook DIAG] webhook-id: wh_695eaf1a79788190908ad03f9bebf92f
+01-07 14:11:20
+[OpenAI Webhook DIAG] Method: POST
+01-07 14:11:20
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 14:11:20
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 14:11:20
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 14:11:20
+[OpenAI Webhook] Invalid signature
+01-07 14:11:20
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 14:16:35
+starting up user application
+01-07 14:16:35
+metasidecar: loaded enterprise status from environment is_enterprise=false
+01-07 14:16:35
+forwarding local port 5000 to external port 80 (mapped as 1104)
+01-07 14:16:38
+[DB] Fingerprint - host=ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech db=...neondb
+01-07 14:16:41
+[DB STARTUP] Phone +18443214257 EXISTS: orgId=aca4478f-97da-488a-863e-e9566d7b9cb7 inboundEnabled=true
+01-07 14:16:41
+[DB STARTUP] Total phone_numbers in database: 1
+01-07 14:16:41
+8:16:41 PM [express] serving on port 5000
+01-07 14:17:55
+system: received signal terminated
+01-07 14:17:55
+command finished with error [node ./dist/index.cjs]: signal: terminated
+01-07 14:17:55
+main done, exiting
+01-07 14:18:04
+starting up user application
+01-07 14:18:04
+metasidecar: loaded enterprise status from environment is_enterprise=false
+01-07 14:18:04
+forwarding local port 5000 to external port 80 (mapped as 1104)
+01-07 14:18:05
+[DB] Fingerprint - host=ep-divine-tooth-afxb8msb.c-2.us-west-2.aws.neon.tech db=...neondb
+01-07 14:18:09
+[DB STARTUP] Phone +18443214257 EXISTS: orgId=aca4478f-97da-488a-863e-e9566d7b9cb7 inboundEnabled=true
+01-07 14:18:09
+[DB STARTUP] Total phone_numbers in database: 1
+01-07 14:18:09
+8:18:09 PM [express] serving on port 5000
+01-07 14:22:15
+[OpenAI Webhook DIAG] Content-Type: application/json
+01-07 14:22:15
+[OpenAI Webhook DIAG] rawBody present: true
+01-07 14:22:15
+[OpenAI Webhook DIAG] Starting signature verification...
+01-07 14:22:15
+[OpenAI Webhook DIAG] webhook-timestamp: 1767817333
+01-07 14:22:15
+[OpenAI Webhook DIAG] URL: /v1/telephony/openai/webhook
+01-07 14:22:15
+[OpenAI Webhook DIAG] webhook-signature present: true
+01-07 14:22:15
+[OpenAI Webhook DIAG] rawBody length: 1651
+01-07 14:22:15
+[OpenAI Webhook DIAG] ========== INCOMING REQUEST ==========
+01-07 14:22:15
+[OpenAI Webhook DIAG] Method: POST
+01-07 14:22:15
+[OpenAI Webhook DIAG] webhook-id: wh_695eb1a93f248190aba9c2d0b189d602
+01-07 14:22:15
+[OpenAI Webhook] Invalid signature - REJECTING
+01-07 14:22:15
+[OpenAI Webhook DIAG] Signature valid: false

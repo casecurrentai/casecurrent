@@ -35,12 +35,19 @@ export function verifyStandardWebhooksSignature(
 ): boolean {
   try {
     const secret = getOpenAIWebhookSecret();
+    console.log(`[OpenAI Webhook DIAG] Secret starts with whsec_: ${secret.startsWith("whsec_")}`);
+    console.log(`[OpenAI Webhook DIAG] Secret length: ${secret.length}`);
+    
     const secretBytes = Buffer.from(secret.replace("whsec_", ""), "base64");
+    console.log(`[OpenAI Webhook DIAG] SecretBytes length: ${secretBytes.length}`);
     
     const timestampNum = parseInt(webhookTimestamp, 10);
     const now = Math.floor(Date.now() / 1000);
+    const timeDiff = Math.abs(now - timestampNum);
     
-    if (Math.abs(now - timestampNum) > WEBHOOK_TOLERANCE_SECONDS) {
+    console.log(`[OpenAI Webhook DIAG] Timestamp check: now=${now}, webhook=${timestampNum}, diff=${timeDiff}s, tolerance=${WEBHOOK_TOLERANCE_SECONDS}s`);
+    
+    if (timeDiff > WEBHOOK_TOLERANCE_SECONDS) {
       console.error("[OpenAI Webhook] Timestamp outside tolerance window");
       return false;
     }
@@ -51,12 +58,16 @@ export function verifyStandardWebhooksSignature(
       .update(signedPayload)
       .digest("base64");
 
+    console.log(`[OpenAI Webhook DIAG] Expected sig (first 20 chars): ${expectedSignature.substring(0, 20)}...`);
+    console.log(`[OpenAI Webhook DIAG] Received webhook-signature: ${webhookSignature.substring(0, 50)}...`);
+
     const signatures = webhookSignature.split(" ");
     for (const sig of signatures) {
       const parts = sig.split(",");
       for (const part of parts) {
         const cleanSig = part.replace("v1,", "").replace("v1=", "").trim();
         if (cleanSig && cleanSig.length > 0) {
+          console.log(`[OpenAI Webhook DIAG] Comparing with cleanSig (first 20): ${cleanSig.substring(0, 20)}...`);
           try {
             if (crypto.timingSafeEqual(
               Buffer.from(expectedSignature, "base64"),
@@ -64,7 +75,8 @@ export function verifyStandardWebhooksSignature(
             )) {
               return true;
             }
-          } catch {
+          } catch (compareErr) {
+            console.log(`[OpenAI Webhook DIAG] Compare error: ${compareErr}`);
             continue;
           }
         }
