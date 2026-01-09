@@ -1,0 +1,98 @@
+You are working in the CaseCurrent codebase.
+
+Goal: Improve the marketing homepage conversion by replacing the homepage copy with a tighter, sales-focused version (PI + Family, governance + predictability positioning). Keep the existing visual design and layout as much as possible—change TEXT, headings, bullets, and CTA labels/links.
+
+Steps:
+1) Locate the marketing homepage file. Common locations:
+   - app/page.tsx
+   - app/(marketing)/page.tsx
+   - pages/index.tsx
+   - src/app/page.tsx
+   - src/pages/index.tsx
+2) Replace the existing hero headline/subheadline, section headings, paragraphs, and bullet lists with the copy in the “DROP-IN HOMEPAGE COPY” below.
+3) Ensure there are two CTAs in the hero and final section:
+   - Primary CTA button text: "Book a demo" linking to /demo
+   - Secondary CTA button text: "See how intake works" linking to /how-it-works
+   If these routes don’t exist, create simple pages with placeholder content (H1 + 2 short paragraphs) so links don’t 404.
+4) Add/verify SEO metadata (title + description) for the homepage:
+   - Title: "CaseCurrent — AI Voice Intake for Personal Injury & Family Law"
+   - Description: "Capture every lead with rules-first AI intake: 24/7 voice answering, structured summaries, follow-ups, and predictable handoffs for PI and family firms."
+5) Do NOT add new dependencies. Do NOT redesign styling. Only adjust content and ensure links work.
+6) After changes, output:
+   - The files changed
+   - The exact diffs
+   - A short checklist of what to click to verify in the browser
+
+DROP-IN HOMEPAGE COPY (use these exact words):
+
+HERO
+Headline: "Never miss a case-worthy call again."
+Subheadline: "CaseCurrent is an AI voice intake system built for personal injury and family law. It answers 24/7, captures the right details, sends clean follow-ups, and hands your team a structured lead—without sounding like a robot."
+Primary CTA: "Book a demo"
+Secondary CTA: "See how intake works"
+Micro-proof: "Built for firms that want more signed cases, fewer dropped leads, and zero chaos."
+
+SECTION: PROBLEM
+Heading: "Most firms don’t lose leads—they lose momentum."
+Bullets:
+- "Missed calls after hours (and during peak hours) become “I called someone else.”"
+- "Intake is inconsistent: great one day, messy the next."
+- "Staff time gets burned on back-and-forth just to gather basics."
+- "The lead goes cold before you ever get a clean summary."
+Closer: "CaseCurrent turns every inbound call into a controlled, trackable intake flow."
+
+SECTION: SOLUTION
+Heading: "Answer. Qualify. Route. Follow up. Automatically."
+Body: "CaseCurrent handles first contact like a disciplined intake specialist: it asks the right questions, records the right facts, flags urgency, and gives your firm a predictable handoff every time."
+Bullets:
+- "24/7 voice intake using your firm’s rules and practice areas"
+- "Structured lead summaries (not messy transcripts)"
+- "Lead routing + priority flags for time-sensitive matters"
+- "Secure intake link when the caller prefers to finish on their phone"
+- "Document upload nudges with secure links (when SMS is enabled)"
+- "Clear audit trail of what was asked, answered, and sent"
+
+SECTION: HOW IT WORKS
+Heading: "Go live in days, not months."
+Steps:
+1) "Provision a dedicated firm number (local by default)"
+2) "Set your intake rules (PI, Family, or both)"
+3) "Start capturing leads with summaries delivered to your dashboard/workflow"
+Optional line: "Want a toll-free number? Offer it as a premium add-on."
+
+SECTION: DIFFERENTIATOR
+Heading: "Predictable intake, not “AI vibes.”"
+Body: "Most AI intake tools optimize for conversation. CaseCurrent optimizes for operational control: consistent questions, consistent routing, consistent records. Your firm gets a repeatable intake machine—not a novelty."
+Bullets:
+- "Rules-first behavior (what to ask, what to avoid, when to escalate)"
+- "No legal advice—only structured intake and scheduling workflows"
+- "Firm-specific voice + tone (premium customization)"
+- "Designed for accountability (easy to review and audit)"
+
+SECTION: PACKAGES
+Heading: "Choose the level of automation you want."
+Core: "Core — Voice Intake" + bullets:
+- "Dedicated firm number"
+- "24/7 voice intake + structured summaries"
+- "Dashboard visibility"
+Pro: "Pro — Voice + SMS" + bullets:
+- "Appointment confirmations/reminders"
+- "Follow-up sequences to complete intake"
+- "Secure document upload nudges via SMS"
+Premium: "Premium — Custom Agent" + bullets:
+- "Firm-specific conversational rules"
+- "Custom question sets/modules (PI + Family)"
+- "Custom routing/escalation logic"
+Add-on line: "Add-on: Toll-free number (premium monthly)"
+
+SECTION: FAQ
+Heading: "FAQ"
+Q1: "Does this replace my staff?" A1: "No. It protects your staff by handling first-contact intake and giving them clean, structured handoffs."
+Q2: "Will it give legal advice?" A2: "No. It captures facts, preferences, and urgency—then routes to your team."
+Q3: "Can we control what it asks?" A3: "Yes. Your firm chooses practice areas, disqualifiers, escalation triggers, and intake depth."
+Q4: "What if a caller is urgent or unsafe?" A4: "You set escalation rules (transfer, emergency guidance, staff alerts)."
+
+FINAL CTA
+Headline: "Turn missed calls into signed cases."
+Subheadline: "If your firm is serious about conversion and control, CaseCurrent is built for you."
+Buttons: "Book a demo" (/demo) and "See how intake works" (/how-it-works)

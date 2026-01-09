@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Scale, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GuillocheUnderlay } from "./guilloche-pattern";
 
 const NAV_LINKS = [
@@ -15,11 +15,28 @@ const NAV_LINKS = [
 
 interface PageShellProps {
   children: React.ReactNode;
+  title?: string;
+  description?: string;
 }
 
-export function PageShell({ children }: PageShellProps) {
+export function PageShell({ children, title, description }: PageShellProps) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (title) {
+      document.title = title;
+    }
+    if (description) {
+      let metaDescription = document.querySelector('meta[name="description"]');
+      if (!metaDescription) {
+        metaDescription = document.createElement('meta');
+        metaDescription.setAttribute('name', 'description');
+        document.head.appendChild(metaDescription);
+      }
+      metaDescription.setAttribute('content', description);
+    }
+  }, [title, description]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative">
