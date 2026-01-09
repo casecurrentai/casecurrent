@@ -33,6 +33,25 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
 - **Webhook System**: Offers CRUD operations for managing webhook endpoints, enabling real-time notifications for events like `lead.created`, `lead.updated`, and `intake.completed`. Features secure signing, retry logic, and delivery logging.
 - **Self-Improving System**: Incorporates A/B testing for intake scripts, qualification rules, and follow-up timings via an Experiments API. It also includes a Policy Tests API for regression testing AI qualification logic and a Follow-up Sequences API for automated multi-step communications.
 - **Platform Admin System**: Provides tools for platform administrators to manage organizations, provision new firms, invite users, impersonate organizations (with auditing), and monitor health snapshots.
+- **Mobile Ops App**: React Native (Expo) mobile application for law firm staff operations:
+  - **Authentication**: Email/password login with multi-org firm picker for users with access to multiple organizations
+  - **Inbox**: Prioritized leads view showing new/engaged leads with HOT score badges, DNC indicators, and overdue highlighting
+  - **Lead Detail**: Unified thread view aggregating calls, SMS, and system events with SMS composer (DNC-enforced), tap-to-call, and intake link generation
+  - **Leads Search**: Full lead list with search and status filtering
+  - **Analytics**: Key metrics dashboard (captured leads, qualified rate, response times, after-hours conversion)
+  - **Settings**: Notification preferences (hot leads, inbound SMS, SLA breaches) and logout
+  - **Realtime Updates**: WebSocket connection at `/v1/realtime?token=<jwt>` for push events (lead.created, sms.received, lead.dnc_set)
+  - **DNC Enforcement**: STOP word detection (stop, unsubscribe, cancel, end, quit) in inbound SMS automatically sets DNC, cancels queued automation
+- **Mobile API Endpoints**:
+  - `GET /v1/leads/:id/thread` - Unified thread aggregation
+  - `POST /v1/devices/register` - Push notification device registration
+  - `POST /v1/leads/:id/messages` - Outbound SMS with DNC enforcement
+  - `POST /v1/leads/:id/call/start` - Tap-to-call (logs attempt, returns dial info)
+  - `POST /v1/leads/:id/intake/link` - Generate secure intake URL
+  - `POST /v1/leads/:id/status` - Update lead status
+  - `POST /v1/leads/:id/assign` - Assign/claim lead
+  - `GET /v1/analytics/summary` - Dashboard metrics
+  - `GET /v1/analytics/captured-leads` - Detailed leads list
 
 ### System Design Choices
 - **Database**: PostgreSQL with Prisma ORM (v7.2.0) is used for data storage, including 27 base tables with multi-tenant `org_id` scoping. Migrations are managed via Prisma Migrate.
