@@ -15,7 +15,7 @@ await fastify.register(cors, {
 });
 
 fastify.get('/', async () => {
-  return { status: 'ok', service: 'CounselTech API', version: '1.0.0' };
+  return { status: 'ok', service: 'CaseCurrent API', version: '1.0.0' };
 });
 
 fastify.get('/health', async () => {
@@ -43,7 +43,7 @@ const start = async () => {
   try {
     const port = parseInt(process.env.API_PORT || '3001', 10);
     await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`CounselTech API running on port ${port}`);
+    console.log(`CaseCurrent API running on port ${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

@@ -1,9 +1,9 @@
-# CounselTech Backend Proof Report
+# CaseCurrent Backend Proof Report
 
 **Generated:** January 6, 2026
 **Checkpoint:** cp10_1-visual-parity-and-backend-proof
 
-This report verifies that the CounselTech backend is production-ready with all core systems implemented and tested.
+This report verifies that the CaseCurrent backend is production-ready with all core systems implemented and tested.
 
 ---
 
@@ -152,7 +152,7 @@ npx tsx scripts/smoke-tests.ts
 ### Output Summary
 ```
 ========================================
-CounselTech API Smoke Tests
+CaseCurrent API Smoke Tests
 Target: http://localhost:5000
 ========================================
 

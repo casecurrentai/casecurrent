@@ -58,8 +58,8 @@ export default function HowItWorksPage() {
   return (
     <PageShell>
       <Hero
-        headline="How CounselTech Works"
-        subheadline="From first contact to qualified consultation in minutes. See how CounselTech captures, qualifies, and delivers leads to your team."
+        headline="How CaseCurrent Works"
+        subheadline="From first contact to qualified consultation in minutes. See how CaseCurrent captures, qualifies, and delivers leads to your team."
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
@@ -224,7 +224,7 @@ export default function HowItWorksPage() {
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-bold mb-4">Ready to See It in Action?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
-            Schedule a personalized demo to see how CounselTech can transform your intake process.
+            Schedule a personalized demo to see how CaseCurrent can transform your intake process.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/demo">

@@ -5,4 +5,4 @@ Disallow: /dashboard
 Disallow: /leads
 Disallow: /admin
 
-Sitemap: https://counseltech.io/sitemap.xml
+Sitemap: https://casecurrent.io/sitemap.xml

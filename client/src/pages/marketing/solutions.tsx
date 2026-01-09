@@ -201,7 +201,7 @@ export default function SolutionsPage() {
               <div className="text-center mb-12">
                 <h2 className="text-3xl font-bold text-foreground mb-4">Integrations</h2>
               <p className="text-muted-foreground">
-                Connect CounselTech to your existing tools
+                Connect CaseCurrent to your existing tools
               </p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -236,7 +236,7 @@ export default function SolutionsPage() {
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="text-2xl font-bold mb-4">See CounselTech for Your Practice Area</h2>
+          <h2 className="text-2xl font-bold mb-4">See CaseCurrent for Your Practice Area</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
             Schedule a demo tailored to your specific practice and intake workflow.
           </p>

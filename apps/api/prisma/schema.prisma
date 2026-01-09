@@ -1,4 +1,4 @@
-// CounselTech Database Schema
+// CaseCurrent Database Schema
 // All tables are scoped by org_id for multi-tenancy
 
 generator client {

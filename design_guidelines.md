@@ -1,10 +1,10 @@
-# CounselTech Design Guidelines
+# CaseCurrent Design Guidelines
 
 ## Design Philosophy
-**Source of Truth**: Match the existing CounselTech.net visual system EXACTLY. This is non-negotiable. Do not invent a new aesthetic.
+**Source of Truth**: Match the existing CaseCurrent visual system EXACTLY. This is non-negotiable. Do not invent a new aesthetic.
 
 ## Typography System
-- **Critical**: Extract exact font families, weights, and sizes from CounselTech.net via DevTools inspection
+- **Critical**: Extract exact font families, weights, and sizes from CaseCurrent via DevTools inspection
 - Pull the actual font import from the site's CSS
 - Apply identical font stack across all marketing pages and mobile app
 - Match heading hierarchy, letter-spacing, and weight distribution precisely
@@ -24,19 +24,19 @@ Apply throughout all interfaces as subtle overlays:
 - Creates a "technical blueprint" aesthetic that reinforces the AI-powered positioning
 
 ## Layout & Spacing
-- Extract exact values from CounselTech.net: max-width containers, section padding, gutters, card spacing
+- Extract exact values from CaseCurrent: max-width containers, section padding, gutters, card spacing
 - Match vertical rhythm, soft shadows, border radii, and line separators
 - Maintain consistent spacing system across web and mobile
 
 ## Color & UI Tokens
-- Derive from CounselTech.net (do not guess): primary brand blue, hover blue, background tints, border colors, text colors
+- Derive from CaseCurrent (do not guess): primary brand blue, hover blue, background tints, border colors, text colors
 - Implement as CSS variables or Tailwind tokens
 - Button styling must match exactly: radius, padding, font weight, shadow, hover states
 
 ## Marketing Website Structure
 
 ### Global Components
-- Navigation with guilloche underlay + CounselTech.net link spacing
+- Navigation with guilloche underlay + CaseCurrent link spacing
 - Primary CTA: "Book a Demo" (exact styling match)
 - Secondary links: "Sign in" with matching treatment
 - Footer: Same column layout and typography hierarchy as existing site
@@ -89,4 +89,4 @@ Bottom tab bar (5 tabs): Dashboard | Leads | Calls | Automations | Settings
 - Security section styled like marketing "/security" page
 
 ## Quality Standard
-Every element must look like it belongs to the CounselTech brand family. If anything appears "template-y" or generic, it fails. Users should instantly recognize the app through typography and wireframe motifs alone.
+Every element must look like it belongs to the CaseCurrent brand family. If anything appears "template-y" or generic, it fails. Users should instantly recognize the app through typography and wireframe motifs alone.

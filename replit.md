@@ -1,7 +1,7 @@
-# CounselTech
+# CaseCurrent
 
 ## Overview
-CounselTech is an AI-powered MVP platform designed for law firms. It automates lead capture via phone, SMS, and web, creates structured intakes, performs qualification scoring, sends notifications, and dispatches outbound webhooks. The platform integrates "self-improving" capabilities through an experimentation engine for A/B testing intake scripts and provides explainable AI scoring with stored qualification reasons. Its core purpose is to streamline lead management and improve client intake efficiency for legal practices.
+CaseCurrent is an AI-powered MVP platform designed for law firms. It automates lead capture via phone, SMS, and web, creates structured intakes, performs qualification scoring, sends notifications, and dispatches outbound webhooks. The platform integrates "self-improving" capabilities through an experimentation engine for A/B testing intake scripts and provides explainable AI scoring with stored qualification reasons. Its core purpose is to streamline lead management and improve client intake efficiency for legal practices.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, built with shadcn/ui and Radix UI primitives. Styling is managed with Tailwind CSS, incorporating custom design tokens aligned with CounselTech.net branding. The design system features guilloche underlays, wireframe AI blueprint elements, and specific typography/spacing, creating a clean enterprise SaaS aesthetic.
+The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, built with shadcn/ui and Radix UI primitives. Styling is managed with Tailwind CSS, incorporating custom design tokens aligned with CaseCurrent branding. The design system features guilloche underlays, wireframe AI blueprint elements, and specific typography/spacing, creating a clean enterprise SaaS aesthetic.
 
 ### Technical Implementations
 - **Frontend**: Vite + React and Next.js 14 App Router. State management is handled by TanStack React Query, and routing by Wouter (Vite client) and Next.js App Router.

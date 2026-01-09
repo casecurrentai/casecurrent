@@ -1068,7 +1068,7 @@ export async function registerRoutes(
           payload: {
             event: "test.ping",
             timestamp: new Date().toISOString(),
-            data: { message: "Test webhook from CounselTech" },
+            data: { message: "Test webhook from CaseCurrent" },
           },
           status: "pending",
           attemptCount: 0,
@@ -1956,7 +1956,7 @@ export async function registerRoutes(
   app.get("/api", (_req, res) => {
     res.json({
       status: "ok",
-      service: "CounselTech API",
+      service: "CaseCurrent API",
       version: "1.0.0",
     });
   });

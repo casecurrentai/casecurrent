@@ -4,7 +4,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "CounselTech API",
+      title: "CaseCurrent API",
       version: "1.0.0",
       description: "AI-powered intake and lead capture platform for law firms",
     },

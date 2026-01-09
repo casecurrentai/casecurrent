@@ -174,7 +174,7 @@ function MobileHeader() {
         <SheetContent side="left" className="w-[280px] p-0">
           <div className="flex flex-col h-full">
             <SheetHeader className="p-4 border-b">
-              <SheetTitle className="text-left">CounselTech</SheetTitle>
+              <SheetTitle className="text-left">CaseCurrent</SheetTitle>
             </SheetHeader>
             
             {/* User info */}
@@ -287,7 +287,7 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
           {/* Logo */}
           <Link href="/leads">
             <span className="font-bold text-lg tracking-tight cursor-pointer" data-testid="text-header-logo">
-              CounselTech
+              CaseCurrent
             </span>
           </Link>
 

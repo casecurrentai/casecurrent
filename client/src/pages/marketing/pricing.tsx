@@ -137,7 +137,7 @@ export default function PricingPage() {
       >
         <div className="max-w-2xl mx-auto text-center space-y-4 mt-4">
           <p className="text-muted-foreground">
-            CounselTech AI replaces missed-call revenue loss and intake bottlenecks with a 24/7 AI-powered intake system designed specifically for law firms.
+            CaseCurrent AI replaces missed-call revenue loss and intake bottlenecks with a 24/7 AI-powered intake system designed specifically for law firms.
           </p>
           <p className="text-muted-foreground">
             No long-term contracts. No per-call nickel-and-diming. Just predictable monthly pricing.
@@ -151,7 +151,7 @@ export default function PricingPage() {
             <SectionFrame variant="brackets" className="p-6">
             <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
               <PricingTier
-                name="CounselTech Core"
+                name="CaseCurrent Core"
                 price="$349"
                 tagline="Best for solo attorneys and small firms getting started with AI intake"
                 description="Never miss another after-hours or overflow call."
@@ -159,7 +159,7 @@ export default function PricingPage() {
                 outcome="Capture leads you're already paying for — without hiring staff."
               />
               <PricingTier
-                name="CounselTech Pro"
+                name="CaseCurrent Pro"
                 price="$749"
                 tagline="Designed for growing firms that care about conversion, not just coverage"
                 description="Turn more callers into qualified cases automatically."
@@ -169,7 +169,7 @@ export default function PricingPage() {
                 highlighted
               />
               <PricingTier
-                name="CounselTech Elite"
+                name="CaseCurrent Elite"
                 price="$1,499"
                 tagline="For high-volume and multi-attorney firms"
                 description="A fully branded, always-on AI intake system."
@@ -213,7 +213,7 @@ export default function PricingPage() {
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="p-8 max-w-3xl mx-auto">
               <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold text-foreground">Why Law Firms Choose CounselTech</h2>
+                <h2 className="text-2xl font-bold text-foreground">Why Law Firms Choose CaseCurrent</h2>
             </div>
             <ul className="space-y-3">
               {WHY_CHOOSE.map((item) => (
@@ -232,7 +232,7 @@ export default function PricingPage() {
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-bold mb-4">Ready to Get Started?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
-            See how CounselTech can transform your firm's intake process.
+            See how CaseCurrent can transform your firm's intake process.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/demo">

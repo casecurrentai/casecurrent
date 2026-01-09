@@ -78,7 +78,7 @@ function sendInitialGreeting(session: RealtimeSession): void {
     type: "response.create",
     response: {
       modalities: ["text", "audio"],
-      instructions: "Greet the caller warmly and introduce yourself as CounselTech AI. State the required disclaimers about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.",
+      instructions: "Greet the caller warmly and introduce yourself as CaseCurrent AI. State the required disclaimers about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.",
     },
   });
   console.log(`[Realtime] Initial greeting sent for call ${session.callId}`);

@@ -1,37 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://counseltech.io/</loc>
+    <loc>https://casecurrent.io/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/how-it-works</loc>
+    <loc>https://casecurrent.io/how-it-works</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/solutions</loc>
+    <loc>https://casecurrent.io/solutions</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/security</loc>
+    <loc>https://casecurrent.io/security</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/pricing</loc>
+    <loc>https://casecurrent.io/pricing</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/resources</loc>
+    <loc>https://casecurrent.io/resources</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://counseltech.io/contact</loc>
+    <loc>https://casecurrent.io/contact</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

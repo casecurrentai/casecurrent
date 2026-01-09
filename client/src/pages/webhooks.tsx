@@ -142,7 +142,7 @@ function CreateWebhookDialog({ onCreated }: { onCreated: (endpoint: WebhookEndpo
         <DialogHeader>
           <DialogTitle>Create Webhook Endpoint</DialogTitle>
           <DialogDescription>
-            Add a URL to receive event notifications from CounselTech.
+            Add a URL to receive event notifications from CaseCurrent.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">

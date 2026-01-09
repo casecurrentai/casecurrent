@@ -1,17 +1,17 @@
-# CounselTech
+# CaseCurrent
 
 AI-powered intake and lead capture platform for law firms.
 
 ## Overview
 
-CounselTech is a production-grade MVP that captures inbound phone/SMS/web leads, creates structured intakes, runs qualification scoring, sends notifications, and emits outbound webhooks. The platform includes "self-improving" capabilities with an experimentation engine (A/B testing) for intake scripts and explainable scoring stored in qualification reasons.
+CaseCurrent is a production-grade MVP that captures inbound phone/SMS/web leads, creates structured intakes, runs qualification scoring, sends notifications, and emits outbound webhooks. The platform includes "self-improving" capabilities with an experimentation engine (A/B testing) for intake scripts and explainable scoring stored in qualification reasons.
 
 ## Architecture
 
 This is a monorepo containing the following packages:
 
 ```
-counseltech/
+casecurrent/
 ├── client/           # Vite + React primary frontend (port 5000)
 ├── server/           # Express.js backend API
 ├── shared/           # Shared types and utilities
@@ -48,7 +48,7 @@ On Replit, secrets are automatically managed. For local development:
 
 ```bash
 # Create a .env file (not committed to git)
-DATABASE_URL="postgresql://user:password@localhost:5432/counseltech"
+DATABASE_URL="postgresql://user:password@localhost:5432/casecurrent"
 JWT_SECRET="your-jwt-secret-at-least-32-chars"
 SESSION_SECRET="your-session-secret-at-least-32-chars"
 ```

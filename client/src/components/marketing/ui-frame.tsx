@@ -6,7 +6,7 @@ interface UIFrameProps {
   title?: string;
 }
 
-export function UIFrame({ children, className, title = "CounselTech" }: UIFrameProps) {
+export function UIFrame({ children, className, title = "CaseCurrent" }: UIFrameProps) {
   return (
     <div className={cn("rounded-lg border border-border bg-card shadow-lg overflow-hidden", className)}>
       <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border">

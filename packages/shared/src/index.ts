@@ -1,8 +1,8 @@
 /**
- * CounselTech Shared Types and Utilities
+ * CaseCurrent Shared Types and Utilities
  * 
  * This package contains shared TypeScript types, interfaces,
- * and utility functions used across the CounselTech platform.
+ * and utility functions used across the CaseCurrent platform.
  */
 
 // API Response Types
@@ -39,4 +39,4 @@ export function createErrorResponse(error: string): ApiResponse<never> {
 
 // Version info
 export const VERSION = '1.0.0';
-export const APP_NAME = 'CounselTech';
+export const APP_NAME = 'CaseCurrent';

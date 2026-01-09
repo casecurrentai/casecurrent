@@ -20,7 +20,7 @@ import {
 export default function MarketingHomePage() {
   return (
     <PageShell
-      title="CounselTech — AI Voice Intake for Personal Injury & Family Law"
+      title="CaseCurrent — AI Voice Intake for Personal Injury & Family Law"
       description="Capture every lead with rules-first AI intake: 24/7 voice answering, structured summaries, follow-ups, and predictable handoffs for PI and family firms."
     >
       {/* HERO SECTION */}
@@ -34,7 +34,7 @@ export default function MarketingHomePage() {
                 Never miss a case-worthy call again.
               </h1>
               <p className="text-lg lg:text-xl text-muted-foreground max-w-xl leading-relaxed" data-testid="text-hero-description">
-                CounselTech is an AI voice intake system built for personal injury and family law. It answers 24/7, captures the right details, sends clean follow-ups, and hands your team a structured lead—without sounding like a robot.
+                CaseCurrent is an AI voice intake system built for personal injury and family law. It answers 24/7, captures the right details, sends clean follow-ups, and hands your team a structured lead—without sounding like a robot.
               </p>
               
               <div className="flex flex-wrap gap-4 pt-4">
@@ -204,7 +204,7 @@ export default function MarketingHomePage() {
                   </li>
                 </ul>
                 <p className="text-center mt-8 text-foreground font-medium" data-testid="text-problem-closer">
-                  CounselTech turns every inbound call into a controlled, trackable intake flow.
+                  CaseCurrent turns every inbound call into a controlled, trackable intake flow.
                 </p>
               </div>
             </SectionFrame>
@@ -224,7 +224,7 @@ export default function MarketingHomePage() {
                   Answer. Qualify. Route. Follow up. Automatically.
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
-                  CounselTech handles first contact like a disciplined intake specialist: it asks the right questions, records the right facts, flags urgency, and gives your firm a predictable handoff every time.
+                  CaseCurrent handles first contact like a disciplined intake specialist: it asks the right questions, records the right facts, flags urgency, and gives your firm a predictable handoff every time.
                 </p>
               </div>
               <div className="max-w-3xl mx-auto">
@@ -332,7 +332,7 @@ export default function MarketingHomePage() {
                   Predictable intake, not "AI vibes."
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
-                  Most AI intake tools optimize for conversation. CounselTech optimizes for operational control: consistent questions, consistent routing, consistent records. Your firm gets a repeatable intake machine—not a novelty.
+                  Most AI intake tools optimize for conversation. CaseCurrent optimizes for operational control: consistent questions, consistent routing, consistent records. Your firm gets a repeatable intake machine—not a novelty.
                 </p>
               </div>
               <div className="max-w-3xl mx-auto">
@@ -473,7 +473,7 @@ export default function MarketingHomePage() {
             Turn missed calls into signed cases.
           </h2>
           <p className="text-slate-300 mb-8 max-w-xl mx-auto">
-            If your firm is serious about conversion and control, CounselTech is built for you.
+            If your firm is serious about conversion and control, CaseCurrent is built for you.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/demo">

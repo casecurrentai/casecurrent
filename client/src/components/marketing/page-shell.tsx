@@ -49,7 +49,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
             <div className="flex items-center justify-between h-full">
               <Link href="/" className="flex items-center gap-2" data-testid="link-logo">
                 <Scale className="h-6 w-6 text-primary" />
-                <span className="font-bold text-xl text-foreground">CounselTech</span>
+                <span className="font-bold text-xl text-foreground">CaseCurrent</span>
               </Link>
 
             <nav className="hidden lg:flex items-center gap-1">
@@ -149,7 +149,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
                 <Scale className="h-5 w-5 text-primary" />
-                <span className="font-bold text-foreground">CounselTech</span>
+                <span className="font-bold text-foreground">CaseCurrent</span>
               </div>
               <p className="text-sm text-muted-foreground">
                 AI-powered intake and lead capture for modern law firms.
@@ -181,7 +181,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
             </div>
           </div>
           <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
-            2025 CounselTech. All rights reserved.
+            2025 CaseCurrent. All rights reserved.
           </div>
         </div>
       </footer>

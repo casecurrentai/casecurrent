@@ -44,7 +44,7 @@ const BLOG_POSTS = [
   {
     id: "5",
     title: "Integrating Your Intake with Clio and MyCase",
-    excerpt: "Technical guide to connecting CounselTech with popular legal practice management software for seamless data flow.",
+    excerpt: "Technical guide to connecting CaseCurrent with popular legal practice management software for seamless data flow.",
     category: "Integrations",
     date: "Dec 10, 2024",
     readTime: "8 min read",
@@ -150,7 +150,7 @@ export default function ResourcesPage() {
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-bold mb-4">Ready to Transform Your Intake?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
-            See how CounselTech can help your firm capture more qualified leads.
+            See how CaseCurrent can help your firm capture more qualified leads.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/demo">

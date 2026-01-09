@@ -57,7 +57,7 @@ const STEP_HELP: Record<number, { title: string; description: string; faqs: Arra
     description: "Add your firm's phone number for call tracking and AI voice agent integration.",
     faqs: [
       { q: "What is E.164 format?", a: "E.164 is the international phone number format starting with + and country code. For US numbers: +1 followed by 10 digits (e.g., +15551234567)." },
-      { q: "Do I need to port my number?", a: "No, you can keep your existing phone number. CounselTech works with your current phone provider via call forwarding." },
+      { q: "Do I need to port my number?", a: "No, you can keep your existing phone number. CaseCurrent works with your current phone provider via call forwarding." },
       { q: "Can I add multiple phone numbers?", a: "Yes, you can add additional numbers after setup for different offices or departments." },
     ],
   },
@@ -74,7 +74,7 @@ const STEP_HELP: Record<number, { title: string; description: string; faqs: Arra
     title: "Intake Logic Help",
     description: "Define the questions the AI asks to gather case information. This step is optional during initial setup.",
     faqs: [
-      { q: "Do I need to configure this now?", a: "No, CounselTech includes default intake questions. You can customize them later in Settings." },
+      { q: "Do I need to configure this now?", a: "No, CaseCurrent includes default intake questions. You can customize them later in Settings." },
       { q: "What format should the JSON be?", a: "Use a schema with 'questions' array. Each question needs: id, text, type (text/select/date), and optional 'required' flag." },
       { q: "Can different practice areas have different questions?", a: "Yes, each practice area can have its own intake question set tailored to that case type." },
     ],
@@ -280,7 +280,7 @@ export default function SetupWizardPage() {
     <div className="min-h-screen bg-muted/30 py-8">
       <div className="container mx-auto px-4 max-w-4xl">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold mb-2">Welcome to CounselTech</h1>
+          <h1 className="text-2xl font-bold mb-2">Welcome to CaseCurrent</h1>
           <p className="text-muted-foreground">Complete your setup to get started</p>
         </div>
 

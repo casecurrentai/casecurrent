@@ -1,4 +1,4 @@
-# CounselTech Backend Exploration Guide
+# CaseCurrent Backend Exploration Guide
 
 > **Purpose:** Step-by-step workflow for product demos, customer onboarding understanding, and sales training.
 
@@ -306,7 +306,7 @@ From a lead detail page:
 
 ### Step 10: Platform Admin Features
 
-> **Note:** These features are for CounselTech internal team only.
+> **Note:** These features are for CaseCurrent internal team only.
 
 **Navigate to:** `/admin/orgs`
 
@@ -543,4 +543,4 @@ Walk new customers through 8 configuration steps:
 ---
 
 *Last Updated: January 2026*
-*CounselTech v1.0*
+*CaseCurrent v1.0*

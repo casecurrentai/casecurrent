@@ -177,7 +177,7 @@ export default function DemoPage() {
   return (
     <PageShell>
       <Hero
-        headline="See CounselTech AI in Action"
+        headline="See CaseCurrent AI in Action"
         subheadline="A 15-minute walkthrough tailored to your practice area and intake workflow."
       >
         <Button size="lg" onClick={scrollToForm} data-testid="button-hero-request-demo">
@@ -192,7 +192,7 @@ export default function DemoPage() {
             <div className="text-center mb-12">
               <h2 className="text-2xl font-bold text-foreground mb-4">What You'll See</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                A complete walkthrough of the CounselTech intake system
+                A complete walkthrough of the CaseCurrent intake system
               </p>
             </div>
             <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -218,7 +218,7 @@ export default function DemoPage() {
             <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-4">Who It's For</h2>
-              <p className="text-muted-foreground">CounselTech works for firms across practice areas</p>
+              <p className="text-muted-foreground">CaseCurrent works for firms across practice areas</p>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
               {PRACTICE_AREAS.slice(0, 4).map((area) => (

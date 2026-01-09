@@ -70,7 +70,7 @@ export default function ContactPage() {
     <PageShell>
       <Hero
         headline="Contact Sales"
-        subheadline="Have questions about CounselTech? Our team is here to help."
+        subheadline="Have questions about CaseCurrent? Our team is here to help."
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
       />
 
@@ -88,7 +88,7 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <h3 className="font-medium">Email</h3>
-                      <p className="text-muted-foreground">hello@counseltech.io</p>
+                      <p className="text-muted-foreground">hello@casecurrent.io</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-4">
@@ -114,7 +114,7 @@ export default function ContactPage() {
                 <div className="mt-8 p-4 bg-muted/50 rounded-lg">
                   <h3 className="font-medium mb-2">Looking for a demo?</h3>
                   <p className="text-sm text-muted-foreground mb-3">
-                    See CounselTech in action with a personalized walkthrough.
+                    See CaseCurrent in action with a personalized walkthrough.
                   </p>
                   <Link href="/demo">
                     <Button variant="outline" size="sm" data-testid="link-demo-from-contact">
