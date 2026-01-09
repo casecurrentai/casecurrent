@@ -1,0 +1,235 @@
+You are working in the CaseCurrent (public brand) codebase (internal identifiers may still say CounselTech). Implement the “Aggressive After-Hours Conversion Playbook” with guardrails:
+
+GOAL
+- Capture missed after-hours calls and aggressively convert via SMS + secure intake link + scheduling
+- Guardrail: do NOT send outbound SMS between 10:00 PM–8:00 AM firm-local time by default; during that window, queue the first SMS for 8:00 AM unless the firm explicitly enables “Overnight Outreach”
+- Add frequency caps, STOP compliance, cancellation of queued messages upon engagement, auditability, and a simple scheduling flow
+
+HARD CONSTRAINTS / GUARDRAILS
+1) Quiet hours default: outbound SMS suppressed from 22:00–08:00 in firm timezone (except if firm toggles OvernightOutreach=true)
+2) Frequency cap: max 3 automated outbound SMS per lead per night unless the lead engages (replies or starts intake). “Night” is 22:00–08:00 window in firm timezone.
+3) STOP handling: inbound SMS matching STOP/UNSUBSCRIBE/CANCEL/END/QUIT immediately sets DoNotContact for that lead+phone+firm, cancels all queued outbound, and blocks future outbound.
+4) Auditability: every automated outbound message must log rule_id, reason, timestamps, and outcome.
+
+IMPLEMENTATION PLAN (ADAPT TO REPO)
+Step 0 — Discover stack
+- Inspect repo to find:
+  - backend entrypoint (server.ts/app.ts/index.ts)
+  - router framework (Express/Fastify/Next API/etc)
+  - DB access layer (Prisma/Drizzle/Knex/SQL migrations)
+  - existing telephony webhooks: /v1/telephony/twilio/voice and SMS inbound endpoint(s)
+  - existing Leads table/model and current schema
+- Follow existing patterns for migrations, services, routes, and tests.
+- Keep internal code identifiers as-is (CounselTech) if renaming would risk stability, but update user-facing strings to CaseCurrent.
+
+DATA MODEL CHANGES (create migrations matching the ORM)
+Add or extend tables/models:
+
+1) firm_settings (or equivalent)
+- timezone (string IANA, default "America/Chicago" if missing)
+- business_hours_json (json; weekdays start/end; can be simple)
+- quiet_hours_start = "22:00"
+- quiet_hours_end = "08:00"
+- overnight_outreach_enabled (bool default false)
+- after_hours_outreach_enabled (bool default true)
+- auto_sms_enabled (bool default true)
+- scheduling_enabled (bool default true)
+- sms_template_1, sms_template_2, sms_template_3, sms_template_4 (text)
+- slot_length_minutes (int default 20)
+- buffer_minutes (int default 5)
+- schedule_days_ahead (int default 7)
+
+2) lead (extend existing)
+- status (enum/string: NEW, ENGAGED, INTAKE_STARTED, INTAKE_COMPLETE, QUALIFIED, NOT_QUALIFIED, CONSULT_SET, RETAINED, CLOSED, REFERRED)
+- owner_user_id (nullable)
+- next_step (string nullable)
+- last_activity_at (datetime)
+- dnc (bool default false)
+- dnc_reason (string nullable)
+- dnc_at (datetime nullable)
+
+3) lead_events (new if you don’t already have an audit log)
+- id
+- firm_id
+- lead_id
+- type (CALL_MISSED, SMS_SENT, SMS_RECEIVED, INTAKE_STARTED, INTAKE_LINK_SENT, SCHEDULE_LINK_SENT, APPOINTMENT_BOOKED, QUALIFICATION_RUN, STATUS_CHANGED, AUTOMATION_CANCELLED, WEBHOOK_DELIVERED, etc.)
+- payload_json
+- created_at
+
+4) outbound_messages (new queue)
+- id
+- firm_id
+- lead_id
+- to_phone
+- body
+- channel ("sms")
+- provider ("twilio" | "bandwidth" | etc)
+- status ("queued"|"sending"|"sent"|"failed"|"cancelled"|"suppressed")
+- send_at (datetime)
+- sent_at (datetime nullable)
+- attempt_count (int default 0)
+- last_error (text nullable)
+- rule_id (string)   e.g. "AFTER_HOURS_SMS_1"
+- reason (text)
+- created_at, updated_at
+
+5) lead_portal_tokens (secure links)
+- id
+- firm_id
+- lead_id
+- token (unique random)
+- purpose ("intake"|"schedule")
+- expires_at
+- created_at
+
+6) appointments (new, minimal scheduling)
+- id
+- firm_id
+- lead_id
+- start_at
+- end_at
+- timezone
+- assigned_user_id (nullable; for round robin)
+- status ("booked"|"cancelled")
+- created_at
+
+SERVICE LAYER
+Create services (names adapt to repo):
+A) timeService
+- getFirmNow(firmId) using firm timezone
+- isQuietHours(now, firmSettings) => true if between 22:00–08:00 local
+- nextAllowedSendTime(now, firmSettings) => if quiet hours and overnight_outreach_enabled=false, return today/next day 08:00 local
+
+B) leadEngagementService
+- hasEngaged(lead): true if inbound SMS received OR intake started OR manual message sent by staff
+- onEngagement(lead): cancel queued automation messages for that lead (status->cancelled, log event)
+
+C) dncService
+- detectStopWord(messageText) and set lead.dnc=true + cancel queued
+
+D) automationService (core)
+Rules: After-hours conversion playbook
+
+Triggers:
+1) CALL_MISSED_AFTER_HOURS (missed inbound call outside business hours OR within quiet hours)
+2) VOICEMAIL_LEFT_AFTER_HOURS (if voicemail event exists)
+3) SMS_INBOUND_AFTER_HOURS (inbound SMS outside hours)
+
+Actions (default playbook):
+- Always create/update lead; set status NEW if first time, else keep.
+- Assign owner to “on-call queue” or fallback user (admin configurable; if none, leave null but create visible warning + task).
+- Create task: “Contact lead” due at min(now+5min, next business open) (store in tasks table if you have one; if not, add minimal tasks model).
+- Queue SMS #1:
+  - If now within quiet hours AND overnight_outreach_enabled=false: send_at = nextAllowedSendTime (08:00 local)
+  - Else send_at = now + 60s
+- Queue SMS #2 at +15m ONLY if no engagement AND within caps; if falls in quiet hours, bump to next allowed time (08:15)
+- Queue SMS #3 at +60m similarly; if quiet hours bump to next allowed time (09:00)
+- Queue SMS #4 next business day 08:30 local
+
+Cancellation:
+- If any inbound SMS received (not STOP), or intake started, cancel SMS #2-#4 if not yet sent.
+
+Frequency caps:
+- Enforce max 3 automated outbound per “night window” unless engaged.
+- “Night window” defined as quiet hours start to end. If message would break cap, set status=suppressed and log why.
+
+Templates (store defaults in firm settings, editable in UI):
+SMS #1:
+"Hi, this is {FirmName}. We missed your call, but we can still help. Are you safe right now? Reply 1 for YES, 2 for NO. Start here: {SecureIntakeLink}"
+SMS #2:
+"Quick follow-up—tell us what happened in one sentence and we’ll route you properly. Or start here: {SecureIntakeLink}"
+SMS #3:
+"If you prefer, you can pick a call-back time here: {SchedulingLink}"
+SMS #4:
+"Good morning—this is {FirmName}. We’re available now. Want the next consult slot? {SchedulingLink}"
+
+Tokenized links:
+- Generate lead_portal_tokens for intake and schedule. Use a single token with purpose “intake” and allow schedule from within, OR separate tokens; either is fine.
+- Links should be like: https://{PUBLIC_BASE_URL}/p/{token}/intake and /p/{token}/schedule
+- Prefill phone and lock it to lead; enforce expiration.
+
+OUTBOUND SENDER WORKER
+Implement a worker/cron/job that runs every minute:
+- Select outbound_messages where status="queued" and send_at <= now
+- Re-check: lead not dnc, firm auto_sms_enabled, quiet hours (if overnight_outreach_enabled=false), caps
+- Send via existing SMS provider module; if none exists, create provider interface:
+  smsProvider.send({to, body, fromNumber, firmId, leadId}) -> messageId
+- Update status sent/failed, attempt_count, last_error
+- Log lead_event SMS_SENT with provider message id
+
+INBOUND SMS HANDLING
+In the SMS inbound webhook route:
+- Parse inbound message text
+- If STOP word: call dncService.setDnc() + respond 200 (and do NOT send anything)
+- Else:
+  - create lead_event SMS_RECEIVED
+  - mark lead as engaged (status -> ENGAGED if NEW)
+  - cancel queued automation messages
+  - (optional) if message indicates urgency keywords, set urgency/high and create a task
+
+SCHEDULING (MINIMUM VIABLE)
+Implement a simple schedule page for the lead portal:
+- /p/:token/schedule shows available slots for next N days (from firm_settings.schedule_days_ahead)
+- Availability uses business hours (or separate scheduling hours if you add them), slot_length_minutes, buffer_minutes
+- Round-robin assign to users marked “intake_enabled=true” (add field on user table if needed); if none, unassigned.
+- Booking creates appointments row, logs APPOINTMENT_BOOKED, sets lead status CONSULT_SET, and queues confirmation SMS immediately (respect quiet hours; if within quiet hours, send at 08:00)
+
+CONFIRMATION + REMINDERS
+On appointment booked:
+- Send confirmation SMS with time + link to reschedule/cancel (optional v1)
+- Create reminders (24h/2h/15m) as outbound_messages queued (respect quiet hours rules; if reminder falls inside quiet hours, send at 08:00)
+
+FRONTEND (DASHBOARD) CHANGES
+1) Branding
+- Replace visible “CounselTech” header text with “CaseCurrent” in UI strings only (do NOT mass rename internal identifiers)
+
+2) Leads list
+- Add columns/fields:
+  - Owner (avatar/initials)
+  - Next Step (text)
+  - Last Activity (relative)
+  - SLA badge if New lead unresponded > X minutes (config default 15)
+- Row CTA button: context-aware (“Text”, “Call”, “Start Intake”, “Schedule”)
+
+3) Lead detail panel
+- Add top “Primary Action” button (state machine driven)
+- Messages tab: implement real SMS thread view + templates + send
+- Intake tab: add “Send intake link” + show intake status
+- Score tab: show reason codes and “Run qualification” action
+- Tasks tab: implement minimal tasks list and ability to mark complete
+
+4) Info buttons
+- Add ⓘ in top-right of each main tab page and each lead sub-tab that opens a bottom-sheet/modal with concise help copy (use the content in this prompt; keep it brief and actionable)
+
+5) Settings (profile menu)
+- Add “Automation” settings page:
+  - After-hours outreach enabled (default ON)
+  - Auto SMS enabled (default ON)
+  - Overnight outreach enabled (default OFF)
+  - Quiet hours start/end (default 10pm–8am)
+  - Templates editor for SMS 1–4
+  - Scheduling enabled + slot length/buffer/days ahead
+  - On-call routing: default owner user or queue
+
+TESTS
+Add unit tests (Jest or existing test runner) for:
+- Quiet hours suppression/queueing behavior
+- OvernightOutreach toggle overrides suppression
+- STOP handling sets dnc and cancels queued messages
+- Frequency cap max 3 messages per night unless engaged
+- Engagement cancels queued SMS #2-#4
+- Booking creates appointment and triggers confirmation outbound message with quiet hours rules
+
+DELIVERABLES
+- Migrations added and applied
+- New services/modules created
+- Worker/job implemented and wired
+- Inbound SMS route updated with DNC + engagement logic
+- Lead portal pages for intake + schedule (simple but functional)
+- Dashboard UI updated for leads workflow + settings + ⓘ help
+- Basic tests passing
+
+After implementing, provide:
+1) A short “How to test” checklist with curl and UI steps
+2) A list of new env vars/secrets needed (if any)
+3) Any assumptions you made about the existing schema/routes

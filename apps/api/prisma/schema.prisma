@@ -32,6 +32,7 @@ model Organization {
   contacts                   Contact[]
   practiceAreas              PracticeArea[]
   aiConfig                   AiConfig?
+  settings                   OrgSettings?
   intakeQuestionSets         IntakeQuestionSet[]
   phoneNumbers               PhoneNumber[]
   leads                      Lead[]
@@ -55,21 +56,25 @@ model Organization {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  orgId        String    @map("org_id")
-  email        String
-  name         String
-  role         String    @default("staff")
-  status       String    @default("active")
-  passwordHash String    @map("password_hash")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  orgId         String    @map("org_id")
+  email         String
+  name          String
+  role          String    @default("staff")
+  status        String    @default("active")
+  passwordHash  String    @map("password_hash")
+  intakeEnabled Boolean   @default(true) @map("intake_enabled")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  tasks         Task[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
+  organization   Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  ownedLeads     Lead[]         @relation("LeadOwner")
+  deviceTokens   DeviceToken[]
+  appointments   Appointment[]
 
   @@unique([orgId, email])
   @@map("users")
@@ -146,29 +151,41 @@ model PracticeArea {
 }
 
 model Lead {
-  id               String    @id @default(uuid())
-  orgId            String    @map("org_id")
-  contactId        String    @map("contact_id")
-  source           String
-  status           String    @default("new")
-  priority         String    @default("medium")
-  practiceAreaId   String?   @map("practice_area_id")
-  incidentDate     DateTime? @map("incident_date")
-  incidentLocation String?   @map("incident_location")
-  summary          String?
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid())
+  orgId                 String    @map("org_id")
+  contactId             String    @map("contact_id")
+  source                String
+  status                String    @default("new")
+  priority              String    @default("medium")
+  practiceAreaId        String?   @map("practice_area_id")
+  incidentDate          DateTime? @map("incident_date")
+  incidentLocation      String?   @map("incident_location")
+  summary               String?
+  score                 Int?      @default(0)
+  urgency               String?   @default("normal")
+  ownerUserId           String?   @map("owner_user_id")
+  nextStep              String?   @map("next_step")
+  dnc                   Boolean   @default(false)
+  dncReason             String?   @map("dnc_reason")
+  dncAt                 DateTime? @map("dnc_at")
+  lastActivityAt        DateTime? @map("last_activity_at")
+  lastHumanResponseAt   DateTime? @map("last_human_response_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  contact       Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  practiceArea  PracticeArea?  @relation(fields: [practiceAreaId], references: [id])
-  interactions  Interaction[]
-  calls         Call[]
-  messages      Message[]
-  intake        Intake?
-  qualification Qualification?
-  tasks         Task[]
-  notifications Notification[]
+  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact        Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  practiceArea   PracticeArea?   @relation(fields: [practiceAreaId], references: [id])
+  ownerUser      User?           @relation("LeadOwner", fields: [ownerUserId], references: [id])
+  interactions   Interaction[]
+  calls          Call[]
+  messages       Message[]
+  intake         Intake?
+  qualification  Qualification?
+  tasks          Task[]
+  notifications  Notification[]
+  portalTokens   LeadPortalToken[]
+  appointments   Appointment[]
 
   @@map("leads")
 }
@@ -631,4 +648,126 @@ model WebhookReceipt {
 
   @@index([source, webhookId])
   @@map("webhook_receipts")
+}
+
+// ============================================
+// DEVICE TOKENS (for push notifications)
+// ============================================
+
+model DeviceToken {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  orgId       String   @map("org_id")
+  platform    String   // ios, android
+  token       String
+  deviceId    String   @map("device_id")
+  active      Boolean  @default(true)
+  preferences Json?    // {hotLeads: true, inboundSms: true, slaBreaches: true, privacyMode: false}
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@map("device_tokens")
+}
+
+// ============================================
+// LEAD PORTAL TOKENS (secure intake/schedule links)
+// ============================================
+
+model LeadPortalToken {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  leadId    String   @map("lead_id")
+  token     String   @unique
+  purpose   String   // intake, schedule
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("lead_portal_tokens")
+}
+
+// ============================================
+// APPOINTMENTS (scheduling)
+// ============================================
+
+model Appointment {
+  id             String    @id @default(uuid())
+  orgId          String    @map("org_id")
+  leadId         String    @map("lead_id")
+  assignedUserId String?   @map("assigned_user_id")
+  startAt        DateTime  @map("start_at")
+  endAt          DateTime  @map("end_at")
+  timezone       String
+  status         String    @default("booked") // booked, cancelled, completed
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  lead         Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUser User? @relation(fields: [assignedUserId], references: [id])
+
+  @@map("appointments")
+}
+
+// ============================================
+// ORG SETTINGS (automation config)
+// ============================================
+
+model OrgSettings {
+  id                        String   @id @default(uuid())
+  orgId                     String   @unique @map("org_id")
+  quietHoursStart           String   @default("22:00") @map("quiet_hours_start")
+  quietHoursEnd             String   @default("08:00") @map("quiet_hours_end")
+  overnightOutreachEnabled  Boolean  @default(false) @map("overnight_outreach_enabled")
+  afterHoursOutreachEnabled Boolean  @default(true) @map("after_hours_outreach_enabled")
+  autoSmsEnabled            Boolean  @default(true) @map("auto_sms_enabled")
+  schedulingEnabled         Boolean  @default(true) @map("scheduling_enabled")
+  slaBreachMinutes          Int      @default(15) @map("sla_breach_minutes")
+  hotLeadScoreThreshold     Int      @default(70) @map("hot_lead_score_threshold")
+  smsTemplate1              String?  @map("sms_template_1")
+  smsTemplate2              String?  @map("sms_template_2")
+  smsTemplate3              String?  @map("sms_template_3")
+  smsTemplate4              String?  @map("sms_template_4")
+  slotLengthMinutes         Int      @default(20) @map("slot_length_minutes")
+  bufferMinutes             Int      @default(5) @map("buffer_minutes")
+  scheduleDaysAhead         Int      @default(7) @map("schedule_days_ahead")
+  businessHoursJson         Json?    @map("business_hours_json")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_settings")
+}
+
+// ============================================
+// OUTBOUND MESSAGE QUEUE
+// ============================================
+
+model OutboundMessage {
+  id           String    @id @default(uuid())
+  orgId        String    @map("org_id")
+  leadId       String    @map("lead_id")
+  toPhone      String    @map("to_phone")
+  body         String
+  channel      String    @default("sms")
+  provider     String    @default("twilio")
+  status       String    @default("queued") // queued, sending, sent, failed, cancelled, suppressed
+  sendAt       DateTime  @map("send_at")
+  sentAt       DateTime? @map("sent_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  lastError    String?   @map("last_error")
+  ruleId       String?   @map("rule_id")
+  reason       String?
+  providerId   String?   @map("provider_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, sendAt])
+  @@map("outbound_messages")
 }

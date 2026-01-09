@@ -1,0 +1,205 @@
+Use this as the single paste-ready prompt to Replit Agent (advanced mode). It is scoped to ship the v1 “Ops app” first (Inbox + unified lead thread + SMS + tap-to-call + push + basic analytics), while laying the foundations for scheduling and automations later without forcing a rewrite.
+
+```text
+You are working on CaseCurrent (public brand; internal identifiers may still say CounselTech). Build the v1 iOS + Android mobile “Ops App” for law firm customers.
+
+NON-NEGOTIABLE PRODUCT GOALS (V1)
+- Mobile is an operations console: Inbox → Lead → Take action.
+- Combine calls + SMS + system events into ONE unified thread per lead.
+- Start with tap-to-call using server-managed caller ID (no VoIP in v1).
+- Simple internal scheduler is v2; however v1 must not block later scheduling integration (design APIs cleanly).
+- Push notifications for “hot” events must work end-to-end.
+- This should work on both iOS and Android from a single codebase.
+
+DELIVERABLES
+1) React Native (TypeScript) app scaffold in repo folder /mobile (or /apps/mobile if monorepo).
+2) Backend endpoints/events required for the app (add to existing server).
+3) Realtime updates via WebSocket or SSE.
+4) Push notifications via FCM (Android) and APNs via FCM (iOS) OR Expo Notifications if that’s already in use (choose the simplest stable path consistent with existing stack).
+5) Basic Analytics endpoint + UI screen.
+6) A “How to run” and “How to test” checklist including simulator/device steps and curl commands.
+
+STEP 0 — DISCOVER STACK (DO THIS FIRST)
+- Determine existing backend framework (Express/Fastify/Next API/etc).
+- Determine DB/ORM (Prisma/Drizzle/Knex).
+- Find existing lead/call/message models and telephony webhooks.
+- Follow existing patterns; do not break existing routes.
+
+BRANDING
+- User-facing strings in mobile app must say “CaseCurrent”.
+- Do NOT mass-rename internal code identifiers.
+
+MOBILE APP IA (V1)
+Bottom tabs:
+- Inbox
+- Leads
+- Analytics
+- Settings
+(Automations can be hidden in v1; do NOT build full experiments/tests UI yet.)
+
+MOBILE SCREENS (ACCEPTANCE CRITERIA)
+A) Auth + Firm Select
+- Login, token refresh, logout.
+- If user belongs to multiple firms, show firm picker.
+- Store tokens securely (Keychain/Keystore).
+
+B) Inbox (default screen)
+- Shows prioritized list of leads needing attention:
+  - Hot + uncontacted
+  - New + uncontacted
+  - SLA breached (no human response > SLA minutes; default 15)
+  - Recent inbound SMS
+- Each row shows: name/phone, score+urgency, practice area, last event summary, age.
+- Tapping opens Lead Detail (unified thread).
+- Quick actions per row: Call, Text, Send Intake Link, Schedule (disabled in v1 but show “coming soon”), Assign (optional v1).
+
+C) Leads (search + filters)
+- Search leads by name/phone.
+- Filters: status, practice area, owner (me/all), hot.
+- Tap lead → Lead Detail.
+
+D) Lead Detail (Unified Thread)
+- Top header: name/phone, status, score+urgency, owner, Primary Action button.
+- Primary Action states:
+  - NEW → “Contact now”
+  - ENGAGED → “Send intake link”
+  - INTAKE_STARTED → “Continue intake” (can open portal link if exists)
+  - INTAKE_COMPLETE → “Run qualification”
+  - QUALIFIED → “Schedule consult” (disabled v1, show coming soon)
+  - CONSULT_SET → “View appointment” (v2)
+- Unified thread list (chronological) includes:
+  - Calls (missed/completed)
+  - SMS inbound/outbound
+  - System events (intake link sent, qualification run, etc.)
+- SMS composer anchored at bottom:
+  - Templates dropdown
+  - Variable substitution
+  - Send SMS (server call)
+- Tap-to-call button:
+  - Calls backend to create/log outbound attempt + returns dial instructions; open native dialer.
+- DNC behavior:
+  - If lead.dnc=true, show banner and disable outbound SMS; server must enforce too.
+
+E) Analytics (basic)
+- Time ranges: 7d / 30d
+- Cards:
+  - Captured leads (missed call recovery)
+  - Qualified rate
+  - Consult booked rate (if appointments exist; else show placeholder)
+  - Median response time + p90
+  - After-hours conversion rate (if tracked; else placeholder)
+- Drill-down list for at least 1 metric (captured leads).
+
+F) Settings
+- Notification preferences toggles (hot leads, inbound SMS, SLA breaches).
+- Firm timezone display.
+- Logout.
+
+REALTIME + PUSH (V1)
+Realtime channel:
+- Implement WebSocket OR SSE endpoint on backend.
+- Client subscribes and updates Inbox/Lead thread live when app open.
+Event types (minimum):
+- lead.created
+- lead.updated
+- thread.item.created
+- sms.received
+- sms.sent
+- call.missed
+- call.completed
+- qualification.completed (if exists)
+Payload must include: firm_id, lead_id, timestamp, and minimal data to update UI.
+
+Push notifications:
+- Implement device registration endpoint:
+  POST /v1/devices/register { platform, token, deviceId }
+  POST /v1/devices/unregister
+- Server sends push on:
+  1) Hot lead captured (score >= threshold OR urgent keyword OR after-hours missed call)
+  2) Inbound SMS from uncontacted lead
+  3) SLA breach
+- Push payload includes deeplink:
+  - app://lead/{leadId}
+  - app://inbox?filter=overdue
+- Add privacy mode option: notification body can omit message content.
+
+BACKEND API (MINIMUM FOR V1)
+Implement or expose endpoints (match existing conventions):
+Auth:
+- POST /v1/auth/login
+- POST /v1/auth/refresh
+- POST /v1/auth/logout
+
+Leads:
+- GET /v1/leads?status=&owner=&q=&practice_area=&hot=
+- GET /v1/leads/:leadId
+- GET /v1/leads/:leadId/thread?cursor=
+- POST /v1/leads/:leadId/status
+- POST /v1/leads/:leadId/assign (optional v1)
+
+Messaging:
+- POST /v1/leads/:leadId/messages  (send SMS; logs event)
+- Inbound SMS webhook already exists: add STOP/DNC enforcement server-side.
+
+Calls:
+- POST /v1/leads/:leadId/call/start
+  - Logs an outbound attempt event and returns “dial_to” plus any metadata.
+  - The app opens native dialer using dial_to.
+  - Ensure caller ID remains firm-managed (do not expose staff personal numbers).
+
+Intake link:
+- POST /v1/leads/:leadId/intake/link
+  - Returns secure intake link tokenized; logs event.
+  - Mobile can “copy link” or “send link” via SMS template.
+
+Analytics:
+- GET /v1/analytics/summary?range=7d|30d
+- GET /v1/analytics/captured-leads?range=...
+
+DATA MODEL (IF MISSING, ADD MINIMAL FIELDS VIA MIGRATION)
+- Ensure leads have: status, score, urgency, practice_area, owner_user_id, dnc, last_activity_at, last_human_response_at
+- Ensure thread items can be derived from existing call/message tables OR create a view/aggregation endpoint.
+- Ensure all outbound/inbound SMS and call events are logged and can be returned as a unified thread.
+
+THREAD AGGREGATION (IMPORTANT)
+Implement /v1/leads/:leadId/thread that merges:
+- Calls table entries
+- Messages table entries
+- System events (lead_events or equivalent)
+Return normalized items:
+{ id, type, timestamp, summary, payload }
+
+STOP/DNC ENFORCEMENT (SERVER SIDE)
+- Detect STOP/UNSUBSCRIBE/CANCEL/END/QUIT on inbound SMS.
+- Set lead.dnc=true with timestamp + reason, block future outbound.
+- If outbound SMS endpoint called when dnc=true, return 409 with clear error.
+
+IMPLEMENTATION NOTES
+- Prefer minimal dependencies. Use existing auth and DB clients.
+- Use a typed API client in mobile (zod or TS types) to avoid drift.
+- Use a navigation scheme that supports deep links (React Navigation linking config).
+- Ensure offline resilience: cache last lead list and last thread page, but do not store sensitive transcripts indefinitely; keep caching minimal in v1.
+
+TESTING / VERIFICATION CHECKLIST (MUST PROVIDE)
+- How to run backend + mobile locally.
+- How to register a device token (simulator) and trigger a push.
+- Curl examples:
+  - Create lead / simulate event (if helper exists)
+  - Send outbound SMS
+  - Fetch thread
+  - Fetch analytics
+- Manual QA steps:
+  - login → inbox updates → open lead → send sms → see thread item
+  - tap-to-call opens dialer and logs event
+  - inbound STOP sets DNC and blocks outbound
+
+OUTPUT FORMAT
+- After coding, respond with:
+  1) File tree of what you added/modified
+  2) Commands to run migrations/tests
+  3) How to run mobile (iOS/Android)
+  4) How to test realtime + push
+  5) Assumptions and any TODOs for v2 scheduling
+```
+
+If Replit Agent tries to expand scope into full webhooks/experiments/tests management on mobile, stop it. V1 is **Inbox + unified thread + actions + notifications + basic analytics** only.

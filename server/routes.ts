@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import * as crypto from "crypto";
 import swaggerUi from "swagger-ui-express";
+import { WebSocketServer, WebSocket } from "ws";
 import { prisma } from "./db";
 import { swaggerSpec } from "./openapi";
 import {
@@ -16,11 +17,43 @@ import {
   generateInviteToken,
   generateImpersonationToken,
   isPlatformAdmin,
+  verifyToken,
   type AuthenticatedRequest,
 } from "./auth";
 import { handleOpenAIWebhook, getLastAcceptCallStatus } from "./openai/webhook";
 import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
 import { recordEvent, getRecentEvents, getEventCount } from "./flightRecorder";
+
+// ============================================
+// REALTIME WEBSOCKET CONNECTIONS
+// ============================================
+interface WSClient {
+  ws: WebSocket;
+  userId: string;
+  orgId: string;
+  lastPing: number;
+}
+
+const wsClients = new Map<string, WSClient>();
+
+// Emit realtime event to all clients in an org
+export function emitRealtimeEvent(orgId: string, event: {
+  type: string;
+  leadId?: string;
+  timestamp: string;
+  data: Record<string, unknown>;
+}) {
+  const message = JSON.stringify(event);
+  for (const [clientId, client] of wsClients) {
+    if (client.orgId === orgId && client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(message);
+      } catch (err) {
+        console.error(`[WS] Error sending to client ${clientId}:`, err);
+      }
+    }
+  }
+}
 
 // GATE 5: In-memory log buffer for diagnostics
 const LOG_BUFFER_SIZE = 400;
@@ -62,6 +95,82 @@ export async function registerRoutes(
     res.setHeader("Content-Type", "application/json");
     res.send(swaggerSpec);
   });
+
+  // ============================================
+  // WEBSOCKET SERVER FOR MOBILE REALTIME
+  // ============================================
+  const wss = new WebSocketServer({ server: httpServer, path: "/v1/realtime" });
+
+  wss.on("connection", (ws, req) => {
+    const url = new URL(req.url || "", `http://${req.headers.host}`);
+    const token = url.searchParams.get("token");
+
+    if (!token) {
+      ws.close(4001, "Missing token");
+      return;
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      ws.close(4002, "Invalid token");
+      return;
+    }
+
+    const clientId = crypto.randomUUID();
+    wsClients.set(clientId, {
+      ws,
+      userId: payload.userId,
+      orgId: payload.orgId,
+      lastPing: Date.now(),
+    });
+
+    console.log(`[WS] Client connected: ${clientId} (org: ${payload.orgId})`);
+
+    // Send connection confirmation
+    ws.send(JSON.stringify({
+      type: "connected",
+      timestamp: new Date().toISOString(),
+      data: { clientId },
+    }));
+
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "ping") {
+          const client = wsClients.get(clientId);
+          if (client) {
+            client.lastPing = Date.now();
+            ws.send(JSON.stringify({ type: "pong", timestamp: new Date().toISOString() }));
+          }
+        }
+      } catch (err) {
+        // Ignore parse errors
+      }
+    });
+
+    ws.on("close", () => {
+      wsClients.delete(clientId);
+      console.log(`[WS] Client disconnected: ${clientId}`);
+    });
+
+    ws.on("error", (err) => {
+      console.error(`[WS] Client error ${clientId}:`, err);
+      wsClients.delete(clientId);
+    });
+  });
+
+  // Cleanup stale connections every 60 seconds
+  setInterval(() => {
+    const now = Date.now();
+    const staleThreshold = 5 * 60 * 1000; // 5 minutes
+    for (const [clientId, client] of wsClients) {
+      if (now - client.lastPing > staleThreshold) {
+        console.log(`[WS] Removing stale client: ${clientId}`);
+        client.ws.close(4003, "Connection stale");
+        wsClients.delete(clientId);
+      }
+    }
+  }, 60000);
 
   /**
    * @openapi
@@ -4167,6 +4276,13 @@ export async function registerRoutes(
    *       200:
    *         description: TwiML response
    */
+  // STOP word detection helper
+  function isStopWord(text: string): boolean {
+    const stopWords = ["stop", "unsubscribe", "cancel", "end", "quit"];
+    const normalized = text.trim().toLowerCase();
+    return stopWords.includes(normalized);
+  }
+
   app.post("/v1/telephony/twilio/sms", async (req, res) => {
     try {
       const payload = req.body;
@@ -4218,10 +4334,12 @@ export async function registerRoutes(
         where: {
           orgId,
           contactId: contact.id,
-          status: { in: ["new", "in_progress"] },
+          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
         },
         orderBy: { createdAt: "desc" },
       });
+
+      const isNewLead = !lead;
 
       if (!lead) {
         lead = await prisma.lead.create({
@@ -4231,8 +4349,73 @@ export async function registerRoutes(
             source: "sms",
             status: "new",
             priority: "medium",
+            lastActivityAt: new Date(),
           },
         });
+      }
+
+      // Check for STOP word - handle DNC
+      if (isStopWord(Body || "")) {
+        // Set DNC on lead
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            dnc: true,
+            dncReason: `STOP received via SMS: "${Body}"`,
+            dncAt: new Date(),
+            lastActivityAt: new Date(),
+          },
+        });
+
+        // Cancel any queued outbound messages
+        await prisma.outboundMessage.updateMany({
+          where: {
+            leadId: lead.id,
+            status: "queued",
+          },
+          data: {
+            status: "cancelled",
+            reason: "Lead requested STOP",
+          },
+        });
+
+        // Cancel any pending followup jobs
+        await prisma.followupJob.updateMany({
+          where: {
+            leadId: lead.id,
+            status: "pending",
+          },
+          data: {
+            status: "cancelled",
+            cancelReason: "Lead requested STOP",
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            orgId,
+            actorType: "system",
+            action: "dnc_set",
+            entityType: "lead",
+            entityId: lead.id,
+            details: { reason: "STOP received via SMS", from: From },
+          },
+        });
+
+        console.log(`[SMS] STOP received from ${From} - DNC set for lead ${lead.id}`);
+
+        // Emit realtime event for DNC
+        emitRealtimeEvent(orgId, {
+          type: "lead.dnc_set",
+          leadId: lead.id,
+          timestamp: new Date().toISOString(),
+          data: { reason: "STOP received" },
+        });
+
+        // Return empty response - no reply to STOP
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>`);
       }
 
       let interaction = await prisma.interaction.findFirst({
@@ -4271,6 +4454,29 @@ export async function registerRoutes(
         },
       });
 
+      // Update lead status and activity
+      const newStatus = lead.status === "new" ? "engaged" : lead.status;
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: newStatus,
+          lastActivityAt: new Date(),
+        },
+      });
+
+      // Cancel queued automation messages on engagement
+      await prisma.outboundMessage.updateMany({
+        where: {
+          leadId: lead.id,
+          status: "queued",
+          ruleId: { in: ["AFTER_HOURS_SMS_2", "AFTER_HOURS_SMS_3", "AFTER_HOURS_SMS_4"] },
+        },
+        data: {
+          status: "cancelled",
+          reason: "Lead engaged via inbound SMS",
+        },
+      });
+
       await prisma.auditLog.create({
         data: {
           orgId,
@@ -4281,6 +4487,28 @@ export async function registerRoutes(
           details: { from: From, to: To, bodyPreview: Body?.substring(0, 100) },
         },
       });
+
+      // Emit realtime event
+      emitRealtimeEvent(orgId, {
+        type: "sms.received",
+        leadId: lead.id,
+        timestamp: new Date().toISOString(),
+        data: {
+          messageId: message.id,
+          from: From,
+          bodyPreview: Body?.substring(0, 50),
+          isNewLead,
+        },
+      });
+
+      if (isNewLead) {
+        emitRealtimeEvent(orgId, {
+          type: "lead.created",
+          leadId: lead.id,
+          timestamp: new Date().toISOString(),
+          data: { source: "sms", phone: From },
+        });
+      }
 
       res.set("Content-Type", "text/xml");
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -6350,6 +6578,896 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Get lead followups error:", error);
       res.status(500).json({ error: "Failed to get followups" });
+    }
+  });
+
+  // ============================================
+  // MOBILE APP ENDPOINTS (v1)
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/thread:
+   *   get:
+   *     summary: Get unified thread for a lead (calls + SMS + events)
+   *     tags: [Mobile, Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: cursor
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 50
+   *     responses:
+   *       200:
+   *         description: Unified thread items
+   */
+  app.get("/v1/leads/:id/thread", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const leadId = req.params.id;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const cursor = req.query.cursor as string | undefined;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Fetch calls
+      const calls = await prisma.call.findMany({
+        where: { leadId, orgId },
+        orderBy: { startedAt: "desc" },
+        take: limit,
+      });
+
+      // Fetch messages
+      const messages = await prisma.message.findMany({
+        where: { leadId, orgId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+
+      // Fetch audit logs for system events
+      const auditLogs = await prisma.auditLog.findMany({
+        where: { 
+          orgId,
+          entityId: leadId,
+          entityType: "lead",
+          action: { in: ["intake_link_sent", "qualification_run", "status_changed", "lead_created", "appointment_booked"] }
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+
+      // Normalize and merge into unified thread
+      const threadItems: Array<{
+        id: string;
+        type: string;
+        timestamp: string;
+        summary: string;
+        payload: any;
+      }> = [];
+
+      // Add calls
+      for (const call of calls) {
+        const isMissed = !call.durationSeconds || call.durationSeconds === 0;
+        threadItems.push({
+          id: call.id,
+          type: isMissed ? "call.missed" : "call.completed",
+          timestamp: call.startedAt.toISOString(),
+          summary: isMissed 
+            ? `Missed ${call.direction} call from ${call.fromE164}`
+            : `${call.direction} call - ${call.durationSeconds}s`,
+          payload: {
+            direction: call.direction,
+            from: call.fromE164,
+            to: call.toE164,
+            duration: call.durationSeconds,
+            recordingUrl: call.recordingUrl,
+            aiSummary: call.aiSummary,
+          },
+        });
+      }
+
+      // Add messages
+      for (const msg of messages) {
+        threadItems.push({
+          id: msg.id,
+          type: msg.direction === "inbound" ? "sms.received" : "sms.sent",
+          timestamp: msg.createdAt.toISOString(),
+          summary: msg.body.slice(0, 100) + (msg.body.length > 100 ? "..." : ""),
+          payload: {
+            direction: msg.direction,
+            from: msg.from,
+            to: msg.to,
+            body: msg.body,
+            provider: msg.provider,
+          },
+        });
+      }
+
+      // Add system events
+      for (const log of auditLogs) {
+        let summary = log.action.replace(/_/g, " ");
+        if (log.action === "intake_link_sent") summary = "Intake link sent";
+        if (log.action === "qualification_run") summary = "Qualification completed";
+        if (log.action === "status_changed") summary = "Status updated";
+        if (log.action === "lead_created") summary = "Lead created";
+        if (log.action === "appointment_booked") summary = "Appointment booked";
+
+        threadItems.push({
+          id: log.id,
+          type: `system.${log.action}`,
+          timestamp: log.createdAt.toISOString(),
+          summary,
+          payload: log.details,
+        });
+      }
+
+      // Sort by timestamp descending
+      threadItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      // Apply limit
+      const paginatedItems = threadItems.slice(0, limit);
+
+      res.json({
+        items: paginatedItems,
+        nextCursor: paginatedItems.length === limit ? paginatedItems[paginatedItems.length - 1]?.id : null,
+      });
+    } catch (error) {
+      console.error("Get lead thread error:", error);
+      res.status(500).json({ error: "Failed to get thread" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/devices/register:
+   *   post:
+   *     summary: Register device for push notifications
+   *     tags: [Mobile, Devices]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [platform, token, deviceId]
+   *             properties:
+   *               platform:
+   *                 type: string
+   *                 enum: [ios, android]
+   *               token:
+   *                 type: string
+   *               deviceId:
+   *                 type: string
+   *               preferences:
+   *                 type: object
+   *     responses:
+   *       200:
+   *         description: Device registered
+   */
+  app.post("/v1/devices/register", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { platform, token, deviceId, preferences } = req.body;
+
+      if (!platform || !token || !deviceId) {
+        return res.status(400).json({ error: "Missing required fields: platform, token, deviceId" });
+      }
+
+      if (!["ios", "android"].includes(platform)) {
+        return res.status(400).json({ error: "Platform must be 'ios' or 'android'" });
+      }
+
+      const deviceToken = await prisma.deviceToken.upsert({
+        where: {
+          userId_deviceId: { userId: user.userId, deviceId },
+        },
+        update: {
+          token,
+          platform,
+          active: true,
+          preferences: preferences || { hotLeads: true, inboundSms: true, slaBreaches: true, privacyMode: false },
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: user.userId,
+          orgId: user.orgId,
+          platform,
+          token,
+          deviceId,
+          preferences: preferences || { hotLeads: true, inboundSms: true, slaBreaches: true, privacyMode: false },
+        },
+      });
+
+      res.json({ success: true, deviceTokenId: deviceToken.id });
+    } catch (error) {
+      console.error("Device register error:", error);
+      res.status(500).json({ error: "Failed to register device" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/devices/unregister:
+   *   post:
+   *     summary: Unregister device from push notifications
+   *     tags: [Mobile, Devices]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [deviceId]
+   *             properties:
+   *               deviceId:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Device unregistered
+   */
+  app.post("/v1/devices/unregister", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { deviceId } = req.body;
+
+      if (!deviceId) {
+        return res.status(400).json({ error: "Missing deviceId" });
+      }
+
+      await prisma.deviceToken.updateMany({
+        where: { userId: user.userId, deviceId },
+        data: { active: false },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Device unregister error:", error);
+      res.status(500).json({ error: "Failed to unregister device" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/messages:
+   *   post:
+   *     summary: Send SMS to lead (with DNC enforcement)
+   *     tags: [Mobile, Messaging]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [body]
+   *             properties:
+   *               body:
+   *                 type: string
+   *               templateId:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Message sent
+   *       409:
+   *         description: Lead is on DNC list
+   */
+  app.post("/v1/leads/:id/messages", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const leadId = req.params.id;
+      const { body } = req.body;
+
+      if (!body || typeof body !== "string" || body.trim().length === 0) {
+        return res.status(400).json({ error: "Message body is required" });
+      }
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: { contact: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // DNC enforcement
+      if (lead.dnc) {
+        return res.status(409).json({ 
+          error: "Cannot send message - lead is on Do Not Contact list",
+          dncReason: lead.dncReason,
+          dncAt: lead.dncAt,
+        });
+      }
+
+      if (!lead.contact.primaryPhone) {
+        return res.status(400).json({ error: "Lead has no phone number" });
+      }
+
+      // Get org's primary phone number for sending
+      const org = await prisma.organization.findUnique({
+        where: { id: user.orgId },
+        include: { phoneNumbers: { where: { inboundEnabled: true }, take: 1 } },
+      });
+
+      const fromNumber = org?.phoneNumbers[0]?.e164 || "+18443214257";
+
+      // Create interaction
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId: user.orgId,
+          leadId,
+          channel: "sms",
+          status: "completed",
+          endedAt: new Date(),
+        },
+      });
+
+      // Create message record
+      const message = await prisma.message.create({
+        data: {
+          orgId: user.orgId,
+          leadId,
+          interactionId: interaction.id,
+          direction: "outbound",
+          channel: "sms",
+          provider: "manual",
+          from: fromNumber,
+          to: lead.contact.primaryPhone,
+          body: body.trim(),
+        },
+      });
+
+      // Update lead activity
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          lastActivityAt: new Date(),
+          lastHumanResponseAt: new Date(),
+          status: lead.status === "new" ? "engaged" : lead.status,
+        },
+      });
+
+      // Log audit
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "outbound_sms_sent",
+          entityType: "message",
+          entityId: message.id,
+          details: { to: lead.contact.primaryPhone, bodyPreview: body.slice(0, 100) },
+        },
+      });
+
+      res.json({ 
+        success: true, 
+        messageId: message.id,
+        status: "sent",
+      });
+    } catch (error) {
+      console.error("Send SMS error:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/call/start:
+   *   post:
+   *     summary: Start tap-to-call (logs attempt, returns dial instructions)
+   *     tags: [Mobile, Calls]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Dial instructions
+   */
+  app.post("/v1/leads/:id/call/start", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const leadId = req.params.id;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: { contact: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      if (!lead.contact.primaryPhone) {
+        return res.status(400).json({ error: "Lead has no phone number" });
+      }
+
+      // Get org's primary phone number for caller ID
+      const org = await prisma.organization.findUnique({
+        where: { id: user.orgId },
+        include: { phoneNumbers: { where: { inboundEnabled: true }, take: 1 } },
+      });
+
+      const firmCallerId = org?.phoneNumbers[0]?.e164 || "+18443214257";
+
+      // Create interaction for the call attempt
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId: user.orgId,
+          leadId,
+          channel: "call",
+          status: "active",
+          metadata: { initiatedBy: user.userId, type: "tap_to_call" },
+        },
+      });
+
+      // Log audit for call attempt
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "outbound_call_initiated",
+          entityType: "interaction",
+          entityId: interaction.id,
+          details: { to: lead.contact.primaryPhone, firmCallerId },
+        },
+      });
+
+      // Update lead activity
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          lastActivityAt: new Date(),
+          status: lead.status === "new" ? "engaged" : lead.status,
+        },
+      });
+
+      res.json({
+        success: true,
+        dialTo: lead.contact.primaryPhone,
+        firmCallerId,
+        interactionId: interaction.id,
+        instructions: "Open native dialer with the dialTo number. The firm caller ID will be used if your carrier supports caller ID override.",
+      });
+    } catch (error) {
+      console.error("Start call error:", error);
+      res.status(500).json({ error: "Failed to start call" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/intake/link:
+   *   post:
+   *     summary: Generate secure intake link for lead
+   *     tags: [Mobile, Intake]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Intake link generated
+   */
+  app.post("/v1/leads/:id/intake/link", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const leadId = req.params.id;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+        include: { contact: true },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Generate secure token
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+      await prisma.leadPortalToken.create({
+        data: {
+          orgId: user.orgId,
+          leadId,
+          token,
+          purpose: "intake",
+          expiresAt,
+        },
+      });
+
+      // Log the event
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "intake_link_sent",
+          entityType: "lead",
+          entityId: leadId,
+          details: { expiresAt: expiresAt.toISOString() },
+        },
+      });
+
+      // Update lead
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          lastActivityAt: new Date(),
+          nextStep: "Complete intake form",
+        },
+      });
+
+      const baseUrl = process.env.PUBLIC_BASE_URL || "https://casecurrent.io";
+      const intakeLink = `${baseUrl}/p/${token}/intake`;
+
+      res.json({
+        success: true,
+        intakeLink,
+        expiresAt: expiresAt.toISOString(),
+        token,
+      });
+    } catch (error) {
+      console.error("Generate intake link error:", error);
+      res.status(500).json({ error: "Failed to generate intake link" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/status:
+   *   post:
+   *     summary: Update lead status
+   *     tags: [Mobile, Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [status]
+   *             properties:
+   *               status:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Status updated
+   */
+  app.post("/v1/leads/:id/status", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const leadId = req.params.id;
+      const { status } = req.body;
+
+      const validStatuses = ["new", "engaged", "intake_started", "intake_complete", "qualified", "not_qualified", "consult_set", "retained", "closed", "referred"];
+      
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      }
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const oldStatus = lead.status;
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          status,
+          lastActivityAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "status_changed",
+          entityType: "lead",
+          entityId: leadId,
+          details: { oldStatus, newStatus: status },
+        },
+      });
+
+      res.json({ success: true, oldStatus, newStatus: status });
+    } catch (error) {
+      console.error("Update status error:", error);
+      res.status(500).json({ error: "Failed to update status" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/assign:
+   *   post:
+   *     summary: Assign lead to user
+   *     tags: [Mobile, Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               userId:
+   *                 type: string
+   *                 description: User ID to assign, or null to unassign
+   *     responses:
+   *       200:
+   *         description: Lead assigned
+   */
+  app.post("/v1/leads/:id/assign", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const leadId = req.params.id;
+      const { userId } = req.body;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId: user.orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // If userId provided, verify user exists in org
+      if (userId) {
+        const assignee = await prisma.user.findFirst({
+          where: { id: userId, orgId: user.orgId },
+        });
+        if (!assignee) {
+          return res.status(400).json({ error: "User not found in organization" });
+        }
+      }
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          ownerUserId: userId || null,
+          lastActivityAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "lead_assigned",
+          entityType: "lead",
+          entityId: leadId,
+          details: { assignedTo: userId },
+        },
+      });
+
+      res.json({ success: true, assignedTo: userId });
+    } catch (error) {
+      console.error("Assign lead error:", error);
+      res.status(500).json({ error: "Failed to assign lead" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/analytics/summary:
+   *   get:
+   *     summary: Get analytics summary for mobile dashboard
+   *     tags: [Mobile, Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: range
+   *         schema:
+   *           type: string
+   *           enum: [7d, 30d]
+   *           default: 7d
+   *     responses:
+   *       200:
+   *         description: Analytics summary
+   */
+  app.get("/v1/analytics/summary", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const range = req.query.range === "30d" ? 30 : 7;
+      const startDate = new Date(Date.now() - range * 24 * 60 * 60 * 1000);
+
+      // Get leads created in period
+      const leadsCreated = await prisma.lead.count({
+        where: { orgId: user.orgId, createdAt: { gte: startDate } },
+      });
+
+      // Get qualified leads
+      const qualifiedLeads = await prisma.qualification.count({
+        where: {
+          orgId: user.orgId,
+          createdAt: { gte: startDate },
+          disposition: "accept",
+        },
+      });
+
+      // Get missed calls (leads from calls with no duration)
+      const missedCallLeads = await prisma.lead.count({
+        where: {
+          orgId: user.orgId,
+          createdAt: { gte: startDate },
+          source: { in: ["call", "missed_call", "voicemail"] },
+        },
+      });
+
+      // Get leads with consults set
+      const consultsBooked = await prisma.appointment.count({
+        where: {
+          orgId: user.orgId,
+          createdAt: { gte: startDate },
+          status: "booked",
+        },
+      });
+
+      // Calculate average response time
+      const leadsWithResponse = await prisma.lead.findMany({
+        where: {
+          orgId: user.orgId,
+          createdAt: { gte: startDate },
+          lastHumanResponseAt: { not: null },
+        },
+        select: { createdAt: true, lastHumanResponseAt: true },
+      });
+
+      let medianResponseMinutes = 0;
+      let p90ResponseMinutes = 0;
+
+      if (leadsWithResponse.length > 0) {
+        const responseTimes = leadsWithResponse
+          .map(l => (l.lastHumanResponseAt!.getTime() - l.createdAt.getTime()) / 60000)
+          .filter(t => t > 0)
+          .sort((a, b) => a - b);
+
+        if (responseTimes.length > 0) {
+          medianResponseMinutes = responseTimes[Math.floor(responseTimes.length / 2)];
+          p90ResponseMinutes = responseTimes[Math.floor(responseTimes.length * 0.9)] || medianResponseMinutes;
+        }
+      }
+
+      const qualifiedRate = leadsCreated > 0 ? Math.round((qualifiedLeads / leadsCreated) * 100) : 0;
+      const consultBookedRate = leadsCreated > 0 ? Math.round((consultsBooked / leadsCreated) * 100) : 0;
+
+      res.json({
+        range: `${range}d`,
+        startDate: startDate.toISOString(),
+        capturedLeads: leadsCreated,
+        missedCallRecovery: missedCallLeads,
+        qualifiedRate,
+        qualifiedCount: qualifiedLeads,
+        consultBookedRate,
+        consultBookedCount: consultsBooked,
+        medianResponseMinutes: Math.round(medianResponseMinutes),
+        p90ResponseMinutes: Math.round(p90ResponseMinutes),
+        afterHoursConversionRate: null, // TODO: implement when after-hours tracking is added
+      });
+    } catch (error) {
+      console.error("Analytics summary error:", error);
+      res.status(500).json({ error: "Failed to get analytics" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/analytics/captured-leads:
+   *   get:
+   *     summary: Get captured leads breakdown
+   *     tags: [Mobile, Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: range
+   *         schema:
+   *           type: string
+   *           enum: [7d, 30d]
+   *           default: 7d
+   *     responses:
+   *       200:
+   *         description: Captured leads list
+   */
+  app.get("/v1/analytics/captured-leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const range = req.query.range === "30d" ? 30 : 7;
+      const startDate = new Date(Date.now() - range * 24 * 60 * 60 * 1000);
+
+      const leads = await prisma.lead.findMany({
+        where: {
+          orgId: user.orgId,
+          createdAt: { gte: startDate },
+        },
+        include: {
+          contact: { select: { name: true, primaryPhone: true } },
+          practiceArea: { select: { name: true } },
+          qualification: { select: { score: true, disposition: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+
+      res.json({
+        range: `${range}d`,
+        count: leads.length,
+        leads: leads.map(l => ({
+          id: l.id,
+          name: l.contact.name,
+          phone: l.contact.primaryPhone,
+          source: l.source,
+          status: l.status,
+          practiceArea: l.practiceArea?.name,
+          score: l.qualification?.score || l.score,
+          createdAt: l.createdAt.toISOString(),
+        })),
+      });
+    } catch (error) {
+      console.error("Captured leads error:", error);
+      res.status(500).json({ error: "Failed to get captured leads" });
     }
   });
 
