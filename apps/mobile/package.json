@@ -7,7 +7,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eas:build:dev": "eas build --profile development",
+    "eas:build:preview": "eas build --profile preview",
+    "eas:build:prod": "eas build --profile production"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^6.5.20",

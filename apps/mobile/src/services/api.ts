@@ -6,7 +6,7 @@ import type {
   AuthTokens,
 } from "../types";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://casecurrent.io";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://casecurrent.io";
 
 let authToken: string | null = null;
 let currentOrgId: string | null = null;

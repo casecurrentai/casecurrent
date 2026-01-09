@@ -1,0 +1,40 @@
+You are working in the CaseCurrent monorepo. Add Expo EAS build scaffolding for the mobile app located at apps/mobile/.
+
+Goals:
+1) Ensure the mobile app uses an environment variable EXPO_PUBLIC_API_BASE_URL as the base URL for all API calls (defaulting to https://casecurrent.io if not set).
+2) Add EAS configuration so we can produce device-installable dev builds and later store builds.
+3) Do NOT break the backend or existing web app. Only add/modify mobile/EAS-related files and scripts.
+
+Tasks:
+A) In apps/mobile/, ensure there is an Expo app config file:
+   - Prefer app.config.ts (or app.json if already present).
+   - Set: name "CaseCurrent", slug "casecurrent", scheme "casecurrent".
+   - Add iOS bundleIdentifier "io.casecurrent.app" and Android package "io.casecurrent.app".
+   - Keep these identifiers in one place for easy later edits.
+
+B) Add an eas.json at repo root with these build profiles:
+   - development: internal distribution, developmentClient true, env { EXPO_PUBLIC_API_BASE_URL: "https://staging.casecurrent.io" }
+   - preview: internal distribution (or simulator where appropriate), env { EXPO_PUBLIC_API_BASE_URL: "https://staging.casecurrent.io" }
+   - production: store-ready, env { EXPO_PUBLIC_API_BASE_URL: "https://casecurrent.io" }
+
+C) Add repo scripts (root package.json and/or apps/mobile/package.json as appropriate) so I can run:
+   - npm run mobile:start
+   - npm run mobile:android
+   - npm run mobile:ios
+   - npm run eas:build:dev
+   - npm run eas:build:preview
+   - npm run eas:build:prod
+Each script should cd into apps/mobile if needed and run the correct expo/eas command.
+
+D) Add a short docs file at apps/mobile/README_EAS.md explaining:
+   - Prereqs: Expo account + install eas-cli
+   - Commands to run from repo root
+   - How the EXPO_PUBLIC_API_BASE_URL is set per profile
+   - Reminder: EAS builds happen in Expo cloud; submission uses eas submit later
+
+E) After changes, output:
+   - A file tree of changed/added files
+   - The exact contents of eas.json and the app config file
+   - Any commands I must run locally
+
+Make minimal assumptions. If you discover the mobile app isn't actually an Expo project yet, stop and report exactly what is missing and what you recommend creating.
