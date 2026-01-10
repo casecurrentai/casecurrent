@@ -42,7 +42,7 @@ app.use((req, res, next) => {
     return next();
   }
   
-  if (path.startsWith("/v1/") || path.startsWith("/api/")) {
+  if (path.startsWith("/v1/") || path.startsWith("/api/") || path.startsWith("/.well-known/")) {
     return next();
   }
   

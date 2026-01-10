@@ -3,11 +3,25 @@ import type { RealtimeEvent } from "../types";
 
 type EventHandler = (event: RealtimeEvent) => void;
 
-const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_URL || "wss://casecurrent.co";
+function getWsBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_WS_URL) {
+    return process.env.EXPO_PUBLIC_WS_URL;
+  }
+  const apiUrl = process.env.EXPO_PUBLIC_API_BASE_URL || "https://casecurrent.co";
+  if (apiUrl.startsWith("https://")) {
+    return apiUrl.replace("https://", "wss://");
+  }
+  if (apiUrl.startsWith("http://")) {
+    return apiUrl.replace("http://", "ws://");
+  }
+  return `wss://${apiUrl}`;
+}
+
+const WS_BASE_URL = getWsBaseUrl();
 
 let socket: WebSocket | null = null;
-let reconnectTimeout: NodeJS.Timeout | null = null;
-let pingInterval: NodeJS.Timeout | null = null;
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let pingInterval: ReturnType<typeof setInterval> | null = null;
 const listeners: Set<EventHandler> = new Set();
 
 export function addRealtimeListener(handler: EventHandler): () => void {
