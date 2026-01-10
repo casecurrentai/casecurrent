@@ -131,3 +131,24 @@ export function normalizeOutcome(outcome: string): string {
   const normalized = outcome.toLowerCase().replace(/_/g, '-');
   return VALID_OUTCOMES.includes(normalized) ? normalized : 'completed';
 }
+
+const TERMINAL_STATUSES = ['completed', 'failed', 'busy', 'no-answer'];
+
+export function isTerminalStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const normalized = status.toLowerCase().replace(/_/g, '-');
+  return TERMINAL_STATUSES.includes(normalized);
+}
+
+const ACTIVE_STATUSES = ['queued', 'ringing', 'in-progress', 'active', 'initiated', 'pending'];
+
+export function isActiveStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const normalized = status.toLowerCase().replace(/_/g, '-');
+  return ACTIVE_STATUSES.includes(normalized);
+}
+
+export function outcomeRequiresFollowup(outcome: string): boolean {
+  const normalized = outcome.toLowerCase().replace(/_/g, '-');
+  return normalized === 'voicemail' || normalized === 'no-answer';
+}

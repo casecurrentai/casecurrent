@@ -29,6 +29,8 @@ import {
   mapDbStatusToCanonical, 
   calculateDurationSeconds,
   normalizeOutcome,
+  isTerminalStatus,
+  outcomeRequiresFollowup,
   type CanonicalCallStatus 
 } from "./telephony/status";
 
@@ -7071,6 +7073,8 @@ export async function registerRoutes(
    *           schema:
    *             type: object
    *             properties:
+   *               callId:
+   *                 type: string
    *               leadId:
    *                 type: string
    *               outcome:
@@ -7084,13 +7088,48 @@ export async function registerRoutes(
   app.post("/v1/calls/outcome", authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { leadId, outcome, notes } = req.body;
+      const { callId, leadId, outcome, notes } = req.body;
 
       if (!outcome) {
         return res.status(400).json({ error: "Outcome is required" });
       }
 
       const normalizedOutcome = normalizeOutcome(outcome);
+      let resolvedCall: { id: string; provider: string; startedAt: Date; endedAt: Date | null; interaction: { id: string; status: string } | null } | null = null;
+
+      if (callId) {
+        resolvedCall = await prisma.call.findFirst({
+          where: { id: callId, orgId: user.orgId },
+          include: { interaction: true },
+        });
+      } else if (leadId) {
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        
+        resolvedCall = await prisma.call.findFirst({
+          where: {
+            leadId,
+            orgId: user.orgId,
+            createdAt: { gte: twoHoursAgo },
+            interaction: {
+              status: { in: ['queued', 'ringing', 'in-progress', 'active'] },
+            },
+          },
+          include: { interaction: true },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!resolvedCall) {
+          resolvedCall = await prisma.call.findFirst({
+            where: {
+              leadId,
+              orgId: user.orgId,
+              createdAt: { gte: twoHoursAgo },
+            },
+            include: { interaction: true },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+      }
 
       await prisma.auditLog.create({
         data: {
@@ -7098,35 +7137,90 @@ export async function registerRoutes(
           actorUserId: user.userId,
           actorType: "user",
           action: "call_outcome_logged",
-          entityType: leadId ? "lead" : "system",
-          entityId: leadId || "manual_log",
+          entityType: resolvedCall ? "call" : (leadId ? "lead" : "system"),
+          entityId: resolvedCall?.id || leadId || "manual_log",
           details: { 
             outcome: normalizedOutcome, 
             notes: notes || null,
+            source: "manual",
+            provider: resolvedCall?.provider || null,
+            callId: resolvedCall?.id || null,
+            leadId: leadId || null,
             timestamp: new Date().toISOString(),
-            followup_enqueued: false,
-            followup_reason: "Follow-up automation not yet implemented"
           },
         },
       });
 
-      if (leadId) {
-        const lead = await prisma.lead.findFirst({
-          where: { id: leadId, orgId: user.orgId },
+      let updatedCallId: string | undefined;
+
+      if (resolvedCall) {
+        const interactionStatus = resolvedCall.interaction?.status || null;
+        const isTerminal = isTerminalStatus(interactionStatus);
+        const now = new Date();
+
+        const callUpdateData: {
+          callOutcome: string;
+          endedAt?: Date;
+          durationSeconds?: number;
+        } = {
+          callOutcome: normalizedOutcome,
+        };
+
+        if (!isTerminal) {
+          callUpdateData.endedAt = now;
+          if (resolvedCall.startedAt) {
+            callUpdateData.durationSeconds = Math.floor(
+              (now.getTime() - resolvedCall.startedAt.getTime()) / 1000
+            );
+          }
+        } else if (!resolvedCall.endedAt) {
+          callUpdateData.endedAt = now;
+        }
+
+        await prisma.call.update({
+          where: { id: resolvedCall.id },
+          data: callUpdateData,
         });
 
-        if (lead) {
-          await prisma.lead.update({
-            where: { id: leadId },
-            data: { 
-              lastActivityAt: new Date(),
-              lastHumanResponseAt: new Date(),
-            },
+        if (!isTerminal && resolvedCall.interaction) {
+          await prisma.interaction.update({
+            where: { id: resolvedCall.interaction.id },
+            data: { status: 'completed', endedAt: now },
           });
         }
+
+        updatedCallId = resolvedCall.id;
       }
 
-      res.json({ success: true, outcome: normalizedOutcome });
+      if (leadId) {
+        await prisma.lead.update({
+          where: { id: leadId, orgId: user.orgId },
+          data: { 
+            lastActivityAt: new Date(),
+            lastHumanResponseAt: new Date(),
+          },
+        }).catch(() => {});
+      }
+
+      if (outcomeRequiresFollowup(normalizedOutcome)) {
+        await prisma.auditLog.create({
+          data: {
+            orgId: user.orgId,
+            actorUserId: user.userId,
+            actorType: "system",
+            action: "followup_automation_check",
+            entityType: resolvedCall ? "call" : (leadId ? "lead" : "system"),
+            entityId: resolvedCall?.id || leadId || "manual_log",
+            details: { 
+              outcome: normalizedOutcome,
+              followup_enqueued: false,
+              followup_reason: "not_implemented",
+            },
+          },
+        });
+      }
+
+      res.json({ ok: true, updatedCallId });
     } catch (error) {
       console.error("Log call outcome error:", error);
       res.status(500).json({ error: "Failed to log call outcome" });
