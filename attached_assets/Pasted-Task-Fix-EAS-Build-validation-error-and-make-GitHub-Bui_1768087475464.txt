@@ -1,0 +1,63 @@
+Task: Fix EAS Build validation error and make GitHub “Build from GitHub” work.
+
+Context:
+Expo is rejecting our eas.json with: `eas.json is not valid - "build.production.nodeEnv" is not allowed`.
+We are building from GitHub with Base directory = `apps/mobile`.
+
+Goals:
+1) Remove the invalid `nodeEnv` field from `build.production`.
+2) Use Expo-supported configuration for environments.
+3) Ensure the file is valid JSON and is located where Expo expects it for a monorepo (`apps/mobile/eas.json`).
+4) Commit + push to `main` so Expo “Build from GitHub” stops erroring.
+
+Instructions:
+A) Open `apps/mobile/eas.json` and remove:
+   `"nodeEnv": "production"` from `build.production`.
+
+B) Add `environment` to each profile to align with EAS Environment Variables selection:
+   - development -> "development"
+   - preview     -> "preview"
+   - production  -> "production"
+
+C) If we still need NODE_ENV behavior at runtime, set it using `env` (allowed) instead of nodeEnv:
+   In `production`, add:
+   "env": { "NODE_ENV": "production" }
+
+D) The resulting build section should look like this (keep other existing keys unless they conflict):
+
+{
+  "cli": { "version": ">= 5.0.0" },
+  "build": {
+    "development": {
+      "environment": "development",
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": { "resourceClass": "medium" }
+    },
+    "preview": {
+      "environment": "preview",
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": true }
+    },
+    "production": {
+      "environment": "production",
+      "env": { "NODE_ENV": "production" },
+      "ios": { "resourceClass": "medium" }
+    }
+  },
+  "submit": { "production": {} }
+}
+
+E) Validate:
+- Run a JSON lint check (or equivalent) to confirm valid JSON.
+- Ensure Expo will read this file from `apps/mobile` (since GitHub build Base directory is `apps/mobile`).
+
+F) Commit and push:
+- Commit message: `Fix eas.json env config (remove nodeEnv)`
+- Push to `main`.
+
+Deliverable:
+- Confirm the exact diff made.
+- Confirm commit hash on `main`.
+- Confirm Expo “Build from GitHub” no longer errors on eas.json validation.
