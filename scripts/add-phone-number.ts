@@ -75,8 +75,8 @@ async function main() {
   console.log(`  Inbound Enabled: ${phoneNumber.inboundEnabled}`);
   console.log("\nNext steps:");
   console.log("1. In Twilio console, configure this number's webhook:");
-  console.log(`   Voice webhook URL: https://counseltech.legal/v1/telephony/twilio/voice (POST)`);
-  console.log(`   SMS webhook URL: https://counseltech.legal/v1/telephony/twilio/sms (POST)`);
+  console.log(`   Voice webhook URL: https://casecurrent.co/v1/telephony/twilio/voice (POST)`);
+  console.log(`   SMS webhook URL: https://casecurrent.co/v1/telephony/twilio/sms (POST)`);
   console.log("2. Ensure OpenAI Realtime is configured with:");
   console.log("   - OPENAI_API_KEY, OPENAI_PROJECT_ID, OPENAI_WEBHOOK_SECRET");
   console.log("3. Test by calling the number from a real phone");

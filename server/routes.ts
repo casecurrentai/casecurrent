@@ -7137,7 +7137,7 @@ export async function registerRoutes(
         },
       });
 
-      const baseUrl = process.env.PUBLIC_BASE_URL || "https://casecurrent.io";
+      const baseUrl = process.env.PUBLIC_BASE_URL || "https://casecurrent.co";
       const intakeLink = `${baseUrl}/p/${token}/intake`;
 
       res.json({

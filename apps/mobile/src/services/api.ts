@@ -6,7 +6,14 @@ import type {
   AuthTokens,
 } from "../types";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://casecurrent.io";
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://casecurrent.co";
+
+if (API_BASE_URL.includes("casecurrent.io")) {
+  throw new Error(
+    `Invalid API_BASE_URL: "${API_BASE_URL}" contains deprecated domain casecurrent.io. ` +
+    `Please update EXPO_PUBLIC_API_BASE_URL to use casecurrent.co instead.`
+  );
+}
 
 let authToken: string | null = null;
 let currentOrgId: string | null = null;

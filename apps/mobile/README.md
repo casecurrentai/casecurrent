@@ -43,8 +43,8 @@ npm run android
 Create a `.env` file or set in Expo config:
 
 ```
-EXPO_PUBLIC_API_URL=https://casecurrent.io
-EXPO_PUBLIC_WS_URL=wss://casecurrent.io
+EXPO_PUBLIC_API_URL=https://casecurrent.co
+EXPO_PUBLIC_WS_URL=wss://casecurrent.co
 ```
 
 ## API Endpoints Used
@@ -92,22 +92,22 @@ Event types:
 
 ```bash
 # Login
-curl -X POST https://casecurrent.io/v1/auth/login \
+curl -X POST https://casecurrent.co/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@firm.com","password":"password"}'
 
 # Get leads
-curl https://casecurrent.io/v1/leads \
+curl https://casecurrent.co/v1/leads \
   -H "Authorization: Bearer <token>"
 
 # Send SMS
-curl -X POST https://casecurrent.io/v1/leads/<leadId>/messages \
+curl -X POST https://casecurrent.co/v1/leads/<leadId>/messages \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"body":"Hello from CaseCurrent!"}'
 
 # Get analytics
-curl https://casecurrent.io/v1/analytics/summary?range=7d \
+curl https://casecurrent.co/v1/analytics/summary?range=7d \
   -H "Authorization: Bearer <token>"
 ```
 

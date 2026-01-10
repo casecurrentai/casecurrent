@@ -3,7 +3,7 @@ import type { RealtimeEvent } from "../types";
 
 type EventHandler = (event: RealtimeEvent) => void;
 
-const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_URL || "wss://casecurrent.io";
+const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_URL || "wss://casecurrent.co";
 
 let socket: WebSocket | null = null;
 let reconnectTimeout: NodeJS.Timeout | null = null;

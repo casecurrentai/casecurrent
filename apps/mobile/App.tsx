@@ -30,7 +30,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["casecurrent://", "https://casecurrent.io"],
+  prefixes: ["casecurrent://", "https://casecurrent.co"],
   config: {
     screens: {
       Main: {

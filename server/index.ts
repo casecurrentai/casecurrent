@@ -32,6 +32,25 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+const CANONICAL_HOST = "casecurrent.co";
+app.use((req, res, next) => {
+  const host = req.hostname || req.headers.host?.split(":")[0] || "";
+  
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host.endsWith(".localhost") ||
+    host === CANONICAL_HOST
+  ) {
+    return next();
+  }
+  
+  const redirectUrl = `https://${CANONICAL_HOST}${req.originalUrl}`;
+  console.log(`[REDIRECT] 301 ${host}${req.originalUrl} -> ${redirectUrl}`);
+  return res.redirect(301, redirectUrl);
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",

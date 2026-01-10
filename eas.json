@@ -8,7 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://staging.casecurrent.io"
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
       },
       "ios": {
         "simulator": true
@@ -17,7 +17,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://staging.casecurrent.io"
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
       },
       "ios": {
         "simulator": true
@@ -26,7 +26,7 @@
     "production": {
       "distribution": "store",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.io"
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
       },
       "autoIncrement": true
     }

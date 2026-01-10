@@ -28,9 +28,9 @@ Three build profiles are available in `eas.json` at the repo root:
 
 | Profile | Distribution | API URL | Use Case |
 |---------|-------------|---------|----------|
-| `development` | Internal | staging.casecurrent.io | Dev builds with Expo Go |
-| `preview` | Internal | staging.casecurrent.io | Testing before production |
-| `production` | App Store | casecurrent.io | Store-ready builds |
+| `development` | Internal | casecurrent.co | Dev builds with Expo Go |
+| `preview` | Internal | casecurrent.co | Testing before production |
+| `production` | App Store | casecurrent.co | Store-ready builds |
 
 ## Commands
 
@@ -63,10 +63,9 @@ eas build --profile production
 
 The `EXPO_PUBLIC_API_BASE_URL` environment variable controls which backend the app connects to:
 
-- **Development/Preview**: `https://staging.casecurrent.io`
-- **Production**: `https://casecurrent.io`
+- **All Profiles**: `https://casecurrent.co`
 
-These are set automatically per profile in `eas.json`. The app falls back to `https://casecurrent.io` if the variable is not set.
+These are set automatically per profile in `eas.json`. The app falls back to `https://casecurrent.co` if the variable is not set.
 
 ## First-Time Setup
 
