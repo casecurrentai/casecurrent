@@ -23,6 +23,14 @@ import {
 import { handleOpenAIWebhook, getLastAcceptCallStatus } from "./openai/webhook";
 import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
 import { recordEvent, getRecentEvents, getEventCount } from "./flightRecorder";
+import { 
+  getTelephonyStatus, 
+  getActiveProvider, 
+  mapDbStatusToCanonical, 
+  calculateDurationSeconds,
+  normalizeOutcome,
+  type CanonicalCallStatus 
+} from "./telephony/status";
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -6981,6 +6989,152 @@ export async function registerRoutes(
 
   /**
    * @openapi
+   * /v1/telephony/status:
+   *   get:
+   *     summary: Get telephony provider status
+   *     tags: [Telephony]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Telephony status
+   */
+  app.get("/v1/telephony/status", authMiddleware, async (_req: AuthenticatedRequest, res) => {
+    try {
+      const status = getTelephonyStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Get telephony status error:", error);
+      res.status(500).json({ error: "Failed to get telephony status" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/calls/{callId}:
+   *   get:
+   *     summary: Get call status by ID
+   *     tags: [Calls]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: callId
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Call status
+   */
+  app.get("/v1/calls/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const callId = req.params.callId;
+
+      const call = await prisma.call.findFirst({
+        where: { id: callId, orgId: user.orgId },
+        include: { interaction: true },
+      });
+
+      if (!call) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      const status = mapDbStatusToCanonical(call.interaction?.status || null);
+      const duration = calculateDurationSeconds(call.startedAt, call.endedAt, call.durationSeconds);
+
+      res.json({
+        id: call.id,
+        status,
+        provider: call.provider,
+        duration,
+      });
+    } catch (error) {
+      console.error("Get call status error:", error);
+      res.status(500).json({ error: "Failed to get call status" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/calls/outcome:
+   *   post:
+   *     summary: Log manual call outcome
+   *     tags: [Calls]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               leadId:
+   *                 type: string
+   *               outcome:
+   *                 type: string
+   *               notes:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Outcome logged
+   */
+  app.post("/v1/calls/outcome", authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { leadId, outcome, notes } = req.body;
+
+      if (!outcome) {
+        return res.status(400).json({ error: "Outcome is required" });
+      }
+
+      const normalizedOutcome = normalizeOutcome(outcome);
+
+      await prisma.auditLog.create({
+        data: {
+          orgId: user.orgId,
+          actorUserId: user.userId,
+          actorType: "user",
+          action: "call_outcome_logged",
+          entityType: leadId ? "lead" : "system",
+          entityId: leadId || "manual_log",
+          details: { 
+            outcome: normalizedOutcome, 
+            notes: notes || null,
+            timestamp: new Date().toISOString(),
+            followup_enqueued: false,
+            followup_reason: "Follow-up automation not yet implemented"
+          },
+        },
+      });
+
+      if (leadId) {
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId: user.orgId },
+        });
+
+        if (lead) {
+          await prisma.lead.update({
+            where: { id: leadId },
+            data: { 
+              lastActivityAt: new Date(),
+              lastHumanResponseAt: new Date(),
+            },
+          });
+        }
+      }
+
+      res.json({ success: true, outcome: normalizedOutcome });
+    } catch (error) {
+      console.error("Log call outcome error:", error);
+      res.status(500).json({ error: "Failed to log call outcome" });
+    }
+  });
+
+  /**
+   * @openapi
    * /v1/leads/{id}/call/start:
    *   post:
    *     summary: Start tap-to-call (logs attempt, returns dial instructions)
@@ -6995,12 +7149,13 @@ export async function registerRoutes(
    *           type: string
    *     responses:
    *       200:
-   *         description: Dial instructions
+   *         description: Dial instructions with provider and callId
    */
   app.post("/v1/leads/:id/call/start", authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
+      const provider = getActiveProvider();
 
       const lead = await prisma.lead.findFirst({
         where: { id: leadId, orgId: user.orgId },
@@ -7015,26 +7170,43 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Lead has no phone number" });
       }
 
-      // Get org's primary phone number for caller ID
       const org = await prisma.organization.findUnique({
         where: { id: user.orgId },
         include: { phoneNumbers: { where: { inboundEnabled: true }, take: 1 } },
       });
 
-      const firmCallerId = org?.phoneNumbers[0]?.e164 || "+18443214257";
+      const phoneNumber = org?.phoneNumbers[0];
+      const firmCallerId = phoneNumber?.e164 || "";
 
-      // Create interaction for the call attempt
       const interaction = await prisma.interaction.create({
         data: {
           orgId: user.orgId,
           leadId,
           channel: "call",
-          status: "active",
-          metadata: { initiatedBy: user.userId, type: "tap_to_call" },
+          status: "queued",
+          metadata: { initiatedBy: user.userId, type: "tap_to_call", provider },
         },
       });
 
-      // Log audit for call attempt
+      let callId: string | null = null;
+
+      if (phoneNumber) {
+        const call = await prisma.call.create({
+          data: {
+            orgId: user.orgId,
+            leadId,
+            interactionId: interaction.id,
+            phoneNumberId: phoneNumber.id,
+            direction: "outbound",
+            provider,
+            fromE164: firmCallerId,
+            toE164: lead.contact.primaryPhone,
+            startedAt: new Date(),
+          },
+        });
+        callId = call.id;
+      }
+
       await prisma.auditLog.create({
         data: {
           orgId: user.orgId,
@@ -7043,11 +7215,10 @@ export async function registerRoutes(
           action: "outbound_call_initiated",
           entityType: "interaction",
           entityId: interaction.id,
-          details: { to: lead.contact.primaryPhone, firmCallerId },
+          details: { to: lead.contact.primaryPhone, firmCallerId, provider, callId },
         },
       });
 
-      // Update lead activity
       await prisma.lead.update({
         where: { id: leadId },
         data: {
@@ -7057,11 +7228,10 @@ export async function registerRoutes(
       });
 
       res.json({
-        success: true,
         dialTo: lead.contact.primaryPhone,
         firmCallerId,
-        interactionId: interaction.id,
-        instructions: "Open native dialer with the dialTo number. The firm caller ID will be used if your carrier supports caller ID override.",
+        provider,
+        callId: callId || interaction.id,
       });
     } catch (error) {
       console.error("Start call error:", error);
