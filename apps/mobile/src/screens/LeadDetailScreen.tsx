@@ -10,6 +10,7 @@ import {
   Alert,
   Linking,
   Share,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
@@ -105,17 +106,27 @@ export default function LeadDetailScreen() {
 
   async function handleCall() {
     if (!lead) return;
+    
     try {
       const { dialTo } = await api.calls.start(leadId);
-      const url = `tel:${dialTo}`;
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
+      
+      const cleanNumber = dialTo.replace(/[^0-9+]/g, '');
+      
+      let url = '';
+      if (Platform.OS === 'android') {
+        url = `tel:${cleanNumber}`;
       } else {
-        Alert.alert("Error", "Unable to open phone dialer");
+        url = `telprompt:${cleanNumber}`;
       }
+
+      await Linking.openURL(url);
+
     } catch (error) {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to start call");
+      console.error("Call failed", error);
+      Alert.alert(
+        "Call Failed", 
+        "Your device could not make this call. Please check your signal or device settings."
+      );
     }
   }
 
