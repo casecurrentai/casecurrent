@@ -46,5 +46,5 @@ jobs:
 
       - name: Build iOS app
         env:
-          EAS_PROJECT_ROOT: ${{ github.workspace }}/apps/mobile
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform ios --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive
