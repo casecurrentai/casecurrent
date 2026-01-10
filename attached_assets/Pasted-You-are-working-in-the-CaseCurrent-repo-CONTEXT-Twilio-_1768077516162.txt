@@ -1,0 +1,136 @@
+You are working in the CaseCurrent repo.
+
+CONTEXT:
+- Twilio webhooks are implemented in server/routes.ts (voice/sms/status/recording).
+- OpenAI SIP correlation is in server/openai/webhook.ts.
+- Mobile app now expects “State-Aware Calling” endpoints for safe provider migration.
+- We are migrating from Twilio to Plivo, but MUST support both during transition.
+
+GOAL:
+Implement/Update backend routes to match this spec:
+
+1) GET /v1/telephony/status
+Return: { provider: 'plivo'|'twilio', voiceEnabled: boolean, smsEnabled: boolean }
+Logic: Determine provider from env (prefer TELEPHONY_PROVIDER; fallback TWILIO_* vs PLIVO_* presence).
+voiceEnabled/smsEnabled should be true only if required env vars exist and provider is configured.
+
+2) POST /v1/leads/:leadId/call/start  (update existing or add)
+Return: { dialTo: string, firmCallerId: string, provider: 'plivo'|'twilio', callId: string }
+Logic:
+- Validate leadId exists and resolve firm/org.
+- Determine dialTo = lead.phone (E.164).
+- Determine firmCallerId = the firm’s outbound caller ID (server-managed); if not available, return empty string but DO NOT fail the call start.
+- Immediately create a Call record with status='queued' and provider set to active provider.
+- Return created Call.id as callId.
+
+3) GET /v1/calls/:callId
+Return: { id: string, status: string, provider: string, duration: number }
+Logic:
+- Fetch Call by id.
+- Map internal status to one of: 'queued','ringing','in-progress','completed','failed','busy','no-answer'
+- duration is seconds (0 if unknown). Prefer callDuration field or compute from startedAt/endedAt timestamps if present.
+
+4) POST /v1/calls/outcome
+Body: { leadId?: string, outcome: string, notes?: string }
+Logic:
+- Validate outcome is one of: connected|voicemail|no-answer|busy|failed|completed (accept others but map unknown to 'completed').
+- Create a manual activity note/audit log for the lead (or interaction) capturing outcome + notes.
+- If outcome is 'voicemail' or 'no-answer', trigger configured automated follow-up tasks (if the codebase has an existing follow-up/job system; if not, add a clear TODO and log an audit event like followup_enqueued=false with reason).
+
+IMPLEMENTATION REQUIREMENTS:
+A) Do not break existing Twilio routes.
+B) Reuse existing auth/middleware patterns used by server/routes.ts.
+C) Add a small helper module for status mapping so Twilio/Plivo webhooks and the new GET /v1/calls/:callId all share the same mapping.
+D) Make the new endpoints visible in docs/BACKEND_PROOF_REPORT.md.
+
+STEP-BY-STEP:
+
+STEP 0 — Locate existing routes and models
+- Open server/routes.ts and find existing call start endpoint(s) and lead routes.
+- Open apps/api/prisma/schema.prisma and identify the Call model fields available (status, provider, providerCallId, twilioCallSid, startedAt, endedAt, duration, etc.)
+- Identify how leads relate to org/firm and where firm phone numbers are stored (often OrgPhone or PhoneNumber models).
+
+STEP 1 — Add status mapping helper
+Create server/telephony/status.ts with:
+- export type CanonicalCallStatus = 'queued'|'ringing'|'in-progress'|'completed'|'failed'|'busy'|'no-answer'
+- export function mapDbStatusToCanonical(call:any): CanonicalCallStatus
+- export function mapTwilioWebhookToDbStatus(payload:any): string (or canonical)
+- export function mapPlivoWebhookToDbStatus(payload:any): string (or canonical)
+Keep mapping conservative:
+- queued: initial record
+- ringing: provider says ringing
+- in-progress: answered/ongoing
+- completed: completed/ended normally
+- failed: failed/undelivered/errored
+- busy: busy
+- no-answer: no-answer/timeout
+
+STEP 2 — Implement GET /v1/telephony/status
+Add in server/routes.ts (or wherever your router is defined):
+- provider:
+  - const provider = (process.env.TELEPHONY_PROVIDER || 'twilio').toLowerCase() === 'plivo' ? 'plivo' : 'twilio'
+- voiceEnabled:
+  - if provider==='plivo': require PLIVO_AUTH_ID + PLIVO_AUTH_TOKEN + OPENAI_SIP_URI (or whatever current SIP target env is)
+  - if provider==='twilio': require TWILIO_* + OPENAI_SIP_URI (or current)
+- smsEnabled:
+  - if provider==='plivo': require PLIVO_AUTH_ID + PLIVO_AUTH_TOKEN
+  - if provider==='twilio': require TWILIO_* (if outbound sms exists; if not, smsEnabled can reflect inbound readiness)
+Return JSON as specified.
+
+STEP 3 — Implement/Update POST /v1/leads/:leadId/call/start
+- Ensure it returns dialTo, firmCallerId, provider, callId.
+- Create Call record immediately with:
+  - leadId
+  - orgId (if available)
+  - direction='outbound' (or 'outbound_manual' if you have such)
+  - provider = provider from /telephony/status
+  - status = 'queued' (store canonical status in DB if possible; otherwise store your existing status string and map it later)
+  - fromE164 = firmCallerId if known else null
+  - toE164 = dialTo
+  - startedAt = now (optional)
+- Also create an Interaction record if your schema expects it (calls appear to be tied to interactions in your db_backup).
+- Return callId = Call.id (UUID).
+
+STEP 4 — Implement GET /v1/calls/:callId
+- Fetch Call by id via Prisma.
+- status = mapDbStatusToCanonical(call)
+- duration:
+  - if call.durationSeconds exists use it
+  - else if call.callDuration exists use it
+  - else if call.startedAt && call.endedAt compute seconds
+  - else 0
+Return minimal object as spec.
+
+STEP 5 — Implement POST /v1/calls/outcome
+- Parse body leadId/outcome/notes.
+- If leadId missing, allow but log outcome as system event without lead link (still return 200).
+- Create AuditLog or Activity record (use whatever you already use in Twilio webhook logging; search for prisma.auditLog.create or prisma.activity.create).
+- Optionally update Lead status based on outcome (if your lead model has status).
+- For voicemail/no-answer:
+  - If a follow-up automation system exists (search for “follow-up”, “enqueue”, “jobs”, “task”, “scheduler”), call it.
+  - Otherwise: log an audit entry stating follow-up not implemented; do not throw.
+
+STEP 6 — Wire Twilio and Plivo webhook status updates to the same Call rows
+IMPORTANT:
+- Your inbound Twilio voice webhook currently finds/creates Call rows keyed by twilioCallSid and sets providerCallId to OpenAI call_id later.
+- Ensure those webhook handlers update Call.status to 'ringing'/'in-progress'/'completed' as events arrive (using the shared mapping helper).
+- For Plivo (if already being added elsewhere), do same: store plivoCallUuid and update status.
+
+STEP 7 — Update docs and add smoke test commands
+- Update docs/BACKEND_PROOF_REPORT.md with the 4 new endpoints.
+- Provide curl examples:
+  - GET /v1/telephony/status
+  - POST /v1/leads/:leadId/call/start
+  - GET /v1/calls/:callId
+  - POST /v1/calls/outcome
+
+OUTPUT REQUIRED:
+- List of files changed/added.
+- Confirm endpoints compile and routes are mounted.
+- Show example JSON responses.
+- If schema changes were needed, include migration name and apply steps.
+
+DO NOT:
+- Remove Twilio code yet.
+- Rename internal “CounselTech” identifiers.
+- Introduce breaking changes to existing mobile API calls; keep backward compatible if possible.

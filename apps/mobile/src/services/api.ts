@@ -18,6 +18,27 @@ if (API_BASE_URL.includes("casecurrent.io")) {
 let authToken: string | null = null;
 let currentOrgId: string | null = null;
 
+// --- Helper Types for Telephony ---
+export type TelephonyStatus = {
+  provider: "twilio" | "plivo";
+  voiceEnabled: boolean;
+  smsEnabled: boolean;
+};
+
+export type CallStartResponse = {
+  dialTo: string;
+  firmCallerId: string;
+  provider: "twilio" | "plivo";
+  callId: string;
+};
+
+export type CallStatusResponse = {
+  id: string;
+  status: "queued" | "ringing" | "in-progress" | "completed" | "failed" | "busy" | "no-answer" | "canceled";
+  duration: number;
+  provider: string;
+};
+
 export async function initializeAuth(): Promise<string | null> {
   try {
     authToken = await SecureStore.getItemAsync("authToken");
@@ -100,6 +121,13 @@ export const api = {
     },
   },
 
+  // Telephony Sanity Check
+  telephony: {
+    async status(): Promise<TelephonyStatus> {
+      return apiRequest("/v1/telephony/status");
+    },
+  },
+
   leads: {
     async list(params?: {
       status?: string;
@@ -153,27 +181,24 @@ export const api = {
   },
 
   calls: {
-    async start(leadId: string): Promise<{ dialTo: string; firmCallerId: string; provider?: string; callId?: string }> {
+    // UPDATED: Now returns provider and callId info
+    async start(leadId: string): Promise<CallStartResponse> {
       return apiRequest(`/v1/leads/${leadId}/call/start`, {
         method: "POST",
       });
     },
 
-    async get(callId: string): Promise<{ id: string; status: string; duration?: number }> {
+    // NEW: Poll for status
+    async get(callId: string): Promise<CallStatusResponse> {
       return apiRequest(`/v1/calls/${callId}`);
     },
 
-    async logOutcome(params: { leadId?: string; outcome: string; notes?: string }): Promise<void> {
-      await apiRequest(`/v1/calls/outcome`, {
+    // NEW: Manual outcome logging from Modal
+    async logOutcome(data: { leadId?: string; outcome: string; notes?: string }): Promise<void> {
+      return apiRequest(`/v1/calls/outcome`, {
         method: "POST",
-        body: JSON.stringify(params),
+        body: JSON.stringify(data),
       });
-    },
-  },
-
-  telephony: {
-    async status(): Promise<{ provider: "twilio" | "plivo"; voiceEnabled: boolean; smsEnabled: boolean }> {
-      return apiRequest(`/v1/telephony/status`);
     },
   },
 
