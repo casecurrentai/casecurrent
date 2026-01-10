@@ -14,8 +14,17 @@ import {
   SafeAreaView
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
+// Adjust this path to your actual api file
 import { api } from "../services/api"; 
-import type { Lead } from "../types";
+
+// --- TYPES (Add these to your central types file later) ---
+type Lead = {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  notes?: string;
+};
 
 type TelephonyStatus = {
   provider: "twilio" | "plivo";
@@ -25,7 +34,7 @@ type TelephonyStatus = {
 
 type ActiveCall = {
   callId: string;      // Internal DB ID
-  provider: string;
+  provider: "twilio" | "plivo";
   dialTo: string;
   startedAt: number;
 };
@@ -222,13 +231,13 @@ export default function LeadDetailScreen() {
         )}
 
         <View style={styles.header}>
-          <Text style={styles.leadName}>{lead.contact?.name || "Unknown"}</Text>
+          <Text style={styles.leadName}>{lead.name}</Text>
           <Text style={styles.leadStatus}>{lead.status}</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.label}>Phone</Text>
-          <Text style={styles.value}>{lead.contact?.primaryPhone || "No phone"}</Text>
+          <Text style={styles.value}>{lead.phone}</Text>
         </View>
 
         <TouchableOpacity style={styles.callButton} onPress={handleCall}>
