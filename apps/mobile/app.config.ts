@@ -32,9 +32,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: APP_IDENTIFIERS.package,
   },
   plugins: ["expo-secure-store", "expo-notifications"],
+  owner: "casecurrentai",
   extra: {
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      projectId: "2405bb62-0ed9-4a59-a1ac-2c807c1309d3",
     },
   },
 });

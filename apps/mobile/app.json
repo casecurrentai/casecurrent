@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "CaseCurrent",
-    "slug": "casecurrent-ops",
+    "slug": "casecurrent",
+    "owner": "casecurrentai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -28,6 +29,11 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2405bb62-0ed9-4a59-a1ac-2c807c1309d3"
+      }
+    }
   }
 }
