@@ -110,6 +110,7 @@ export default function LeadDetailScreen() {
     try {
       const { dialTo } = await api.calls.start(leadId);
       
+      // Sanitize the phone number
       const cleanNumber = dialTo.replace(/[^0-9+]/g, '');
       
       let url = '';
@@ -119,6 +120,7 @@ export default function LeadDetailScreen() {
         url = `telprompt:${cleanNumber}`;
       }
 
+      // Attempt to open directly without checking canOpenURL (fixes Android 11+ issues)
       await Linking.openURL(url);
 
     } catch (error) {
