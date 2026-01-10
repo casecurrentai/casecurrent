@@ -7156,6 +7156,7 @@ export async function registerRoutes(
       const user = req.user!;
       const leadId = req.params.id;
       const provider = getActiveProvider();
+      const DEFAULT_CALLER_ID = "+18443214257";
 
       const lead = await prisma.lead.findFirst({
         where: { id: leadId, orgId: user.orgId },
@@ -7176,7 +7177,7 @@ export async function registerRoutes(
       });
 
       const phoneNumber = org?.phoneNumbers[0];
-      const firmCallerId = phoneNumber?.e164 || "";
+      const firmCallerId = phoneNumber?.e164 || DEFAULT_CALLER_ID;
 
       const interaction = await prisma.interaction.create({
         data: {
@@ -7231,7 +7232,8 @@ export async function registerRoutes(
         dialTo: lead.contact.primaryPhone,
         firmCallerId,
         provider,
-        callId: callId || interaction.id,
+        callId,
+        interactionId: interaction.id,
       });
     } catch (error) {
       console.error("Start call error:", error);
