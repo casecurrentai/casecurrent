@@ -44,5 +44,7 @@ waitForPort = 5000
 SEED_SECRET = "counseltech-demo-seed-2026"
 DIAG_TOKEN = "counseltech-diag-2026"
 
+[userenv.development]
+
 [agent]
 integrations = ["github:1.0.0"]
