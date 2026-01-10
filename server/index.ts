@@ -35,6 +35,16 @@ app.use(express.urlencoded({ extended: false }));
 const CANONICAL_HOST = "casecurrent.co";
 app.use((req, res, next) => {
   const host = req.hostname || req.headers.host?.split(":")[0] || "";
+  const method = req.method.toUpperCase();
+  const path = req.path || req.originalUrl.split("?")[0];
+  
+  if (method !== "GET" && method !== "HEAD") {
+    return next();
+  }
+  
+  if (path.startsWith("/v1/") || path.startsWith("/api/")) {
+    return next();
+  }
   
   if (
     host === "localhost" ||
