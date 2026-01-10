@@ -1,0 +1,105 @@
+You are Replit Agent (advanced mode) working in the CaseCurrent monorepo (public brand CaseCurrent; internal identifiers may still say CounselTech). I need two deliverables in one response:
+
+DELIVERABLE 1 — Fix/Verify Telephony Status Provider Logic (Plivo migration sanity)
+Goal: Make the “State-Aware Calling” backend endpoints accurately report the active telephony provider and enabled flags, so the mobile app can safely verify Twilio→Plivo cutover.
+
+A) Show me the CURRENT implementation:
+1) Paste the full code block for:
+   - app.get("/v1/telephony/status", ...)
+   - app.post("/v1/leads/:id/call/start", ...) (only the part that chooses provider and returns provider)
+2) Also paste any helper functions/constants those routes use to decide provider/enabled flags.
+
+B) Correct the provider selection logic (if needed):
+Rules:
+1) If process.env.TELEPHONY_PROVIDER is set to "plivo" or "twilio", provider MUST match it.
+2) If TELEPHONY_PROVIDER is not set:
+   - If PLIVO env vars indicate configuration exists, provider should be "plivo"
+   - Else if TWILIO env vars indicate configuration exists, provider should be "twilio"
+   - Else provider can default to "twilio" but MUST keep voiceEnabled=false and smsEnabled=false, and log a warning at boot that no provider is configured.
+3) voiceEnabled:
+   - For plivo: true only if required Plivo voice env is present (PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN, and whatever SIP target / voice config env the server expects)
+   - For twilio: true only if required Twilio voice env is present (TWILIO creds and SIP target)
+4) smsEnabled:
+   - Interpret smsEnabled as "outbound SMS is configured and should work" (NOT merely inbound webhook readiness).
+   - For plivo: true only if PLIVO_AUTH_ID + PLIVO_AUTH_TOKEN present AND (if you have a compliance gate flag) the system is not globally disabled.
+   - For twilio: true only if TWILIO creds present AND outbound messaging code exists/configured.
+5) POST /v1/leads/:id/call/start MUST return provider consistent with GET /v1/telephony/status.
+
+C) Evidence test (must include real outputs):
+1) Add a safe DEV-only auth bypass if and only if (NODE_ENV !== "production" && AUTH_BYPASS === "true"). If this bypass already existed and was removed, re-add it temporarily for the test and remove it again at the end.
+2) Run smoke tests locally twice:
+   TEST 1: TELEPHONY_PROVIDER=twilio
+   TEST 2: TELEPHONY_PROVIDER=plivo
+For each test, print the JSON outputs of:
+   - GET /v1/telephony/status
+   - POST /v1/leads/:id/call/start (use a real leadId; if none exists create a minimal dev lead and print its id)
+Confirm the provider field flips correctly between twilio and plivo.
+
+D) Keep changes minimal and safe:
+- Do not delete Twilio routes.
+- Do not rename internal CounselTech identifiers.
+- Ensure any temporary auth bypass is removed before finishing (or disabled by default and guarded strictly).
+
+DELIVERABLE 2 — “Gemini Handoff” Codebase Rundown (comprehensive but structured)
+I need a comprehensive, Gemini-ready summary of the current codebase and development status so I can paste it into Google Gemini Pro and get it fully up to speed. Produce a single, well-structured document with headings and bullet points, covering:
+
+1) Product overview (CaseCurrent):
+   - What the system does end-to-end (voice intake, SMS, lead qualification, routing, audit logs, mobile app goals).
+   - Current key flows implemented.
+
+2) Repo structure (monorepo map):
+   - List top-level directories and what each does (server/, apps/, client/, mobile/, scripts/, docs/, prisma paths, etc.).
+   - Identify where telephony and OpenAI Realtime SIP logic lives (e.g., server/routes.ts, server/openai/webhook.ts).
+
+3) Telephony architecture (CURRENT):
+   - Twilio endpoints that exist today (voice, sms, dial result/status, recordings).
+   - How Twilio CallSid is used (twilioCallSid, providerCallId vs OpenAI call_id).
+   - Any current issues/constraints.
+
+4) Plivo migration plan (TARGET):
+   - What has been implemented so far for Plivo (if anything).
+   - What is still missing (Plivo inbound voice XML, inbound SMS, signature verification, status mapping, SIP headers -> OpenAI correlation).
+   - A2P/10DLC considerations per firm-number model (high level).
+
+5) Mobile “State-Aware Calling” integration:
+   - The four endpoints implemented:
+     GET /v1/telephony/status
+     POST /v1/leads/:id/call/start
+     GET /v1/calls/:callId
+     POST /v1/calls/outcome
+   - Expected request/response shapes.
+   - How call records are created (queued) and how status/outcome is updated.
+   - Terminal status protection logic.
+
+6) Database schema highlights:
+   - Core tables: orgs/firms, leads, interactions, calls, messages, audit_logs.
+   - Key identifiers: providerCallId (OpenAI call_id), twilioCallSid, new callOutcome.
+   - Mention any missing fields needed for Plivo (plivoCallUuid, plivoMessageUuid) if not present.
+
+7) Diagnostics & testing tools:
+   - scripts/simulate-twilio.ts and any others
+   - docs/BACKEND_PROOF_REPORT.md and what it claims
+   - flight recorder / diag logging paths
+
+8) Deployment/build notes:
+   - Domains used, environment variables required, and any host/redirect expectations (casecurrent.co vs counseltech.legal etc.).
+   - Any recent deployment issues worth knowing.
+
+9) Next steps (prioritized):
+   - The next 5–10 engineering tasks required to complete Plivo migration + stabilize mobile integration.
+   - Include “definition of done” for each task.
+
+Formatting requirements for the Gemini handoff:
+- It must be a single pasteable block (no multi-message).
+- Use clear headings, short paragraphs, bullet lists.
+- Include file paths and endpoint paths precisely.
+- Avoid speculation; confirm by searching the codebase first (use ripgrep and file reads).
+- If something is uncertain, label it “Unverified” and explain what to check.
+
+OUTPUT:
+Return:
+1) The code snippets / diffs applied for provider logic.
+2) The evidence outputs for both TELEPHONY_PROVIDER modes.
+3) The full Gemini handoff document.
+
+Proceed now.
