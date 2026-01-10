@@ -139,6 +139,15 @@ app.use((req, res, next) => {
     console.error(`[DB STARTUP] Error during DB check:`, err?.message || err);
   }
 
+  // TELEPHONY PROVIDER BOOT LOG
+  const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'twilio').toLowerCase();
+  const isPlivo = telephonyProvider === 'plivo';
+  const voiceEnabled = isPlivo 
+    ? !!(process.env.PLIVO_AUTH_ID && process.env.PLIVO_AUTH_TOKEN)
+    : !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+  const smsEnabled = voiceEnabled; // Same credential check for both
+  console.log(`[TELEPHONY] Provider: ${isPlivo ? 'plivo' : 'twilio'} | Voice: ${voiceEnabled} | SMS: ${smsEnabled}`);
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

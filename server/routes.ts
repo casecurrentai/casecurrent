@@ -26,7 +26,8 @@ import { recordEvent, getRecentEvents, getEventCount } from "./flightRecorder";
 import { 
   getTelephonyStatus, 
   getActiveProvider, 
-  mapDbStatusToCanonical, 
+  mapDbStatusToCanonical,
+  mapPlivoWebhookToDbStatus,
   calculateDurationSeconds,
   normalizeOutcome,
   isTerminalStatus,
@@ -4530,6 +4531,446 @@ export async function registerRoutes(
       res.set("Content-Type", "text/xml");
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
+    }
+  });
+
+  // ============================================
+  // PLIVO TELEPHONY WEBHOOKS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/telephony/plivo/voice:
+   *   post:
+   *     summary: Handle incoming Plivo voice call webhook
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Plivo XML response
+   */
+  app.post("/v1/telephony/plivo/voice", async (req, res) => {
+    try {
+      const payload = req.body;
+      const { CallUUID, From, To, CallStatus, Direction } = payload;
+
+      console.log(`[Plivo Voice] Inbound call: CallUUID=${CallUUID} From=${From} To=${To} Status=${CallStatus}`);
+
+      if (!To) {
+        console.log(`[Plivo Voice] Missing To number`);
+        res.set("Content-Type", "application/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak>We're sorry, an error occurred.</Speak>
+  <Hangup/>
+</Response>`);
+      }
+
+      const phoneNumber = await prisma.phoneNumber.findFirst({
+        where: { e164: To },
+        include: { organization: true },
+      });
+
+      if (!phoneNumber) {
+        console.log(`[Plivo Voice] No phone number found for ${To}`);
+        res.set("Content-Type", "application/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak>This number is not configured. Goodbye.</Speak>
+  <Hangup/>
+</Response>`);
+      }
+
+      const orgId = phoneNumber.orgId;
+
+      // Find or create contact
+      let contact = await prisma.contact.findFirst({
+        where: { orgId, primaryPhone: From },
+      });
+
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            orgId,
+            name: "Unknown Caller",
+            primaryPhone: From,
+          },
+        });
+      }
+
+      // Find or create lead
+      let lead = await prisma.lead.findFirst({
+        where: {
+          orgId,
+          contactId: contact.id,
+          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!lead) {
+        lead = await prisma.lead.create({
+          data: {
+            orgId,
+            contactId: contact.id,
+            source: "phone",
+            status: "new",
+            priority: "high",
+            lastActivityAt: new Date(),
+          },
+        });
+      }
+
+      // Create interaction
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          channel: "call",
+          status: mapPlivoWebhookToDbStatus(CallStatus || "ringing"),
+          metadata: { provider: "plivo", direction: Direction },
+        },
+      });
+
+      // Create call record
+      const call = await prisma.call.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          interactionId: interaction.id,
+          phoneNumberId: phoneNumber.id,
+          direction: Direction?.toLowerCase() === "outbound" ? "outbound" : "inbound",
+          provider: "plivo",
+          providerCallId: CallUUID,
+          fromE164: From,
+          toE164: To,
+          startedAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorType: "system",
+          action: "inbound_call_received",
+          entityType: "call",
+          entityId: call.id,
+          details: { from: From, to: To, provider: "plivo", callUUID: CallUUID },
+        },
+      });
+
+      // Update lead activity
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          lastActivityAt: new Date(),
+          status: lead.status === "new" ? "engaged" : lead.status,
+        },
+      });
+
+      // Emit realtime event
+      emitRealtimeEvent(orgId, {
+        type: "call.inbound",
+        leadId: lead.id,
+        timestamp: new Date().toISOString(),
+        data: { callId: call.id, from: From, provider: "plivo" },
+      });
+
+      // Return basic voicemail response (no AI integration for Plivo yet)
+      res.set("Content-Type", "application/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak>Thank you for calling. Please leave a message after the tone.</Speak>
+  <Record maxLength="120" action="/v1/telephony/plivo/recording" method="POST" />
+</Response>`);
+    } catch (error) {
+      console.error("Plivo voice webhook error:", error);
+      res.set("Content-Type", "application/xml");
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak>An error occurred. Please try again later.</Speak>
+  <Hangup/>
+</Response>`);
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/plivo/sms:
+   *   post:
+   *     summary: Handle incoming Plivo SMS webhook
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Plivo XML response
+   */
+  app.post("/v1/telephony/plivo/sms", async (req, res) => {
+    try {
+      const payload = req.body;
+      const { MessageUUID, From, To, Text } = payload;
+
+      console.log(`[Plivo SMS] Inbound: MessageUUID=${MessageUUID} From=${From} To=${To}`);
+
+      if (!MessageUUID || !From || !To) {
+        return res.status(400).json({ error: "Missing required Plivo SMS parameters" });
+      }
+
+      // Check for duplicate
+      const existingMessage = await prisma.message.findFirst({
+        where: { providerMessageId: MessageUUID },
+      });
+
+      if (existingMessage) {
+        return res.json({ status: "duplicate" });
+      }
+
+      const phoneNumber = await prisma.phoneNumber.findFirst({
+        where: { e164: To },
+        include: { organization: true },
+      });
+
+      if (!phoneNumber) {
+        console.log(`[Plivo SMS] No phone number found for ${To}`);
+        return res.json({ status: "ignored" });
+      }
+
+      const orgId = phoneNumber.orgId;
+
+      // Find or create contact
+      let contact = await prisma.contact.findFirst({
+        where: { orgId, primaryPhone: From },
+      });
+
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            orgId,
+            name: "Unknown Sender",
+            primaryPhone: From,
+          },
+        });
+      }
+
+      // Find or create lead
+      let lead = await prisma.lead.findFirst({
+        where: {
+          orgId,
+          contactId: contact.id,
+          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const isNewLead = !lead;
+
+      if (!lead) {
+        lead = await prisma.lead.create({
+          data: {
+            orgId,
+            contactId: contact.id,
+            source: "sms",
+            status: "new",
+            priority: "medium",
+            lastActivityAt: new Date(),
+          },
+        });
+      }
+
+      // Check for STOP word
+      if (isStopWord(Text || "")) {
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            dnc: true,
+            dncReason: `STOP received via SMS: "${Text}"`,
+            dncAt: new Date(),
+            lastActivityAt: new Date(),
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            orgId,
+            actorType: "system",
+            action: "dnc_set_via_sms",
+            entityType: "lead",
+            entityId: lead.id,
+            details: { provider: "plivo", text: Text },
+          },
+        });
+
+        return res.json({ status: "dnc_set" });
+      }
+
+      // Create interaction
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          channel: "sms",
+          status: "completed",
+          metadata: { provider: "plivo" },
+        },
+      });
+
+      // Create message
+      const message = await prisma.message.create({
+        data: {
+          orgId,
+          leadId: lead.id,
+          interactionId: interaction.id,
+          direction: "inbound",
+          channel: "sms",
+          provider: "plivo",
+          providerMessageId: MessageUUID,
+          from: From,
+          to: To,
+          body: Text || "",
+        },
+      });
+
+      // Update lead
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: lead.status === "new" ? "engaged" : lead.status,
+          lastActivityAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          orgId,
+          actorType: "system",
+          action: "inbound_sms_received",
+          entityType: "message",
+          entityId: message.id,
+          details: { from: From, to: To, provider: "plivo", bodyPreview: Text?.substring(0, 100) },
+        },
+      });
+
+      // Emit realtime event
+      emitRealtimeEvent(orgId, {
+        type: "sms.received",
+        leadId: lead.id,
+        timestamp: new Date().toISOString(),
+        data: {
+          messageId: message.id,
+          from: From,
+          bodyPreview: Text?.substring(0, 50),
+          isNewLead,
+          provider: "plivo",
+        },
+      });
+
+      if (isNewLead) {
+        emitRealtimeEvent(orgId, {
+          type: "lead.created",
+          leadId: lead.id,
+          timestamp: new Date().toISOString(),
+          data: { source: "sms", phone: From, provider: "plivo" },
+        });
+      }
+
+      res.json({ status: "received", messageId: message.id });
+    } catch (error) {
+      console.error("Plivo SMS webhook error:", error);
+      res.status(500).json({ error: "Failed to process SMS" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/plivo/recording:
+   *   post:
+   *     summary: Handle Plivo recording callback
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Success
+   */
+  app.post("/v1/telephony/plivo/recording", async (req, res) => {
+    try {
+      const { CallUUID, RecordingUrl, RecordingDuration } = req.body;
+
+      console.log(`[Plivo Recording] CallUUID=${CallUUID} Duration=${RecordingDuration}`);
+
+      if (CallUUID) {
+        const call = await prisma.call.findFirst({
+          where: { providerCallId: CallUUID },
+        });
+
+        if (call) {
+          await prisma.call.update({
+            where: { id: call.id },
+            data: {
+              recordingUrl: RecordingUrl,
+              durationSeconds: RecordingDuration ? parseInt(RecordingDuration, 10) : undefined,
+            },
+          });
+        }
+      }
+
+      res.json({ status: "ok" });
+    } catch (error) {
+      console.error("Plivo recording callback error:", error);
+      res.status(500).json({ error: "Failed to process recording" });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/plivo/status:
+   *   post:
+   *     summary: Handle Plivo call status webhook
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Success
+   */
+  app.post("/v1/telephony/plivo/status", async (req, res) => {
+    try {
+      const { CallUUID, CallStatus, Duration, HangupCause } = req.body;
+
+      console.log(`[Plivo Status] CallUUID=${CallUUID} Status=${CallStatus} Duration=${Duration}`);
+
+      if (CallUUID) {
+        const call = await prisma.call.findFirst({
+          where: { providerCallId: CallUUID },
+          include: { interaction: true },
+        });
+
+        if (call) {
+          const dbStatus = mapPlivoWebhookToDbStatus(CallStatus);
+          const isTerminal = isTerminalStatus(dbStatus);
+
+          const callUpdate: { endedAt?: Date; durationSeconds?: number } = {};
+          if (isTerminal) {
+            callUpdate.endedAt = new Date();
+            if (Duration) {
+              callUpdate.durationSeconds = parseInt(Duration, 10);
+            }
+          }
+
+          if (Object.keys(callUpdate).length > 0) {
+            await prisma.call.update({
+              where: { id: call.id },
+              data: callUpdate,
+            });
+          }
+
+          if (call.interaction) {
+            await prisma.interaction.update({
+              where: { id: call.interaction.id },
+              data: { status: dbStatus, ...(isTerminal ? { endedAt: new Date() } : {}) },
+            });
+          }
+        }
+      }
+
+      res.json({ status: "ok" });
+    } catch (error) {
+      console.error("Plivo status callback error:", error);
+      res.status(500).json({ error: "Failed to process status" });
     }
   });
 
