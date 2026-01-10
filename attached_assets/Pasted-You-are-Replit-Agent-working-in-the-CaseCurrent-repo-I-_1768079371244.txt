@@ -1,0 +1,58 @@
+You are Replit Agent working in the CaseCurrent repo. I need you to CONFIRM (with evidence) that the “State-Aware Calling” backend changes are real and working.
+
+DO NOT explain concepts. DO run checks and print outputs.
+
+A) CONFIRM ROUTES EXIST (server/routes.ts)
+1) Print the exact route definitions (function blocks) for:
+   - GET  /v1/telephony/status
+   - POST /v1/leads/:id/call/start
+   - GET  /v1/calls/:callId
+   - POST /v1/calls/outcome
+Show the code snippets (not just line numbers) so we can verify response shapes.
+
+B) CONFIRM PRISMA SCHEMA + MIGRATION EXISTS
+1) Show the Call model snippet from apps/api/prisma/schema.prisma including:
+   - callOutcome field (with @map("call_outcome"))
+2) List the most recent prisma migrations directories:
+   - apps/api/prisma/migrations (show newest 5)
+3) Search migrations for call_outcome and print the matching migration SQL lines:
+   - show the exact SQL that adds call_outcome
+4) CONFIRM THE DATABASE ACTUALLY HAS THE COLUMN:
+   - Use Prisma $queryRaw (preferred) to run:
+     SELECT column_name
+     FROM information_schema.columns
+     WHERE table_name='calls' AND column_name='call_outcome';
+   - Print the result.
+
+C) CONFIRM THE SERVER IS USING THE UPDATED PRISMA CLIENT
+1) Run the project typecheck/build (whichever exists) and print results:
+   - try: npm run typecheck
+   - else: npx tsc --noEmit
+If it fails, print the exact error and fix it.
+
+D) LIVE ENDPOINT SMOKE TEST (no external auth headaches)
+1) Add a temporary DEV-only bypass in authMiddleware ONLY if NODE_ENV !== 'production' and only if AUTH_BYPASS=true:
+   - When AUTH_BYPASS=true, allow requests through without auth.
+   - This must not affect production. Guard it carefully.
+2) With AUTH_BYPASS=true, run local curl tests against the running server:
+   - GET  /v1/telephony/status
+   - Create/choose a leadId:
+     - If there is an existing lead in DB, pick one (print the leadId chosen).
+     - Otherwise create a minimal test lead (print its id).
+   - POST /v1/leads/:id/call/start
+   - GET  /v1/calls/:callId (use callId from start response)
+   - POST /v1/calls/outcome with body including callId + leadId
+   - GET  /v1/calls/:callId again to confirm callOutcome set + status updated safely
+
+E) TERMINAL STATUS SAFETY CHECK
+1) Print the exact terminal-status logic used in /v1/calls/outcome.
+2) Confirm it does NOT overwrite terminal provider statuses (failed/busy/no-answer/completed).
+3) If your DB uses different status strings than the canonical list, adjust the mapping so the safety check still works.
+
+DELIVERABLE:
+Reply with a compact “Evidence Report” containing:
+- Code snippets for the 4 routes (show returned JSON fields)
+- Migration name + SQL line that adds call_outcome
+- DB information_schema query result proving call_outcome exists
+- curl outputs for each endpoint showing real JSON
+- Any fixes you applied (diff summary)
