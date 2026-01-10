@@ -1,0 +1,36 @@
+We own and use https://casecurrent.co and it is already connected to our Replit Deployment. counseltech.net and counseltech.legal are still connected but should be treated as legacy.
+
+Goal: Make casecurrent.co the ONLY canonical public host and remove all remaining references to casecurrent.io and staging.casecurrent.io. Also add a server-side redirect so any request coming in on counseltech.* or *.replit.app is 301 redirected to https://casecurrent.co preserving the path and query string.
+
+Constraints:
+- Do not ask the user to run terminal commands.
+- Make changes directly in the repo and print file contents for verification.
+
+Tasks:
+1) Search the entire repo for these strings and replace appropriately:
+   - casecurrent.io -> casecurrent.co
+   - staging.casecurrent.io -> staging.casecurrent.co
+   - Any hardcoded references to counseltech.legal / counseltech.net that are being used as “public base URL” should be replaced with casecurrent.co unless they are intentionally historical comments.
+
+2) Update mobile EAS settings:
+   - In eas.json set EXPO_PUBLIC_API_BASE_URL to "https://casecurrent.co" for development, preview, and production (since staging is not confirmed live).
+   - Ensure apps/mobile/src/services/api.ts uses EXPO_PUBLIC_API_BASE_URL correctly and does not accidentally double-add /v1. Add a small guard that throws a clear error if the base URL contains "casecurrent.io".
+
+3) Backend canonical host:
+   - Identify the main HTTP server entry (Express/Next/etc).
+   - Add middleware early that checks req.hostname (or Host header). If it is NOT "casecurrent.co", then 301 redirect to "https://casecurrent.co" + req.originalUrl.
+   - Do NOT redirect localhost/dev.
+   - Ensure this works for counseltech.legal, counseltech.net, and any *.replit.app domain.
+
+4) Update any CORS or allowed-origins configuration:
+   - Ensure casecurrent.co is allowed.
+   - Do not accidentally block the mobile app; if you use origin allowlists, include https://casecurrent.co.
+   - If there is a cookie domain configured, ensure it does not pin to counseltech.*.
+
+5) Output:
+   - List of files changed.
+   - Full contents of: eas.json, apps/mobile/src/services/api.ts
+   - The exact code snippet + file path where you added the redirect middleware.
+   - A short note of any remaining counseltech.* references and why they were not changed.
+
+Do all of the above now.
