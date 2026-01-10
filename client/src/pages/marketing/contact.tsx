@@ -88,7 +88,7 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <h3 className="font-medium">Email</h3>
-                      <p className="text-muted-foreground">hello@casecurrent.co</p>
+                      <p className="text-muted-foreground">info@casecurrent.co</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-4">
