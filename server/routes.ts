@@ -34,6 +34,7 @@ import {
   outcomeRequiresFollowup,
   type CanonicalCallStatus 
 } from "./telephony/status";
+import { generateStreamToken } from "./telephony/twilio/streamHandler";
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -4001,41 +4002,36 @@ export async function registerRoutes(
 
       res.set("Content-Type", "text/xml");
 
-      // Check if OpenAI Realtime is configured - if so, bridge to SIP
+      // Check if OpenAI Realtime is configured - if so, use Media Streams
       const openaiConfigured = isOpenAIConfigured();
       console.log(`[Twilio Voice] [${requestId}] isOpenAIConfigured: ${openaiConfigured}`);
       
       if (openaiConfigured) {
         try {
-          const projectId = getOpenAIProjectId();
-          const projectIdMasked = projectId ? `${projectId.slice(0, 8)}...${projectId.slice(-4)}` : "MISSING";
+          // Build stream URL with HMAC token for authentication
+          const ts = Math.floor(Date.now() / 1000);
+          const streamSecret = process.env.STREAM_TOKEN_SECRET || "";
+          const streamToken = streamSecret ? generateStreamToken(streamSecret, CallSid, ts) : "no-auth";
           
-          // Bridge call to OpenAI Realtime via SIP
-          // Format: sip:$PROJECT_ID@sip.api.openai.com;transport=tls;secure=true
-          const sipUri = `sip:${projectId}@sip.api.openai.com;transport=tls;secure=true`;
-          const sipUriMasked = `sip:${projectIdMasked}@sip.api.openai.com;transport=tls;secure=true`;
-          const dialTimeout = 30;
+          // Use request host for stream URL (handles both dev and production)
+          const wsProtocol = "wss";
+          const host = process.env.PUBLIC_HOST || "counseltech.legal";
+          const streamUrl = `${wsProtocol}://${host}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
+          const streamUrlMasked = `${wsProtocol}://${host}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
           
-          console.log(`[Twilio Voice] [${requestId}] OPENAI_PROJECT_ID: ${projectIdMasked}`);
-          console.log(`[Twilio Voice] [${requestId}] SIP URI: ${sipUriMasked}`);
-          console.log(`[Twilio Voice] [${requestId}] Dial timeout: ${dialTimeout}s`);
-          console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Dial><Sip> and action callback`);
-          
-          // Include action callback to capture dial result
-          // Add custom SIP headers via URI params so OpenAI webhook can link to our Call record
-          // Twilio passes these as X-* SIP headers
-          const sipUriWithHeaders = `${sipUri}?X-Twilio-CallSid=${encodeURIComponent(CallSid)}&X-Twilio-FromE164=${encodeURIComponent(From)}&X-Twilio-ToE164=${encodeURIComponent(To)}`;
+          console.log(`[Twilio Voice] [${requestId}] Stream URL: ${streamUrlMasked}`);
+          console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Connect><Stream>`);
           console.log(`[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`);
-          console.log(`[Twilio Voice] [${requestId}] SIP URI includes X-Twilio-CallSid header param`);
           
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. Connecting you to our assistant now.</Say>
-  <Dial timeout="${dialTimeout}" callerId="${To}" action="/v1/telephony/twilio/dial-result" method="POST">
-    <Sip statusCallback="/v1/telephony/twilio/sip-status" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${sipUriWithHeaders}</Sip>
-  </Dial>
-  <Say>We're sorry, the connection could not be completed. Please try again later.</Say>
-  <Hangup/>
+  <Say voice="alice">Thank you for calling. Please hold while we connect you to our assistant.</Say>
+  <Connect>
+    <Stream url="${streamUrl}">
+      <Parameter name="callSid" value="${CallSid}"/>
+    </Stream>
+  </Connect>
+  <Say voice="alice">The call has ended. Thank you for calling.</Say>
 </Response>`;
           
           recordEvent({
@@ -4044,17 +4040,17 @@ export async function registerRoutes(
             callSid: CallSid,
             orgId,
             e164: To,
-            summary: `TwiML returned with SIP dial to OpenAI`,
-            payload: { sipUri: sipUriMasked, dialTimeout, twiml },
+            summary: `TwiML returned with <Connect><Stream> to OpenAI Realtime`,
+            payload: { streamUrl: streamUrlMasked, twiml },
           });
           
           res.send(twiml);
-        } catch (sipError) {
-          console.error(`[Twilio Voice] [${requestId}] SIP bridge error:`, sipError);
-          // Fallback to voicemail if SIP fails
+        } catch (streamError) {
+          console.error(`[Twilio Voice] [${requestId}] Stream setup error:`, streamError);
+          // Fallback to voicemail if stream setup fails
           res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. Our assistant is currently unavailable. Please leave a message after the beep.</Say>
+  <Say voice="alice">Thank you for calling. Our assistant is currently unavailable. Please leave a message after the beep.</Say>
   <Pause length="1"/>
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
@@ -4064,7 +4060,7 @@ export async function registerRoutes(
         console.log(`[Twilio Voice] [${requestId}] OpenAI not configured, using voicemail`);
         res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
+  <Say voice="alice">Thank you for calling. Please describe your legal matter after the beep and someone will get back to you.</Say>
   <Pause length="1"/>
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
@@ -4098,6 +4094,25 @@ export async function registerRoutes(
       now: new Date().toISOString(),
       envHasTwilioAuthToken: !!process.env.TWILIO_AUTH_TOKEN,
       envHasTwilioAccountSid: !!process.env.TWILIO_ACCOUNT_SID,
+    });
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/stream/diag:
+   *   get:
+   *     summary: Diagnostic endpoint to verify Twilio stream relay is reachable
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Diagnostic status
+   */
+  app.get("/v1/telephony/twilio/stream/diag", (req, res) => {
+    res.json({
+      ok: true,
+      now: new Date().toISOString(),
+      envHasOpenAIKey: !!process.env.OPENAI_API_KEY,
+      envHasStreamTokenSecret: !!process.env.STREAM_TOKEN_SECRET,
     });
   });
 

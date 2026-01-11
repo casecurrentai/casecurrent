@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { WebSocketServer } from "ws";
+import { handleTwilioMediaStream } from "./telephony/twilio/streamHandler";
 
 // GATE 4: Global crash handlers (anti-crash)
 process.on("unhandledRejection", (reason, promise) => {
@@ -173,6 +175,29 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+
+  // Attach WebSocket server for Twilio Media Streams
+  const wss = new WebSocketServer({ noServer: true });
+  
+  httpServer.on("upgrade", (request, socket, head) => {
+    const pathname = request.url?.split("?")[0] || "";
+    
+    if (pathname.startsWith("/v1/telephony/twilio/stream")) {
+      console.log(`[WebSocket] Upgrading connection for: ${request.url}`);
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } else {
+      console.log(`[WebSocket] Rejecting upgrade for non-stream path: ${pathname}`);
+      socket.destroy();
+    }
+  });
+  
+  wss.on("connection", (ws, request) => {
+    console.log(`[WebSocket] New Twilio stream connection`);
+    handleTwilioMediaStream(ws, request);
+  });
+
   httpServer.listen(
     {
       port,

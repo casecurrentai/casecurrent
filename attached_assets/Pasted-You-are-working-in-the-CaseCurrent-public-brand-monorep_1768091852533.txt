@@ -1,0 +1,130 @@
+You are working in the CaseCurrent (public brand) monorepo (internal identifiers may still say CounselTech). Goal: enable a real-time, full-duplex Twilio <Connect><Stream> voice path that relays bidirectional PCMU (G.711 u-law, 8kHz) audio between Twilio Media Streams and OpenAI Realtime via our server.
+
+Context:
+- Existing Twilio voice webhook is: POST https://counseltech.legal/v1/telephony/twilio/voice
+- Express.urlencoded is already configured.
+- We already adjusted the Twilio voice route once to return TwiML on errors and added GET /v1/telephony/twilio/voice/diag.
+
+Deliverables (minimal, correct, instrumented):
+A) Update the Twilio voice webhook to return TwiML that starts a bidirectional stream:
+   - <Connect><Stream url="wss://counseltech.legal/v1/telephony/twilio/stream?..."> with <Parameter> callSid
+   - Keep it simple for MVP: always connect/stream.
+   - Include an optional query token to protect the WS endpoint (Twilio cannot send custom headers). Use a shared secret HMAC.
+
+B) Create a dedicated Twilio stream relay handler file:
+   - server/telephony/twilio/streamHandler.ts
+   - Accept Twilio WS connection, parse Twilio events: connected/start/media/mark/stop
+   - Open a WS to OpenAI Realtime (server-to-server) at:
+       wss://api.openai.com/v1/realtime?model=gpt-realtime
+     with header Authorization: Bearer ${OPENAI_API_KEY}
+   - Configure session on OpenAI ws open:
+       session.update with audio.input.format {type:"audio/pcmu", rate:8000}
+       audio.output.format {type:"audio/pcmu"}
+       output_modalities ["audio"] (and optionally "text")
+       instructions: legal intake assistant MVP
+       turn_detection enabled (server/semantic VAD is fine)
+   - Relay loop:
+       Twilio "media" payload => OpenAI input_audio_buffer.append {audio: base64}
+       OpenAI audio deltas => Twilio "media" {payload: base64}
+     IMPORTANT: handle BOTH possible server event names:
+       - "response.output_audio.delta" (preferred per docs)
+       - "response.audio.delta" (seen in some examples)
+   - Barge-in:
+       On OpenAI event input_audio_buffer.speech_started:
+         1) send Twilio {"event":"clear","streamSid":...}
+         2) send OpenAI {"type":"response.cancel"} (best-effort)
+   - Race condition protection:
+       Buffer Twilio media frames until OpenAI ws is OPEN; then flush.
+
+C) Attach a WebSocketServer to our existing HTTP server:
+   - Modify server/index.ts (or wherever the Express app is started) to create a single HTTP server instance and attach ws.
+   - Only handle upgrades for path starting with /v1/telephony/twilio/stream
+   - Reject other WS paths (or ignore).
+
+D) Add diagnostics:
+   1) GET /v1/telephony/twilio/stream/diag returns:
+      { ok:true, now, envHasOpenAIKey, envHasStreamTokenSecret }
+   2) Log instrumentation:
+      - On Twilio start: log streamSid and mediaFormat (encoding + sampleRate if present)
+      - On OpenAI session.updated: log confirmed audio formats (if returned)
+      - Log counts of frames relayed (every N frames) to prove activity.
+
+E) Security:
+   - Add env STREAM_TOKEN_SECRET.
+   - Generate token in voice webhook:
+       token = HMAC_SHA256(secret, `${CallSid}.${timestamp}`)
+     Add ts + token as query params to the Stream URL.
+   - In WS handler, verify:
+       abs(now - ts) <= 120 seconds AND token matches expected.
+     If invalid: close socket with 1008 Policy Violation.
+   - Keep Twilio HTTP signature validation OPTIONAL for MVP because reverse proxies can complicate it; gate behind env TWILIO_VALIDATE_SIGNATURES="true". If enabled, use twilio.validateRequest(authToken, signature, fullUrl, params).
+
+F) Dependencies:
+   - Ensure "ws" is installed.
+   - Ensure "twilio" is installed (for TwiML builder + optional validateRequest).
+   - Use built-in crypto for HMAC.
+
+Implementation details (code you should write):
+
+1) server/telephony/twilio/streamHandler.ts
+- Export function handleTwilioMediaStream(ws, req)
+- Parse req.url query params (ts, token, callSid optional)
+- Maintain:
+    let streamSid: string | null
+    let openAiWs: WebSocket | null
+    let pendingTwilioAudio: string[]  // base64 frames
+- Twilio inbound events:
+    - "start": store streamSid; log start.mediaFormat if present
+    - "media": if openAiWs OPEN => input_audio_buffer.append; else queue
+    - "stop"/"close": close OpenAI ws
+- OpenAI outbound events:
+    - on open: send session.update with audio pcmu config + instructions
+    - on message:
+        if type in ["response.output_audio.delta","response.audio.delta"] => send Twilio media payload
+        if type == "input_audio_buffer.speech_started" => Twilio clear + OpenAI response.cancel
+
+2) server/index.ts (or app entry)
+- Replace app.listen(...) with:
+    const httpServer = http.createServer(app)
+    httpServer.listen(...)
+- Attach ws:
+    const wss = new WebSocketServer({ noServer: true })
+    httpServer.on("upgrade", (req, socket, head) => {
+      if (!req.url?.startsWith("/v1/telephony/twilio/stream")) { socket.destroy(); return; }
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req))
+    })
+    wss.on("connection", (ws, req) => handleTwilioMediaStream(ws, req))
+
+3) server/routes.ts
+- In POST /v1/telephony/twilio/voice:
+    - Build TwiML:
+        const vr = new twilio.twiml.VoiceResponse()
+        const connect = vr.connect()
+        const ts = Math.floor(Date.now()/1000)
+        const token = hmac(secret, `${req.body.CallSid}.${ts}`)
+        const streamUrl = `wss://counseltech.legal/v1/telephony/twilio/stream?ts=${ts}&token=${token}`
+        const stream = connect.stream({ url: streamUrl })
+        stream.parameter({ name:"callSid", value: req.body.CallSid })
+      res.type("text/xml").send(vr.toString())
+- Add GET /v1/telephony/twilio/stream/diag route.
+
+Testing checklist (produce as comments + quick curl):
+1) curl https://counseltech.legal/v1/telephony/twilio/voice/diag
+2) curl https://counseltech.legal/v1/telephony/twilio/stream/diag
+3) Simulate Twilio voice webhook (urlencoded) to confirm it returns TwiML:
+   curl -X POST https://counseltech.legal/v1/telephony/twilio/voice \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "CallSid=CA_TEST&From=%2B15551234567&To=%2B18443214257&Direction=inbound&CallStatus=ringing"
+   Confirm response contains <Connect><Stream ...>
+
+Final output required from you after implementing:
+- List files changed/added
+- Provide exact env vars to set in Replit Secrets:
+   OPENAI_API_KEY
+   STREAM_TOKEN_SECRET
+   TWILIO_AUTH_TOKEN (optional, if enabling signature validation)
+   TWILIO_VALIDATE_SIGNATURES (optional)
+- Provide what to paste into Twilio Console for the phone number Voice webhook:
+   POST https://counseltech.legal/v1/telephony/twilio/voice
+
+Proceed now. Keep changes minimal, focused, and heavily logged.
