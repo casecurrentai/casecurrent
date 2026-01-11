@@ -1,0 +1,69 @@
+You are Replit Agent working in the CaseCurrent repo. From now on, you must perform as many tasks as you possibly can without asking me to click around, and you must prove completion of each task with concrete evidence (command outputs, file diffs, URLs, screenshots if available, or copied log excerpts).
+
+Non-negotiable rules:
+- Do not ask me to do routine steps unless it is impossible for you (e.g., a UI click that only the owner can do).
+- For every action you take, include “PROOF” immediately after it (exact command + output).
+- If you cannot do something, state exactly why, and provide the smallest possible set of steps I must do, with exact click paths and exact values.
+
+Objective: Get us from “P0 changes applied locally” → “Committed + pushed to GitHub” → “Backend deployed with latest code” → “iOS internal build triggered and running”.
+
+TASKS (do these in order):
+
+1) Confirm repo + branch + clean working tree
+- Run:
+  - git remote -v
+  - git branch --show-current
+  - git status
+  - git log -5 --oneline
+PROOF: paste outputs.
+
+2) Confirm the P0 changes are present and ONLY those changes
+- Show:
+  - git diff
+  - (and if needed) git diff --stat
+PROOF: paste outputs and confirm the fallback host is casecurrent.co and apps/mobile/eas.json uses "env" not "environment".
+
+3) Commit the changes (if not already committed)
+- If git status shows changes:
+  - git add server/routes.ts apps/mobile/eas.json
+  - git commit -m "P0: canonical host fallback + fix mobile eas.json env"
+PROOF: paste commit output + git log -1 --oneline
+
+4) Push to GitHub
+- Run:
+  - git push origin main
+PROOF: paste push output and provide the latest commit hash.
+
+5) Deploy backend (do as much as you can from Replit)
+- If you can trigger a deployment/publish from inside Replit Agent, do it.
+- If you cannot (UI-only), say so explicitly and provide the exact click path (left sidebar → Deployments → …) and what I should see.
+PROOF:
+- Regardless, run these against production and paste output:
+  - curl -s https://casecurrent.co/v1/telephony/twilio/voice/diag
+  - curl -s https://casecurrent.co/v1/telephony/twilio/stream/diag
+- Also run a live TwiML check:
+  - curl -s -X POST https://casecurrent.co/v1/telephony/twilio/voice \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "CallSid=TEST&From=%2B15551234567&To=%2B18443214257&Direction=inbound&CallStatus=ringing" | head
+
+6) Validate iOS build pipeline config in-repo
+- Confirm .github/workflows/ios-build.yml exists and is configured correctly:
+  - Print the workflow file (or key sections: triggers, working-directory, EXPO_TOKEN usage, eas build command).
+PROOF: paste relevant excerpt.
+
+7) Trigger iOS build if you can
+- If you have any capability to trigger GitHub Actions from within Replit, do it.
+- If you cannot, provide a minimal “I must click this” instruction set:
+  - exact page path and what button to press (“Actions → iOS Build → Run workflow → Branch main → Run”)
+PROOF:
+- Provide the exact workflow name and the expected run identifier location.
+- If you can’t fetch the run, explain why.
+
+8) Sanity check for production hardening (do not implement unless it’s trivial)
+- Identify where TWILIO_AUTH_TOKEN and TWILIO_ACCOUNT_SID would be read if we enable signature validation.
+- Provide the exact env var names to add in Replit Secrets and where they would be used.
+PROOF: file paths + line numbers.
+
+Deliverable format:
+- A numbered checklist of what you completed with PROOF blocks under each item.
+- A short “What Mike must do manually” section ONLY if unavoidable, with exact click paths.
