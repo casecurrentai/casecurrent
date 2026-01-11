@@ -1,33 +1,33 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 7.0.0"
   },
   "build": {
     "development": {
-      "environment": "development",
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
+      },
       "ios": {
-        "resourceClass": "medium"
+        "simulator": true
       }
     },
     "preview": {
-      "environment": "preview",
       "distribution": "internal",
-      "android": {
-        "buildType": "apk"
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
       },
       "ios": {
         "simulator": true
       }
     },
     "production": {
-      "environment": "production",
+      "distribution": "store",
       "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
       },
-      "ios": {
-        "resourceClass": "medium"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

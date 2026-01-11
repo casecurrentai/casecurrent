@@ -4023,7 +4023,7 @@ export async function registerRoutes(
           if (!host) {
             console.warn(`[Twilio Voice] [${requestId}] WARNING: PUBLIC_HOST not set. Using fallback. Set PUBLIC_HOST for production!`);
           }
-          const effectiveHost = host || "counseltech.legal";
+          const effectiveHost = host || "casecurrent.co";
           const streamUrl = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
           const streamUrlMasked = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
           
