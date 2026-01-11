@@ -35,6 +35,7 @@ import {
   type CanonicalCallStatus 
 } from "./telephony/status";
 import { generateStreamToken } from "./telephony/twilio/streamHandler";
+import { DATABASE_URL } from "./env";
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -3817,9 +3818,8 @@ export async function registerRoutes(
 
       // === STRUCTURED DIAGNOSTIC BLOCK ===
       // Get DB fingerprint
-      const dbUrl = process.env.DATABASE_URL || "";
       let dbFingerprint = "unknown";
-      const urlMatch = dbUrl.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+      const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
       if (urlMatch) {
         const host = urlMatch[1];
         const dbName = urlMatch[3];

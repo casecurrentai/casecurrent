@@ -1,0 +1,57 @@
+TASK: Remove DATABASE_URL placeholder fallback + restore fail-fast env validation
+
+Context / Problem
+We currently have a fallback placeholder URL like:
+  postgresql://placeholder:placeholder@localhost:5432/placeholder
+when process.env.DATABASE_URL is missing. This silently masks misconfiguration and turns a clear startup/config error into confusing downstream Prisma/migration/runtime failures. The prior non-null assertion validation behavior was removed.
+
+Goal
+1) App must FAIL FAST with a clear error if DATABASE_URL is required and missing.
+2) No fake/default DATABASE_URL values anywhere.
+3) Centralize env validation so all code uses the same source of truth.
+
+Steps (do ALL)
+A) Find where DATABASE_URL is read and where the placeholder fallback was introduced.
+   - Rip out the placeholder string and any `|| "postgresql://placeholder..."` logic.
+   - Remove any remaining direct usage of process.env.DATABASE_URL throughout the app where feasible.
+
+B) Create a single env module, e.g. `server/env.ts` (or `src/env.ts` depending on repo structure):
+
+   - Implement a helper:
+     - requireEnv(name): reads process.env[name]
+     - if missing/blank, throws Error: `Missing required environment variable: ${name}`
+   - Export `DATABASE_URL = requireEnv("DATABASE_URL")`
+   - If we already have zod in the project, it’s OK to use zod instead, but do not add new deps unless necessary.
+
+C) Ensure env validation runs early.
+   - Import the env module from the earliest server entrypoint (e.g., `server/index.ts`, `server/app.ts`, `server/start.ts`, etc.) so startup fails immediately if DATABASE_URL is missing.
+   - Make sure Prisma client initialization uses the validated env (or relies on Prisma’s standard env loading but with our explicit validation first).
+
+D) Add a preflight check for CI / scripts.
+   - Add a script (or a small node/tsx script) that exits non-zero with a friendly message if DATABASE_URL is missing.
+   - Wire it into the places that run migrations/seeding/tests/build in CI (where appropriate) so we fail before prisma migrate/seed runs.
+
+E) Add `.env.example` update
+   - Ensure `.env.example` includes DATABASE_URL with a commented example format.
+   - Do NOT commit real secrets.
+
+Acceptance Criteria
+- If DATABASE_URL is unset or empty:
+  - Running the server exits immediately with: “Missing required environment variable: DATABASE_URL”
+  - Running migrations/seeding fails immediately with the same clear message.
+- No code path uses a placeholder DB URL.
+- No “silent success” when DATABASE_URL is missing.
+
+Deliverables (must provide proof)
+1) List of files changed with a short summary for each.
+2) The exact code for the new env module.
+3) The diff/snippet showing removal of placeholder fallback.
+4) A repro log:
+   - Unset DATABASE_URL and run server/migration command → show fail-fast message
+   - Set DATABASE_URL (to the real secret in Replit) and run server/migration command → show success (at least gets past env validation)
+
+Do not
+- Do not introduce any placeholder/default DATABASE_URL.
+- Do not degrade developer experience; instead improve error messages + .env.example + preflight.
+
+Start by locating the placeholder fallback string in the repo and report where it appears before editing.

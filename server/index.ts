@@ -5,6 +5,9 @@ import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { handleTwilioMediaStream } from "./telephony/twilio/streamHandler";
 
+// Fail-fast env validation - must be imported early
+import { DATABASE_URL } from "./env";
+
 // GATE 4: Global crash handlers (anti-crash)
 process.on("unhandledRejection", (reason, promise) => {
   console.error(`[CRASH_GUARD] Unhandled Rejection at:`, promise, `reason:`, reason);
@@ -103,24 +106,21 @@ app.use((req, res, next) => {
 (async () => {
   // TASK B & C - Database fingerprint and phone number check on startup
   try {
-    const dbUrl = process.env.DATABASE_URL || "";
-    if (dbUrl) {
-      // Parse DATABASE_URL for fingerprint (don't log credentials)
-      const urlMatch = dbUrl.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
-      if (urlMatch) {
-        const host = urlMatch[1];
-        const dbName = urlMatch[3];
-        const dbFingerprint = dbName.length > 6 ? dbName.slice(-6) : dbName;
-        console.log(`[DB] Fingerprint - host=${host} db=...${dbFingerprint}`);
-      } else {
-        console.log(`[DB] Fingerprint - Could not parse DATABASE_URL`);
-      }
+    // Parse DATABASE_URL for fingerprint (don't log credentials)
+    const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+    if (urlMatch) {
+      const host = urlMatch[1];
+      const dbName = urlMatch[3];
+      const dbFingerprint = dbName.length > 6 ? dbName.slice(-6) : dbName;
+      console.log(`[DB] Fingerprint - host=${host} db=...${dbFingerprint}`);
+    } else {
+      console.log(`[DB] Fingerprint - Could not parse DATABASE_URL`);
     }
     
     // TASK C - Check for phone number on startup
     const { PrismaClient } = await import("../apps/api/src/generated/prisma");
     const { PrismaPg } = await import("@prisma/adapter-pg");
-    const startupPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: dbUrl }) });
+    const startupPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: DATABASE_URL }) });
     
     const phoneCheck = await startupPrisma.phoneNumber.findFirst({
       where: { e164: "+18443214257" },
