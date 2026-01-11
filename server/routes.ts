@@ -3798,6 +3798,10 @@ export async function registerRoutes(
   app.post("/v1/telephony/twilio/voice", async (req, res) => {
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     
+    // IMMEDIATE TOP-OF-HANDLER LOGGING (before any branching)
+    console.log("Incoming call received from: " + (req.body?.From ?? "UNKNOWN"));
+    console.log("CallSid: " + (req.body?.CallSid ?? "UNKNOWN"));
+    
     try {
       const payload = req.body;
       const { CallSid, From, To, CallStatus, Direction, CallerName } = payload;
@@ -4013,11 +4017,15 @@ export async function registerRoutes(
           const streamSecret = process.env.STREAM_TOKEN_SECRET || "";
           const streamToken = streamSecret ? generateStreamToken(streamSecret, CallSid, ts) : "no-auth";
           
-          // Use request host for stream URL (handles both dev and production)
+          // Use PUBLIC_HOST env var for stream URL (required for production)
           const wsProtocol = "wss";
-          const host = process.env.PUBLIC_HOST || "counseltech.legal";
-          const streamUrl = `${wsProtocol}://${host}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
-          const streamUrlMasked = `${wsProtocol}://${host}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
+          const host = process.env.PUBLIC_HOST;
+          if (!host) {
+            console.warn(`[Twilio Voice] [${requestId}] WARNING: PUBLIC_HOST not set. Using fallback. Set PUBLIC_HOST for production!`);
+          }
+          const effectiveHost = host || "counseltech.legal";
+          const streamUrl = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
+          const streamUrlMasked = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
           
           console.log(`[Twilio Voice] [${requestId}] Stream URL: ${streamUrlMasked}`);
           console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Connect><Stream>`);

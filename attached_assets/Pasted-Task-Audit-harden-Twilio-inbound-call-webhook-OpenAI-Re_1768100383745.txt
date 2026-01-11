@@ -1,0 +1,79 @@
+Task: Audit + harden Twilio inbound call webhook + OpenAI Realtime <Connect><Stream> TwiML in our codebase for production readiness.
+
+Context:
+We use Twilio Voice webhook -> our server returns TwiML with <Connect><Stream> to our WebSocket server for OpenAI Realtime audio streaming.
+
+Your job:
+1) Locate the inbound-call webhook route and the TwiML generation logic.
+   - Primary target: server/routes/telephony.ts
+   - If not there, search for keywords: "twiml", "<Response>", "<Connect>", "<Stream", "VoiceResponse", "/incoming", "call", "twilio".
+   - Identify the exact HTTP path Twilio will hit (e.g., /incoming-call, /twilio/voice, /v1/telephony/incoming, etc.).
+
+2) Verify Webhook Method (MUST be POST)
+   - Confirm the handler is registered with router.post(...) (not get/any).
+   - Twilio sends Voice webhooks as POST by default.
+
+3) Verify request body parsing (common production footgun)
+   - Twilio posts application/x-www-form-urlencoded by default.
+   - Ensure Express is configured to parse urlencoded bodies BEFORE routes:
+     app.use(express.urlencoded({ extended: false }));
+   - If body parsing is currently JSON-only, fix it (either app-level or route-level).
+   - Confirm req.body.From and req.body.CallSid are available.
+
+4) Verify TwiML Response is valid XML and uses <Connect><Stream>
+   - The response MUST be valid TwiML XML and include:
+     <Response>
+       <Connect>
+         <Stream url="wss://YOUR_PUBLIC_HOST/your-ws-path" />
+       </Connect>
+     </Response>
+   - Ensure the Stream URL points to our WebSocket server endpoint that handles Twilio Media Streams.
+   - Ensure it’s publicly reachable and uses wss:// in production.
+   - Ensure Content-Type is set to "text/xml" and status 200.
+   - If we build TwiML with the Twilio helper (VoiceResponse), that’s fine, but still set text/xml.
+
+5) Add top-of-handler logging (requested)
+   - Add this at the VERY TOP of the inbound call handler, before any branching:
+     console.log("Incoming call received from: " + (req.body?.From ?? "UNKNOWN"));
+   - Also log CallSid if available:
+     console.log("CallSid: " + (req.body?.CallSid ?? "UNKNOWN"));
+
+6) Prevent silent hangups (try/catch + safe fallback TwiML)
+   - Wrap the main logic in try/catch.
+   - On error:
+     - console.error the error (include stack if possible)
+     - return a minimal TwiML so the caller hears something instead of a silent failure:
+       <Response><Say>Connecting failed.</Say></Response>
+   - Still respond 200 + text/xml.
+
+7) Sanity checks on Stream URL construction (production readiness)
+   - Do NOT derive hostname from req.headers.host unless you’re 100% sure it’s correct behind proxies.
+   - Prefer an env var like PUBLIC_BASE_URL or TWILIO_STREAM_BASE_URL.
+   - If missing, implement a clear fallback and log a warning that it must be set for production.
+   - Include CallSid as a query param on the Stream URL if useful for correlating logs:
+     wss://.../ws/twilio?callSid=...&from=...
+
+8) Add a minimal automated smoke test (fast + high value)
+   - Add/extend a test that POSTs form-encoded data to the webhook route with From and CallSid.
+   - Assert:
+     - 200 status
+     - Content-Type contains text/xml
+     - body includes "<Response>" and "<Stream"
+   - Use supertest if available; if not, add a simple node script test.
+
+Deliverables:
+- The exact file(s) modified.
+- A short diff or pasted snippets showing:
+  - router.post(...) exists
+  - urlencoded body parsing is present
+  - top-of-handler console.log for From
+  - try/catch + fallback TwiML
+  - TwiML uses <Connect><Stream> and correct ws URL
+- Confirm the final TwiML returned by the handler (paste the generated XML).
+- Commit message: "Harden Twilio inbound call webhook + TwiML streaming"
+
+Acceptance Criteria:
+- POST webhook works with Twilio default form-encoding.
+- On any internal error, caller hears “Connecting failed.”
+- Console logs show caller From + CallSid immediately on receipt.
+- Response is valid TwiML XML and streams to correct WebSocket endpoint.
