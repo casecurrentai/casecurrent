@@ -3834,7 +3834,12 @@ export async function registerRoutes(
 
       if (!CallSid || !From || !To) {
         console.log(`[Twilio Voice] [${requestId}] ERROR: Missing required params`);
-        return res.status(400).json({ error: "Missing required Twilio parameters" });
+        res.set("Content-Type", "text/xml");
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Missing required call information.</Say>
+  <Hangup/>
+</Response>`);
       }
 
       // IDEMPOTENCY: Check if call already exists by twilioCallSid
@@ -4075,6 +4080,25 @@ export async function registerRoutes(
   <Hangup/>
 </Response>`);
     }
+  });
+
+  /**
+   * @openapi
+   * /v1/telephony/twilio/voice/diag:
+   *   get:
+   *     summary: Diagnostic endpoint to verify Twilio voice webhook is reachable
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Diagnostic status
+   */
+  app.get("/v1/telephony/twilio/voice/diag", (req, res) => {
+    res.json({
+      ok: true,
+      now: new Date().toISOString(),
+      envHasTwilioAuthToken: !!process.env.TWILIO_AUTH_TOKEN,
+      envHasTwilioAccountSid: !!process.env.TWILIO_ACCOUNT_SID,
+    });
   });
 
   /**
