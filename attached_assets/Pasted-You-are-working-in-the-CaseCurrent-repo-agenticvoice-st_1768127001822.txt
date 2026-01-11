@@ -1,0 +1,43 @@
+You are working in the CaseCurrent repo (agenticvoice-stack/casecurrent-v2). Our GitHub Action “Build iOS App” is failing with:
+“An Expo user account is required to proceed… set the EXPO_TOKEN”
+The run context shows: “iOS Build on: pull_request”.
+
+Root cause: On pull_request workflows, GitHub frequently does NOT provide secrets (EXPO_TOKEN), especially for fork PRs or restricted org settings. So EAS can’t authenticate.
+
+Goal: Update GitHub Actions so EAS builds run ONLY in contexts where secrets are available (workflow_dispatch and/or push), and ensure EXPO_TOKEN is actually passed to Expo/EAS.
+
+Tasks:
+1) Find the workflow file that runs `eas build --platform ios --profile preview ...` under `.github/workflows/` (likely named something like ios-build.yml).
+2) Change triggers:
+   - Remove `pull_request` trigger (or disable it for the EAS build job).
+   - Add `workflow_dispatch:` (manual run button).
+   - Add `push:` for main (or a dedicated branch like `build/*` if safer). Default to:
+     on:
+       push:
+         branches: [ "main" ]
+       workflow_dispatch:
+
+3) Ensure EAS auth is explicit:
+   - Add `expo/expo-github-action@v8` with:
+       eas-version: latest
+       token: ${{ secrets.EXPO_TOKEN }}
+   - OR (if not using that action) ensure the build step sets:
+       env:
+         EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+   Use one approach, not both.
+
+4) Monorepo correctness:
+   - Detect where the Expo app lives (likely `apps/mobile`).
+   - Set `working-directory: apps/mobile` for the `eas build` step (and any `eas` commands) so it finds app config + eas.json.
+
+5) Add a “preflight” debug step to make failures obvious WITHOUT leaking secrets:
+   - Print whether EXPO_TOKEN is set (true/false) without printing its value, e.g.:
+     run: |
+       if [ -n "${{ secrets.EXPO_TOKEN }}" ]; then echo "EXPO_TOKEN is set"; else echo "EXPO_TOKEN is MISSING"; exit 1; fi
+
+Deliverables:
+- The exact workflow file path(s) changed.
+- The final YAML content for the workflow.
+- A short note telling Mike: “Re-run via Actions → Run workflow (manual) or push to main; PR runs won’t build because secrets are withheld.”
+
+Do NOT ever print the token value in logs.

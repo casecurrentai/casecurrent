@@ -29,6 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Preflight - Check EXPO_TOKEN
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "✅ EXPO_TOKEN is set"
+          else
+            echo "❌ EXPO_TOKEN is MISSING"
+            echo "This secret must be configured in repository Settings → Secrets → Actions"
+            exit 1
+          fi
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -38,7 +50,8 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build iOS app
         env:
