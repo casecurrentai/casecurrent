@@ -24,7 +24,6 @@
     "production": {
       "environment": "production",
       "env": {
-        "NODE_ENV": "production"
       },
       "ios": {
         "resourceClass": "medium"
