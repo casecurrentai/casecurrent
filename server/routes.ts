@@ -4027,6 +4027,11 @@ export async function registerRoutes(
           const streamUrl = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
           const streamUrlMasked = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
           
+          // XML-escape the URL for safe embedding in TwiML attributes (& -> &amp;)
+          const xmlEscapeAttr = (str: string) => str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const streamUrlXmlSafe = xmlEscapeAttr(streamUrl);
+          const callSidXmlSafe = xmlEscapeAttr(CallSid);
+          
           console.log(`[Twilio Voice] [${requestId}] Stream URL: ${streamUrlMasked}`);
           console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Connect><Stream>`);
           console.log(`[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`);
@@ -4035,8 +4040,8 @@ export async function registerRoutes(
 <Response>
   <Say voice="alice">Thank you for calling. Please hold while we connect you to our assistant.</Say>
   <Connect>
-    <Stream url="${streamUrl}">
-      <Parameter name="callSid" value="${CallSid}"/>
+    <Stream url="${streamUrlXmlSafe}">
+      <Parameter name="callSid" value="${callSidXmlSafe}"/>
     </Stream>
   </Connect>
   <Say voice="alice">The call has ended. Thank you for calling.</Say>

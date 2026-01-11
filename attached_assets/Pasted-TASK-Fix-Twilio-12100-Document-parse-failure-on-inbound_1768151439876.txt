@@ -1,0 +1,35 @@
+TASK: Fix Twilio 12100 “Document parse failure” on inbound calls.
+
+Context / Evidence:
+Twilio Debugger shows ErrorCode 12100 at 2026-01-11 16:58:12 for webhook:
+POST https://casecurrent.co/v1/telephony/twilio/voice
+HTTP 200 returned, Content-Type text/xml.
+Parser message: “The reference to entity "token" must end with the ';' delimiter.”
+Returned TwiML includes:
+<Stream url="wss://casecurrent.co/v1/telephony/twilio/stream?ts=...&token=...&callSid=...">
+This is invalid XML because '&' must be escaped as '&amp;' inside XML attribute values.
+
+Goal:
+Make TwiML valid XML so Twilio stops throwing 12100 and callers stop hearing “application error.”
+
+Requirements:
+1) Find the implementation for the route handler POST /v1/telephony/twilio/voice.
+2) Fix TwiML generation so the <Stream url="..."> attribute is XML-safe:
+   - Either: generate TwiML with Twilio’s helper library (preferred) so escaping is handled.
+   - Or: explicitly XML-escape the URL before injecting it into the TwiML string (at minimum replace & with &amp;).
+3) Ensure the final TwiML contains '&amp;token=' and '&amp;callSid=' (not raw '&token=').
+4) Do NOT break the stream endpoint logic; only ensure correct escaping.
+
+Proof (must provide all):
+A) Show the exact file path(s) and the before/after diff for the TwiML section.
+B) Run a local/request test and paste output:
+   curl -i -X POST https://casecurrent.co/v1/telephony/twilio/voice
+   (or local equivalent if needed)
+   and show the returned XML includes '&amp;token=' and '&amp;callSid='.
+C) Add/Update a tiny unit test OR a small script (scripts/test-twilio-twiml.ts) that calls the handler and asserts the response body does not contain any unescaped '&token=' or '&callSid=' inside the Stream url attribute.
+
+Nice-to-have:
+- If using manual escaping, create a small helper function xmlEscapeAttr(str) and use it for any attribute values to avoid future breakage.
+
+Deliverable:
+Commit the fix with a clear message like: "Fix TwiML XML escaping for Twilio Stream URL (prevents 12100)" and paste the commit hash.
