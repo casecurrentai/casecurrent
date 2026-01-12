@@ -4045,7 +4045,7 @@ export async function registerRoutes(
           // Build stream URL with HMAC token for authentication
           const ts = Math.floor(Date.now() / 1000);
           const streamSecret = process.env.STREAM_TOKEN_SECRET || "";
-          const streamToken = streamSecret ? generateStreamToken(streamSecret, CallSid, ts) : "no-auth";
+          const streamToken = streamSecret ? generateStreamToken(streamSecret, ts) : "no-auth";
           
           // Use PUBLIC_HOST env var for stream URL (required for production)
           const wsProtocol = "wss";

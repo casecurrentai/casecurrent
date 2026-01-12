@@ -37,17 +37,16 @@ interface TwilioMessage {
   };
 }
 
-export function generateStreamToken(secret: string, callSid: string, timestamp: number): string {
-  return createHmac('sha256', secret).update(`${callSid}.${timestamp}`).digest('hex');
+export function generateStreamToken(secret: string, timestamp: number): string {
+  return createHmac('sha256', secret).update(`${timestamp}`).digest('hex');
 }
 
 export function verifyStreamToken(
   secret: string,
-  callSid: string,
   timestamp: number,
   token: string
 ): boolean {
-  const expected = generateStreamToken(secret, callSid, timestamp);
+  const expected = generateStreamToken(secret, timestamp);
   return token === expected;
 }
 
@@ -77,8 +76,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
       return;
     }
 
-    const callSidForValidation = callSidParam || 'unknown';
-    if (!verifyStreamToken(secret, callSidForValidation, ts, tokenParam)) {
+    if (!verifyStreamToken(secret, ts, tokenParam)) {
       console.log(`[TwilioStream] [${requestId}] Invalid token`);
       console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Invalid token" url=${req.url}`);
       twilioWs.close(1008, 'Invalid token');
