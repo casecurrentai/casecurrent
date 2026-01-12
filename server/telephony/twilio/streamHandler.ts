@@ -61,8 +61,12 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
   console.log(`[TwilioStream] [${requestId}] New connection from ${req.socket.remoteAddress}`);
   console.log(`[TwilioStream] [${requestId}] URL: ${req.url}`);
 
+  const bypassAuth = process.env.BYPASS_STREAM_AUTH === 'true';
   const secret = process.env.STREAM_TOKEN_SECRET;
-  if (secret && tsParam && tokenParam) {
+  
+  if (bypassAuth) {
+    console.log(`[TwilioStream] [${requestId}] AUTH BYPASSED url=${req.url}`);
+  } else if (secret && tsParam && tokenParam) {
     const ts = parseInt(tsParam, 10);
     const now = Math.floor(Date.now() / 1000);
 
