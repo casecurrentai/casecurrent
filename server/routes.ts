@@ -34,7 +34,7 @@ import {
   outcomeRequiresFollowup,
   type CanonicalCallStatus 
 } from "./telephony/status";
-import { generateStreamToken } from "./telephony/twilio/streamHandler";
+import { generateStreamToken, handleTwilioMediaStream } from "./telephony/twilio/streamHandler";
 import { DATABASE_URL } from "./env";
 
 // ============================================
@@ -110,11 +110,14 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // WEBSOCKET SERVER FOR MOBILE REALTIME
+  // UNIFIED WEBSOCKET SERVER WITH MANUAL DISPATCHER
   // ============================================
-  const wss = new WebSocketServer({ server: httpServer, path: "/v1/realtime" });
+  // Use noServer mode to manually route upgrades by path
+  const realtimeWss = new WebSocketServer({ noServer: true });
+  const twilioWss = new WebSocketServer({ noServer: true });
 
-  wss.on("connection", (ws, req) => {
+  // Mobile realtime WebSocket handler
+  realtimeWss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const token = url.searchParams.get("token");
 
@@ -139,7 +142,6 @@ export async function registerRoutes(
 
     console.log(`[WS] Client connected: ${clientId} (org: ${payload.orgId})`);
 
-    // Send connection confirmation
     ws.send(JSON.stringify({
       type: "connected",
       timestamp: new Date().toISOString(),
@@ -170,6 +172,34 @@ export async function registerRoutes(
       console.error(`[WS] Client error ${clientId}:`, err);
       wsClients.delete(clientId);
     });
+  });
+
+  // Twilio Media Streams WebSocket handler
+  twilioWss.on("connection", (ws, req) => {
+    console.log(`[WebSocket] New Twilio stream connection: ${req.url}`);
+    handleTwilioMediaStream(ws, req);
+  });
+
+  // Register unified upgrade dispatcher on HTTP server
+  httpServer.on("upgrade", (request, socket, head) => {
+    const pathname = request.url?.split("?")[0] || "";
+    
+    if (pathname === "/v1/realtime") {
+      realtimeWss.handleUpgrade(request, socket, head, (ws) => {
+        realtimeWss.emit("connection", ws, request);
+      });
+    } else if (pathname.startsWith("/v1/telephony/twilio/stream")) {
+      console.log(`[WebSocket] Upgrading Twilio stream: ${request.url}`);
+      twilioWss.handleUpgrade(request, socket, head, (ws) => {
+        twilioWss.emit("connection", ws, request);
+      });
+    }
+    // Don't destroy socket for other paths - let Vite/other handlers process them
+  });
+
+  // Explicit HTTP handler to prevent SPA fallback from returning index.html
+  app.get("/v1/telephony/twilio/stream", (_req, res) => {
+    res.status(426).json({ error: "Upgrade Required", message: "WebSocket upgrade required" });
   });
 
   // Cleanup stale connections every 60 seconds

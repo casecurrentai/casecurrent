@@ -2,8 +2,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { WebSocketServer } from "ws";
-import { handleTwilioMediaStream } from "./telephony/twilio/streamHandler";
 
 // Fail-fast env validation - must be imported early
 import { DATABASE_URL } from "./env";
@@ -166,23 +164,6 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-
-  // Twilio Media Streams WebSocket - use same pattern as /v1/realtime
-  // Register BEFORE Vite so ws library handles upgrade automatically
-  const twilioWss = new WebSocketServer({ 
-    server: httpServer, 
-    path: "/v1/telephony/twilio/stream" 
-  });
-  
-  twilioWss.on("connection", (ws, request) => {
-    console.log(`[WebSocket] New Twilio stream connection: ${request.url}`);
-    handleTwilioMediaStream(ws, request);
-  });
-
-  // Explicit HTTP handler to prevent SPA fallback from returning index.html
-  app.get("/v1/telephony/twilio/stream", (_req, res) => {
-    res.status(426).json({ error: "Upgrade Required", message: "WebSocket upgrade required" });
-  });
 
   // Setup Vite or static serving
   if (process.env.NODE_ENV === "production") {
