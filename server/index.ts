@@ -17,7 +17,7 @@ process.on("uncaughtException", (error) => {
 });
 
 const GIT_SHA = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || "local";
-console.log(`[DEPLOY_MARK] server/index.ts loaded v5 SHA=${GIT_SHA} ${new Date().toISOString()}`);
+console.log(`[BOOT] SHA=${GIT_SHA} NODE_ENV=${process.env.NODE_ENV || "undefined"} PID=${process.pid}`);
 
 const app = express();
 const httpServer = createServer(app);
@@ -167,55 +167,29 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
 
-  // Create WebSocket server for Twilio Media Streams
-  const wss = new WebSocketServer({ noServer: true });
+  // Twilio Media Streams WebSocket - use same pattern as /v1/realtime
+  // Register BEFORE Vite so ws library handles upgrade automatically
+  const twilioWss = new WebSocketServer({ 
+    server: httpServer, 
+    path: "/v1/telephony/twilio/stream" 
+  });
   
-  wss.on("connection", (ws, request) => {
-    console.log(`[WebSocket] New Twilio stream connection`);
+  twilioWss.on("connection", (ws, request) => {
+    console.log(`[WebSocket] New Twilio stream connection: ${request.url}`);
     handleTwilioMediaStream(ws, request);
   });
 
-  // Setup Vite first (in dev mode), then capture and replace upgrade handlers
+  // Explicit HTTP handler to prevent SPA fallback from returning index.html
+  app.get("/v1/telephony/twilio/stream", (_req, res) => {
+    res.status(426).json({ error: "Upgrade Required", message: "WebSocket upgrade required" });
+  });
+
+  // Setup Vite or static serving
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
-    
-    // In production, we're the only upgrade handler
-    httpServer.on("upgrade", (request, socket, head) => {
-      const pathname = request.url?.split("?")[0] || "";
-      
-      if (pathname.startsWith("/v1/telephony/twilio/stream")) {
-        console.log(`[WebSocket] Upgrading Twilio stream: ${request.url}`);
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit("connection", ws, request);
-        });
-      } else {
-        socket.destroy();
-      }
-    });
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
-    
-    // Capture Vite's upgrade handlers, remove them, and create a dispatcher
-    const viteUpgradeHandlers = httpServer.listeners("upgrade").slice();
-    httpServer.removeAllListeners("upgrade");
-    
-    // Single dispatcher that routes Twilio paths to our handler, others to Vite
-    httpServer.on("upgrade", (request, socket, head) => {
-      const pathname = request.url?.split("?")[0] || "";
-      
-      if (pathname.startsWith("/v1/telephony/twilio/stream")) {
-        console.log(`[WebSocket] Upgrading Twilio stream: ${request.url}`);
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit("connection", ws, request);
-        });
-      } else {
-        // Forward to Vite handlers (for HMR)
-        for (const handler of viteUpgradeHandlers) {
-          (handler as Function)(request, socket, head);
-        }
-      }
-    });
   }
 
   httpServer.listen(

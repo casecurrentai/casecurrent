@@ -1,0 +1,52 @@
+REPLIT AGENT — FIX TWILIO WS UPGRADE (NO NEW FEATURES)
+
+Goal: make wss://casecurrent.co/v1/telephony/twilio/stream reliably upgrade to 101 in production (fix Twilio 31920). Current state:
+- curl --http1.1 Upgrade to https://casecurrent.co/v1/realtime returns 101 Switching Protocols (works)
+- curl --http1.1 Upgrade to https://casecurrent.co/v1/telephony/twilio/stream returns 400 Bad Request (fails)
+- Plain GET to /v1/telephony/twilio/stream returns the SPA index.html
+- Code shows manual upgrade handling for pathname starting with "/v1/telephony/twilio/stream" in server/index.ts, but production behavior suggests it’s not taking effect or dist is stale.
+
+TASKS (in order):
+
+1) PROVE WHAT PROD IS RUNNING
+- In the ENTRYPOINT actually used in production (dist/index.cjs or wherever Replit runs from), print a startup line:
+  "[BOOT] SHA=<git sha> NODE_ENV=<env> PID=<pid>"
+- Ensure the published production logs show this line.
+
+2) ELIMINATE CUSTOM UPGRADE HANDLING FOR TWILIO STREAM
+- Implement Twilio stream WS the same way /v1/realtime is implemented (ws library with { server, path }):
+  const twilioWss = new WebSocketServer({ server: httpServer, path: "/v1/telephony/twilio/stream" });
+  twilioWss.on("connection", (ws, req) => handleTwilioMediaStream(ws, req));
+- Remove/disable the manual httpServer.on("upgrade") + noServer WebSocketServer logic for the Twilio stream path in server/index.ts to avoid conflicts.
+- Keep /v1/realtime behavior unchanged.
+
+3) STOP SPA FALLBACK FROM EATING THE STREAM PATH
+- Add an explicit HTTP handler so normal GET doesn’t return index.html:
+  app.get("/v1/telephony/twilio/stream", (req,res) => res.status(426).json({ error: "Upgrade Required" }));
+  (Or 400 with clear JSON, but NOT index.html.)
+
+4) REBUILD ARTIFACTS BEFORE PUBLISH
+- Ensure the production publish uses a fresh build output (dist) that includes the changes. If publish uses dist/index.cjs, run the correct build command and verify dist contains the new code paths.
+
+5) PROOF TESTS (paste outputs)
+- Run:
+  KEY="$(openssl rand -base64 16)"
+  curl --http1.1 -i -sS \
+    -H "Connection: Upgrade" \
+    -H "Upgrade: websocket" \
+    -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: $KEY" \
+    "https://casecurrent.co/v1/telephony/twilio/stream" | head -n 40
+  Expect: HTTP/1.1 101 Switching Protocols (even if app then closes due to missing token).
+- Run plain GET:
+  curl --http1.1 -i -sS "https://casecurrent.co/v1/telephony/twilio/stream" | head -n 40
+  Expect: 426 + JSON (NOT HTML)
+
+6) TWILIO VALIDATION
+- Place a real inbound call to the Twilio number.
+- Confirm Twilio Debugger no longer shows Error 31920.
+- Paste prod log lines showing stream connection accepted and token handling.
+
+IMPORTANT:
+- Do not add features. Only stabilize WS upgrade behavior and ensure prod is running the right build artifact.
+- If this breaks prod, rollback immediately to last known good and report exact diffs and observed behavior.
