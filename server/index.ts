@@ -16,7 +16,8 @@ process.on("uncaughtException", (error) => {
   console.error(`[CRASH_GUARD] Uncaught Exception:`, error);
 });
 
-console.log(`[DEPLOY_MARK] server/index.ts loaded v4 ${new Date().toISOString()}`);
+const GIT_SHA = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || "local";
+console.log(`[DEPLOY_MARK] server/index.ts loaded v5 SHA=${GIT_SHA} ${new Date().toISOString()}`);
 
 const app = express();
 const httpServer = createServer(app);
