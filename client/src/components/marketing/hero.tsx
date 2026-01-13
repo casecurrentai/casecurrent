@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { GuillochePattern } from "./guilloche-pattern";
+import { GuillocheUnderlay } from "./guilloche-pattern";
 
 interface HeroProps {
   headline: string;
@@ -28,7 +28,7 @@ export function Hero({
 }: HeroProps) {
   return (
     <section className={cn("relative overflow-hidden py-20 lg:py-28", className)}>
-      <GuillochePattern />
+      <GuillocheUnderlay />
       <div className="container mx-auto px-6 relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="space-y-6">

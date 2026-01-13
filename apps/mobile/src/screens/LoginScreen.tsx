@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, setOrgContext } from "../services/api";
@@ -106,6 +107,11 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
+        <Image
+          source={require("../../assets/brand/casecurrent-mark-whitebg.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>CaseCurrent</Text>
         <Text style={styles.subtitle}>Law Firm Operations</Text>
 
@@ -161,6 +167,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: 24,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: "center",
+    marginBottom: 16,
   },
   title: {
     fontSize: 32,

@@ -1,6 +1,8 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { WireframeInboxCard, WireframeDashboardCard, WireframeAutomationCard } from "@/components/marketing/wireframe-components";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -184,8 +186,9 @@ export default function PricingPage() {
     </SectionBackground>
 
       <SectionBackground variant="muted">
-        <section className="py-16">
-          <div className="container mx-auto px-6">
+        <section className="py-16 relative">
+          <DotGridPattern />
+          <div className="container mx-auto px-6 relative z-10">
             <SectionFrame variant="corners" className="p-8 max-w-3xl mx-auto">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground">One-Time Setup</h2>
@@ -227,6 +230,20 @@ export default function PricingPage() {
           </div>
         </section>
       </SectionBackground>
+
+      <section className="py-16 hidden lg:block">
+        <div className="container mx-auto px-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-foreground">What You Get</h2>
+            <p className="text-muted-foreground">A complete AI intake system</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <WireframeInboxCard />
+            <WireframeDashboardCard />
+            <WireframeAutomationCard />
+          </div>
+        </div>
+      </section>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

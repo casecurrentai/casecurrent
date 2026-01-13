@@ -2,7 +2,8 @@ import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { FeatureCard } from "@/components/marketing/feature-card";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
-import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { WireframeQualificationCard, WireframeTimelineCard } from "@/components/marketing/wireframe-components";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,6 +234,20 @@ export default function SolutionsPage() {
           </div>
         </section>
       </SectionBackground>
+
+      <section className="py-16 relative">
+        <GuillocheUnderlay />
+        <div className="container mx-auto px-6 relative z-10">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-foreground">Smart Intake Workflow</h2>
+            <p className="text-muted-foreground">AI-powered qualification and tracking</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            <WireframeQualificationCard />
+            <WireframeTimelineCard />
+          </div>
+        </div>
+      </section>
 
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">

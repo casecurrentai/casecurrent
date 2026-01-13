@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Scale, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { GuillocheUnderlay } from "./guilloche-pattern";
+import logoMark from "@assets/brand/casecurrent-mark-whitebg.png";
 
 const NAV_LINKS = [
   { href: "/how-it-works", label: "Product" },
@@ -48,7 +49,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
           <div className="container mx-auto px-6 h-full">
             <div className="flex items-center justify-between h-full">
               <Link href="/" className="flex items-center gap-2" data-testid="link-logo">
-                <Scale className="h-6 w-6 text-primary" />
+                <img src={logoMark} alt="CaseCurrent" className="h-8 w-auto" />
                 <span className="font-bold text-xl text-foreground">CaseCurrent</span>
               </Link>
 
@@ -148,7 +149,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <Scale className="h-5 w-5 text-primary" />
+                <img src={logoMark} alt="CaseCurrent" className="h-6 w-auto" />
                 <span className="font-bold text-foreground">CaseCurrent</span>
               </div>
               <p className="text-sm text-muted-foreground">
