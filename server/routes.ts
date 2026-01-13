@@ -4068,7 +4068,6 @@ export async function registerRoutes(
           
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">Thank you for calling. Please hold while we connect you to our assistant.</Say>
   <Connect>
     <Stream url="${streamUrlXmlSafe}">
       <Parameter name="callSid" value="${callSidXmlSafe}"/>
