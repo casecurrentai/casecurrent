@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     borderColor: "#374151",
   },
   button: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#57A6D5",
     borderRadius: 8,
     padding: 16,
     alignItems: "center",
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   firmArrow: {
-    color: "#6366f1",
+    color: "#57A6D5",
     fontSize: 18,
   },
   backButton: {

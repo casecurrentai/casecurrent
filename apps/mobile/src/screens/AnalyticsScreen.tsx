@@ -57,7 +57,7 @@ export default function AnalyticsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#6366f1" style={styles.loader} />
+        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -94,7 +94,7 @@ export default function AnalyticsScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchData(true)}
-            tintColor="#6366f1"
+            tintColor="#57A6D5"
           />
         }
       >
@@ -158,7 +158,7 @@ export default function AnalyticsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: "#FFFFFF",
   },
   loader: {
     flex: 1,
@@ -167,12 +167,13 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#0F172A",
     marginBottom: 12,
   },
   rangePicker: {
@@ -180,21 +181,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rangeButton: {
-    backgroundColor: "#374151",
+    backgroundColor: "#F8FAFC",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   rangeButtonActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#57A6D5",
+    borderColor: "#57A6D5",
   },
   rangeText: {
-    color: "#9ca3af",
+    color: "#475569",
     fontSize: 14,
     fontWeight: "500",
   },
   rangeTextActive: {
-    color: "#fff",
+    color: "#FFFFFF",
   },
   content: {
     flex: 1,
@@ -207,27 +211,27 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    backgroundColor: "#1f2937",
+    backgroundColor: "#F8FAFC",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: "#E5E7EB",
   },
   metricTitle: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "#475569",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   metricValue: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#0F172A",
     marginTop: 4,
   },
   metricSubtitle: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#94A3B8",
     marginTop: 4,
   },
 });

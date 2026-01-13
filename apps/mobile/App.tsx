@@ -82,11 +82,11 @@ export default function App() {
       <Tab.Navigator
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: "#6366f1",
-          tabBarInactiveTintColor: "#6b7280",
+          tabBarActiveTintColor: "#57A6D5",
+          tabBarInactiveTintColor: "#475569",
           tabBarStyle: {
-            backgroundColor: "#1f2937",
-            borderTopColor: "#374151",
+            backgroundColor: "#FFFFFF",
+            borderTopColor: "#E5E7EB",
           },
         }}
       >
@@ -121,8 +121,8 @@ export default function App() {
       <NavigationContainer linking={linking}>
         <Stack.Navigator
           screenOptions={{
-            headerStyle: { backgroundColor: "#1f2937" },
-            headerTintColor: "#fff",
+            headerStyle: { backgroundColor: "#FFFFFF" },
+            headerTintColor: "#0F172A",
           }}
         >
           {!isAuthenticated ? (
@@ -152,7 +152,7 @@ export default function App() {
             </>
           )}
         </Stack.Navigator>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
       </NavigationContainer>
     </SafeAreaProvider>
   );

@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, color: "#9CA3AF", marginBottom: 4 },
   value: { fontSize: 16, color: "#1F2937" },
 
-  callButton: { backgroundColor: "#4F46E5", padding: 16, borderRadius: 12, alignItems: "center" },
+  callButton: { backgroundColor: "#57A6D5", padding: 16, borderRadius: 12, alignItems: "center" },
   callButtonText: { color: "white", fontSize: 18, fontWeight: "600" },
 
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },

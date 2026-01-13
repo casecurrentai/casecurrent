@@ -69,7 +69,7 @@ export default function LeadsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#6366f1" style={styles.loader} />
+        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -81,7 +81,7 @@ export default function LeadsScreen() {
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name or phone..."
-          placeholderTextColor="#6b7280"
+          placeholderTextColor="#94A3B8"
           value={searchQuery}
           onChangeText={setSearchQuery}
           testID="input-search"
@@ -135,7 +135,7 @@ export default function LeadsScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#6366f1"
+            tintColor="#57A6D5"
           />
         }
         contentContainerStyle={styles.listContent}
@@ -152,7 +152,7 @@ export default function LeadsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: "#FFFFFF",
   },
   loader: {
     flex: 1,
@@ -161,22 +161,23 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#0F172A",
     marginBottom: 12,
   },
   searchInput: {
-    backgroundColor: "#1f2937",
+    backgroundColor: "#F8FAFC",
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    color: "#fff",
+    color: "#0F172A",
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: "#E5E7EB",
     marginBottom: 12,
   },
   filterRow: {
@@ -185,31 +186,36 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterButton: {
-    backgroundColor: "#374151",
+    backgroundColor: "#F8FAFC",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   filterButtonActive: {
-    backgroundColor: "#6366f1",
+    backgroundColor: "#57A6D5",
+    borderColor: "#57A6D5",
   },
   filterText: {
-    color: "#9ca3af",
+    color: "#475569",
     fontSize: 12,
     fontWeight: "500",
   },
   filterTextActive: {
-    color: "#fff",
+    color: "#FFFFFF",
   },
   listContent: {
     padding: 12,
   },
   leadRow: {
     flexDirection: "row",
-    backgroundColor: "#1f2937",
+    backgroundColor: "#F8FAFC",
     borderRadius: 8,
     padding: 16,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   leadInfo: {
     flex: 1,
@@ -217,23 +223,23 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#fff",
+    color: "#0F172A",
   },
   leadPhone: {
     fontSize: 14,
-    color: "#9ca3af",
+    color: "#475569",
     marginTop: 2,
   },
   leadMeta: {
     alignItems: "flex-end",
   },
   statusText: {
-    color: "#6b7280",
+    color: "#475569",
     fontSize: 12,
     textTransform: "uppercase",
   },
   scoreText: {
-    color: "#6366f1",
+    color: "#57A6D5",
     fontSize: 16,
     fontWeight: "bold",
     marginTop: 4,
@@ -243,7 +249,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "#6b7280",
+    color: "#94A3B8",
     fontSize: 16,
   },
 });

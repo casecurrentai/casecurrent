@@ -126,7 +126,7 @@ export default function InboxScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#6366f1" style={styles.loader} />
+        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -151,7 +151,7 @@ export default function InboxScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#6366f1"
+            tintColor="#57A6D5"
           />
         }
         contentContainerStyle={styles.listContent}
@@ -168,7 +168,7 @@ export default function InboxScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: "#FFFFFF",
   },
   loader: {
     flex: 1,
@@ -177,16 +177,17 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#0F172A",
   },
   headerSubtitle: {
     fontSize: 14,
-    color: "#9ca3af",
+    color: "#475569",
     marginTop: 4,
   },
   listContent: {
@@ -194,15 +195,15 @@ const styles = StyleSheet.create({
   },
   leadRow: {
     flexDirection: "row",
-    backgroundColor: "#1f2937",
+    backgroundColor: "#F8FAFC",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: "#E5E7EB",
   },
   overdueRow: {
-    borderColor: "#ef4444",
+    borderColor: "#EF4444",
     borderWidth: 2,
   },
   leadInfo: {
@@ -216,11 +217,11 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#fff",
+    color: "#0F172A",
   },
   hotBadge: {
-    backgroundColor: "#ef4444",
-    color: "#fff",
+    backgroundColor: "#EF4444",
+    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "bold",
     paddingHorizontal: 6,
@@ -228,8 +229,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   dncBadge: {
-    backgroundColor: "#6b7280",
-    color: "#fff",
+    backgroundColor: "#6B7280",
+    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "bold",
     paddingHorizontal: 6,
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
   },
   leadPhone: {
     fontSize: 14,
-    color: "#9ca3af",
+    color: "#475569",
     marginTop: 4,
   },
   leadMeta: {
@@ -253,16 +254,16 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "bold",
   },
   practiceArea: {
-    color: "#9ca3af",
+    color: "#475569",
     fontSize: 12,
   },
   leadSummary: {
-    color: "#6b7280",
+    color: "#94A3B8",
     fontSize: 12,
     marginTop: 4,
   },
@@ -271,11 +272,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   leadAge: {
-    color: "#6b7280",
+    color: "#94A3B8",
     fontSize: 12,
   },
   leadScore: {
-    color: "#6366f1",
+    color: "#57A6D5",
     fontSize: 18,
     fontWeight: "bold",
   },
@@ -284,7 +285,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "#6b7280",
+    color: "#94A3B8",
     fontSize: 16,
   },
 });

@@ -34,7 +34,7 @@ function SettingRow({ label, value, onToggle, subtitle }: SettingRowProps) {
         <Switch
           value={value}
           onValueChange={onToggle}
-          trackColor={{ false: "#374151", true: "#6366f1" }}
+          trackColor={{ false: "#E5E7EB", true: "#57A6D5" }}
           thumbColor="#fff"
         />
       )}
@@ -131,17 +131,18 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: "#FFFFFF",
   },
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#0F172A",
   },
   content: {
     flex: 1,
@@ -149,11 +150,11 @@ const styles = StyleSheet.create({
   section: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: "#E5E7EB",
   },
   sectionTitle: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "#475569",
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 16,
@@ -169,12 +170,12 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
-    color: "#fff",
+    color: "#0F172A",
     fontWeight: "500",
   },
   settingSubtitle: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#94A3B8",
     marginTop: 2,
   },
   infoRow: {
@@ -184,20 +185,22 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 16,
-    color: "#9ca3af",
+    color: "#475569",
   },
   infoValue: {
     fontSize: 16,
-    color: "#fff",
+    color: "#0F172A",
   },
   logoutButton: {
-    backgroundColor: "#7f1d1d",
+    backgroundColor: "#FEE2E2",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FECACA",
   },
   logoutText: {
-    color: "#fca5a5",
+    color: "#DC2626",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -206,7 +209,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   footerText: {
-    color: "#6b7280",
+    color: "#94A3B8",
     fontSize: 12,
   },
 });
