@@ -1,0 +1,34 @@
+REPLIT AGENT — DEBUG PREMATURE RESPONSES + TUNE BARGE-IN (SAFE, MINIMAL CHANGES)
+Goal: Fix Avery speaking too early (e.g., “thank you Michael” with no pause) and reduce false barge-in from background audio, without adding new features.
+
+PART A — FIND ROOT CAUSE (NO CHANGES YET)
+1) Open `server/telephony/twilio/streamHandler.ts` and paste the full `session.update` payload block, including:
+   - `modalities`
+   - `turn_detection` (threshold + any other params)
+   - `instructions`
+   - `voice`
+2) Find every place in Twilio stream handling where we send any of these messages to OpenAI:
+   - `response.create`
+   - `input_audio_buffer.commit`
+   - `input_audio_buffer.clear`
+   - `response.cancel`
+   For each, paste ~15 lines before/after and explain exactly what triggers it (which event: session created, `speech_started`, `speech_stopped`, timer, etc.).
+3) Confirm whether we send an initial `response.create` immediately after session creation. If yes, show that code.
+4) Check if our instructions cause the model to “fill in” name or respond before input. If the prompt contains any “thank you [name]” pattern or encourages early closings, quote it.
+
+PART B — TUNE BARGE-IN / VAD (SMALL, CONTROLLED CHANGE)
+5) Based on what you find, propose ONE minimal code change to prevent Avery responding before the caller speaks (e.g., don’t commit/response.create until we have >= X ms audio, or until we see real speech frames).
+6) Propose ONE minimal change to reduce false barge-in from background audio:
+   - Adjust `turn_detection.threshold` OR other available VAD params, but keep it minimal.
+   - IMPORTANT: Do NOT change `turn_detection.threshold` unless your findings clearly show VAD false-triggers are the cause; if you do change it, justify the value and make it a single-line edit.
+7) Add minimal logging so we can verify: when speech_started/stopped fires, audio buffer duration at commit, and whether a response is already active before calling response.cancel/create.
+
+SAFETY
+- Make a checkpoint before edits.
+- Keep changes minimal and reversible.
+- Do not add new features.
+
+OUTPUT REQUIRED
+- Paste the relevant code snippets you found.
+- State the exact change you made (diff-style).
+- Tell me what to test and what logs should appear if fixed.

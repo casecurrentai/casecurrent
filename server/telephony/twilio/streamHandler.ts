@@ -106,6 +106,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
   let twilioFrameCount = 0;
   let openAiFrameCount = 0;
   let callSid: string | null = callSidParam;
+  let responseInProgress = false;
+  let speechStartTime: number | null = null;
 
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
@@ -300,9 +302,9 @@ CLOSING (verbatim)
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.75,
+          threshold: 0.80,
           prefix_padding_ms: 300,
-          silence_duration_ms: 500,
+          silence_duration_ms: 600,
         },
       },
     };
@@ -361,10 +363,16 @@ CLOSING (verbatim)
           );
           console.log(`[TwilioStream] [${requestId}] Sent initial response.create to OpenAI`);
         }
+      } else if (message.type === 'response.created') {
+        responseInProgress = true;
+        console.log(`[TwilioStream] [${requestId}] Response started (responseInProgress=true)`);
       } else if (message.type === 'response.done') {
-        console.log(`[TwilioStream] [${requestId}] Response completed`);
+        responseInProgress = false;
+        console.log(`[TwilioStream] [${requestId}] Response completed (responseInProgress=false)`);
       } else if (message.type === 'input_audio_buffer.speech_stopped') {
-        console.log(`[TwilioStream] [${requestId}] User speech stopped - committing audio`);
+        const speechDuration = speechStartTime ? Date.now() - speechStartTime : 0;
+        console.log(`[TwilioStream] [${requestId}] User speech stopped - duration=${speechDuration}ms responseInProgress=${responseInProgress}`);
+        speechStartTime = null;
         // Commit the audio buffer to trigger transcription and response
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
           openAiWs.send(
@@ -375,16 +383,9 @@ CLOSING (verbatim)
           console.log(`[TwilioStream] [${requestId}] Committed audio buffer`);
         }
       } else if (message.type === 'input_audio_buffer.committed') {
-        console.log(`[TwilioStream] [${requestId}] Audio buffer committed - triggering response`);
-        // Request a new response after user audio is committed
-        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-          openAiWs.send(
-            JSON.stringify({
-              type: 'response.create',
-            })
-          );
-          console.log(`[TwilioStream] [${requestId}] Sent response.create after commit`);
-        }
+        // With server_vad, OpenAI automatically generates a response after speech stops.
+        // Do NOT send manual response.create here - it causes duplicate/premature responses.
+        console.log(`[TwilioStream] [${requestId}] Audio buffer committed (server_vad will auto-respond)`);
       } else if (
         message.type === 'response.audio.delta' ||
         message.type === 'response.output_audio.delta'
@@ -408,7 +409,8 @@ CLOSING (verbatim)
           }
         }
       } else if (message.type === 'input_audio_buffer.speech_started') {
-        console.log(`[TwilioStream] [${requestId}] Speech started - barge-in detected`);
+        speechStartTime = Date.now();
+        console.log(`[TwilioStream] [${requestId}] Speech started - barge-in detected responseInProgress=${responseInProgress}`);
         if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
           twilioWs.send(
             JSON.stringify({
