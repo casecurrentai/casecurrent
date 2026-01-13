@@ -36,6 +36,7 @@ import {
 } from './telephony/status';
 import { generateStreamToken, handleTwilioMediaStream } from './telephony/twilio/streamHandler';
 import { DATABASE_URL } from './env';
+import { sendIncomingCallPush } from './notifications/push';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -4258,6 +4259,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           entityId: call.id,
           details: { twilioCallSid: CallSid, from: From, to: To },
         },
+      });
+
+      // Emit realtime WebSocket event for incoming call
+      emitRealtimeEvent(orgId, {
+        type: 'call.incoming',
+        leadId: lead.id,
+        timestamp: new Date().toISOString(),
+        data: {
+          callSid: CallSid,
+          from: From,
+          to: To,
+          callId: call.id,
+          contactName: contact.name,
+        },
+      });
+
+      // Send push notification to all org devices (fire-and-forget)
+      sendIncomingCallPush(orgId, lead.id, CallSid, From).catch((err) => {
+        console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
       });
 
       res.set('Content-Type', 'text/xml');
