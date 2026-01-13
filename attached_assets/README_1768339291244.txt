@@ -1,0 +1,11 @@
+CaseCurrent Logo Pack (4 variants)
+
+Primary brand blue: #1764FE (RGB 23,100,254)
+Gradient helper: #1764FE → #D3E1FE
+
+Files:
+- casecurrent_mark_whitebg.png      (icon/mark on white)
+- casecurrent_mark_bluebg.png       (icon/mark on blue)
+- casecurrent_lockup_whitebg.png    (icon + CASECURRENT on white)
+- casecurrent_lockup_bluebg.png     (icon + CASECURRENT on blue)
+

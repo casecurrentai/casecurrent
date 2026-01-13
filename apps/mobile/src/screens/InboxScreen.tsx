@@ -126,7 +126,7 @@ export default function InboxScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
+        <ActivityIndicator size="large" color="#1764FE" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -151,7 +151,7 @@ export default function InboxScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#57A6D5"
+            tintColor="#1764FE"
           />
         }
         contentContainerStyle={styles.listContent}
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   leadScore: {
-    color: "#57A6D5",
+    color: "#1764FE",
     fontSize: 18,
     fontWeight: "bold",
   },

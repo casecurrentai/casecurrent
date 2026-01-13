@@ -69,7 +69,7 @@ export default function LeadsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
+        <ActivityIndicator size="large" color="#1764FE" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -135,7 +135,7 @@ export default function LeadsScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#57A6D5"
+            tintColor="#1764FE"
           />
         }
         contentContainerStyle={styles.listContent}
@@ -194,8 +194,8 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   filterButtonActive: {
-    backgroundColor: "#57A6D5",
-    borderColor: "#57A6D5",
+    backgroundColor: "#1764FE",
+    borderColor: "#1764FE",
   },
   filterText: {
     color: "#475569",
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   scoreText: {
-    color: "#57A6D5",
+    color: "#1764FE",
     fontSize: 16,
     fontWeight: "bold",
     marginTop: 4,

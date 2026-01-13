@@ -1,0 +1,149 @@
+REPLIT AGENT PROMPT — Apply new logo pack + update brand blue + improve MOBILE marketing site (wireframes + guilloche)
+
+Inputs (already uploaded)
+- casecurrent_logo_pack.zip (in the repo root or project files)
+
+Brand colors (exact)
+- Primary Blue: #1764FE
+- Gradient helper: #1764FE → #D3E1FE
+
+Scope (do all)
+1) Use the ZIP to replace the CaseCurrent logo mark + wordmark everywhere:
+   - Marketing site (responsive web, including mobile layout)
+   - Mobile app (Expo app)
+2) Update the app/site “primary blue” to #1764FE (remove old primary like #57A6D5).
+3) Mobile marketing site improvements:
+   A) Add more “wireframe” elements to sections BELOW the header on ALL marketing pages (mobile view).
+      - Currently too generic; it should look like a real product wireframe: cards, list rows, timeline, mini charts placeholders, badges, icons, etc.
+   B) Fix guilloche: every marketing page EXCEPT the primary Home landing page is missing the signature guilloche.
+      - Add guilloche behind the header text/elements on each page.
+      - Add guilloche in at least ONE additional section below the header on each page.
+   C) Ensure the new logo appears on the mobile marketing site header/nav and on the mobile app header/login.
+
+Non-negotiables
+- Do NOT rename internal identifiers (CounselTech internals can stay). Branding changes are public-facing only.
+- Do NOT do a full redesign. Improve the mobile marketing pages by adding structure and tasteful wireframe visuals; keep existing typography/layout philosophy.
+- Provide proof: file list + grep evidence + describe what changed per page.
+
+============================================================
+PART 1 — Unzip and install logo assets
+1) Find + unzip:
+   find . -maxdepth 4 -name "casecurrent_logo_pack.zip"
+   unzip -l casecurrent_logo_pack.zip
+   unzip -o casecurrent_logo_pack.zip -d /tmp/casecurrent_logo_pack
+
+2) Copy the four variants into:
+   - apps/web/public/brand/
+   - apps/mobile/assets/brand/   (if mobile uses assets; if not, place where current app expects images)
+
+3) Wire usage:
+   - Web marketing site: swap to /brand/<new-file> references.
+   - Mobile app: update imports/usages in Login, Header, Settings/About, etc.
+
+============================================================
+PART 2 — Update primary brand blue everywhere
+Targets:
+- Replace #57A6D5 (known old) with #1764FE
+- Update theme tokens (preferred) rather than scattered hexes
+Commands:
+  grep -RIn "#57A6D5" . || true
+  grep -RIn "#1764FE" . || true
+
+Mobile specifically:
+- apps/mobile/App.tsx tabBarActiveTintColor -> #1764FE
+- apps/mobile/src/theme/colors.ts (or equivalent) primary -> #1764FE
+
+Web specifically:
+- CSS vars / tailwind theme / shadcn theme tokens primary -> #1764FE
+
+============================================================
+PART 3 — MOBILE marketing site: add wireframe elements + guilloche per page
+IMPORTANT: This is specifically about MOBILE view of the marketing site (responsive). Desktop can remain largely unchanged.
+
+Step A — Identify marketing pages/routes
+- Find marketing site routes/pages in apps/web (or wherever):
+  - likely: apps/web/src/pages, apps/web/src/routes, apps/web/src/app, or similar
+- List the page components found (Home + other pages).
+
+Step B — Create reusable Guilloche background component
+Create ONE reusable component and use it everywhere to avoid duplicated SVG/CSS.
+
+Example approach (pick the best fit for repo):
+1) Add an SVG guilloche asset:
+   apps/web/public/patterns/guilloche.svg
+   OR inline SVG in a component if preferred.
+
+2) Create a component:
+   apps/web/src/components/GuillocheBackdrop.tsx
+   - Props: intensity (opacity), scale, position, rotate, mask/clip option
+   - Implementation: absolutely positioned background layer with:
+     - low opacity
+     - slight blur optional
+     - masked gradient so text remains readable
+
+3) Apply it:
+   - On EVERY marketing page (EXCEPT Home): header area must have guilloche behind title/subtitle/CTA.
+   - Also on EACH page: at least one section below header has guilloche in the background.
+
+Acceptance rule:
+- You should be able to grep for GuillocheBackdrop usage and see it in every non-Home page component at least twice:
+  1) header
+  2) at least one below-header section
+
+Step C — Add wireframe elements below header on ALL marketing pages (mobile view)
+The current mobile sections are too generic. Improve by adding wireframe “product UI” blocks (lightweight, not real screenshots):
+- Examples of acceptable wireframe blocks (use 2–4 per page, below header):
+  - “Lead Inbox” card list (3–5 rows with avatar circles + lines)
+  - “Call summary” card with waveform placeholder
+  - “Intake timeline” vertical steps with icons and timestamps
+  - “Conversion dashboard” mini chart placeholder (simple bars/lines)
+  - “Automation rules” list with toggles
+  - “Secure upload” card with drag/drop placeholder
+  - “AI suggestions” callout with bullet chips
+
+Implementation guidance:
+- Create reusable components:
+  - WireframeCard
+  - WireframeList
+  - WireframeTimeline
+  - WireframeChartMini
+- Only show these in mobile layout (or make them responsive):
+  - Use existing breakpoints/tailwind/responsive utilities.
+- Keep the visuals subtle and on-brand:
+  - Borders/lines using neutral grays
+  - Accent highlights using #1764FE
+  - Avoid heavy gradients except the brand gradient used for emphasis.
+
+Step D — Ensure logo swap in marketing site header/nav (mobile)
+- Update header/nav component used across marketing pages:
+  - Replace old logo with new lockup or mark based on available space:
+    - Mobile: mark-only (left) + text if it fits
+    - Desktop: full lockup
+- Ensure correct contrast:
+  - On blue header backgrounds, use the “onblue” version from the pack.
+
+============================================================
+PART 4 — Proof + verification (mandatory)
+Return:
+1) “Files changed” list (concise).
+2) Proof commands output:
+   - grep -RIn "#57A6D5" .   (should be zero)
+   - grep -RIn "#1764FE" .   (should show theme tokens + usage)
+   - grep -RIn "GuillocheBackdrop" apps/web/src
+   - grep -RIn "/brand/" apps/web/src apps/web/public (logo references)
+3) For each marketing page, describe:
+   - Where guilloche was added (header + which section below)
+   - What wireframe components were added below header
+4) Run the simplest build check available in repo and report pass/fail.
+
+Execution order (do not skip)
+1) Unzip + place logos
+2) Wire logos web + mobile
+3) Update blue tokens
+4) Add GuillocheBackdrop + wireframe components
+5) Apply per page
+6) Proof + build check
+
+Start with Step A only:
+- Identify marketing pages/routes and the shared header component file path(s).
+- Report what you found, then proceed.

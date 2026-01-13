@@ -57,7 +57,7 @@ export default function AnalyticsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#57A6D5" style={styles.loader} />
+        <ActivityIndicator size="large" color="#1764FE" style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -94,7 +94,7 @@ export default function AnalyticsScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchData(true)}
-            tintColor="#57A6D5"
+            tintColor="#1764FE"
           />
         }
       >
@@ -189,8 +189,8 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   rangeButtonActive: {
-    backgroundColor: "#57A6D5",
-    borderColor: "#57A6D5",
+    backgroundColor: "#1764FE",
+    borderColor: "#1764FE",
   },
   rangeText: {
     color: "#475569",

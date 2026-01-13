@@ -7,8 +7,8 @@ export const colors = {
   textSecondary: "#475569",
   textMuted: "#94A3B8",
   
-  primary: "#57A6D5",
-  primaryPressed: "#4788AF",
+  primary: "#1764FE",
+  primaryPressed: "#1254D4",
   
   error: "#EF4444",
   warning: "#F59E0B",

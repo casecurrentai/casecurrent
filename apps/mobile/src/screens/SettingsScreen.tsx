@@ -34,7 +34,7 @@ function SettingRow({ label, value, onToggle, subtitle }: SettingRowProps) {
         <Switch
           value={value}
           onValueChange={onToggle}
-          trackColor={{ false: "#E5E7EB", true: "#57A6D5" }}
+          trackColor={{ false: "#E5E7EB", true: "#1764FE" }}
           thumbColor="#fff"
         />
       )}
