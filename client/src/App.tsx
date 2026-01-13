@@ -29,6 +29,7 @@ import ResourcesPage from "@/pages/marketing/resources";
 import ContactPage from "@/pages/marketing/contact";
 import DemoPage from "@/pages/marketing/demo";
 import DesignAuditPage from "@/pages/marketing/design-audit";
+import InstallPage from "@/pages/marketing/install";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -105,6 +106,7 @@ function Router() {
       <Route path="/contact" component={ContactPage} />
       <Route path="/demo" component={DemoPage} />
       <Route path="/design-audit" component={DesignAuditPage} />
+      <Route path="/install" component={InstallPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />
