@@ -37,6 +37,13 @@ import {
 import { generateStreamToken, handleTwilioMediaStream } from './telephony/twilio/streamHandler';
 import { DATABASE_URL } from './env';
 import { sendIncomingCallPush } from './notifications/push';
+import { logAnalyticsEvent, countAnalyticsEvents, getEventCountsByType, type AnalyticsEventType } from './analytics/events';
+import {
+  getExperimentAssignment,
+  logExperimentConversion,
+  getExperimentStats,
+  listExperiments,
+} from './analytics/experiments';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -8691,6 +8698,226 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
   );
+
+  /**
+   * @openapi
+   * /v1/analytics/events:
+   *   get:
+   *     summary: Get analytics event counts by type
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: start
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - in: query
+   *         name: end
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - in: query
+   *         name: practiceAreaId
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Event counts by type
+   */
+  app.get('/v1/analytics/events', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+      const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+      const practiceAreaId = req.query.practiceAreaId as string | undefined;
+
+      const counts = await getEventCountsByType({
+        orgId: user.orgId,
+        startDate,
+        endDate,
+        practiceAreaId,
+      });
+
+      const total = await countAnalyticsEvents({
+        orgId: user.orgId,
+        startDate,
+        endDate,
+        practiceAreaId,
+      });
+
+      res.json({
+        total,
+        byType: counts,
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString(),
+        practiceAreaId,
+      });
+    } catch (error) {
+      console.error('Analytics events error:', error);
+      res.status(500).json({ error: 'Failed to get analytics events' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/experiments/assign:
+   *   get:
+   *     summary: Get deterministic experiment assignment
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: key
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Experiment assignment
+   */
+  app.get('/v1/experiments/assign', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const key = req.query.key as string;
+
+      if (!key) {
+        return res.status(400).json({ error: 'Missing experiment key' });
+      }
+
+      const assignment = await getExperimentAssignment(user.orgId, user.userId, key);
+
+      if (!assignment) {
+        return res.status(404).json({ error: 'Experiment not found or not active' });
+      }
+
+      res.json(assignment);
+    } catch (error) {
+      console.error('Experiment assignment error:', error);
+      res.status(500).json({ error: 'Failed to get experiment assignment' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/experiments/convert:
+   *   post:
+   *     summary: Log experiment conversion
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - key
+   *               - variant
+   *               - eventName
+   *             properties:
+   *               key:
+   *                 type: string
+   *               variant:
+   *                 type: string
+   *               eventName:
+   *                 type: string
+   *               metadata:
+   *                 type: object
+   *     responses:
+   *       200:
+   *         description: Conversion logged
+   */
+  app.post('/v1/experiments/convert', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { key, variant, eventName, metadata } = req.body;
+
+      if (!key || !variant || !eventName) {
+        return res.status(400).json({ error: 'Missing required fields: key, variant, eventName' });
+      }
+
+      await logExperimentConversion(user.orgId, user.userId, key, variant, eventName, metadata);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Experiment conversion error:', error);
+      res.status(400).json({ error: error.message || 'Failed to log conversion' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/experiments:
+   *   get:
+   *     summary: List all active experiments
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of experiments
+   */
+  app.get('/v1/experiments', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const experiments = listExperiments();
+      res.json({ experiments });
+    } catch (error) {
+      console.error('List experiments error:', error);
+      res.status(500).json({ error: 'Failed to list experiments' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/experiments/{key}/stats:
+   *   get:
+   *     summary: Get experiment performance statistics
+   *     tags: [Experiments]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: key
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - in: query
+   *         name: start
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *       - in: query
+   *         name: end
+   *         schema:
+   *           type: string
+   *           format: date-time
+   *     responses:
+   *       200:
+   *         description: Experiment statistics
+   */
+  app.get('/v1/experiments/:key/stats', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const key = req.params.key;
+      const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+      const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+
+      const stats = await getExperimentStats(user.orgId, key, startDate, endDate);
+
+      if (!stats) {
+        return res.status(404).json({ error: 'Experiment not found' });
+      }
+
+      res.json(stats);
+    } catch (error) {
+      console.error('Experiment stats error:', error);
+      res.status(500).json({ error: 'Failed to get experiment stats' });
+    }
+  });
 
   return httpServer;
 }
