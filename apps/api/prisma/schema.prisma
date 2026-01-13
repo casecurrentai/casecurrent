@@ -637,6 +637,28 @@ model AuditLog {
 }
 
 // ============================================
+// ANALYTICS EVENTS (unified event store)
+// ============================================
+
+model AnalyticsEvent {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  userId         String?  @map("user_id")
+  leadId         String?  @map("lead_id")
+  practiceAreaId String?  @map("practice_area_id")
+  type           String   // lead.created, lead.updated, call.incoming, call.completed, sms.sent, sms.received, intake.link_generated, experiment.exposure, experiment.conversion
+  payload        Json     // event-specific data
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([orgId, createdAt])
+  @@index([orgId, type])
+  @@index([orgId, type, createdAt])
+  @@index([orgId, leadId])
+  @@index([orgId, practiceAreaId, createdAt])
+  @@map("analytics_events")
+}
+
+// ============================================
 // WEBHOOK RECEIPT (for idempotency)
 // ============================================
 
