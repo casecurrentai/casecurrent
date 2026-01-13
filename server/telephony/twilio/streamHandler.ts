@@ -41,11 +41,7 @@ export function generateStreamToken(secret: string, timestamp: number): string {
   return createHmac('sha256', secret).update(`${timestamp}`).digest('hex');
 }
 
-export function verifyStreamToken(
-  secret: string,
-  timestamp: number,
-  token: string
-): boolean {
+export function verifyStreamToken(secret: string, timestamp: number, token: string): boolean {
   const expected = generateStreamToken(secret, timestamp);
   return token === expected;
 }
@@ -62,7 +58,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
 
   const bypassAuth = process.env.BYPASS_STREAM_AUTH === 'true';
   const secret = process.env.STREAM_TOKEN_SECRET;
-  
+
   if (bypassAuth) {
     console.log(`[TwilioStream] [${requestId}] AUTH BYPASSED url=${req.url}`);
   } else if (secret && tsParam && tokenParam) {
@@ -71,14 +67,18 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
 
     if (Math.abs(now - ts) > TOKEN_MAX_AGE_SECONDS) {
       console.log(`[TwilioStream] [${requestId}] Token expired: ts=${ts} now=${now}`);
-      console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Token expired" url=${req.url}`);
+      console.log(
+        `[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Token expired" url=${req.url}`
+      );
       twilioWs.close(1008, 'Token expired');
       return;
     }
 
     if (!verifyStreamToken(secret, ts, tokenParam)) {
       console.log(`[TwilioStream] [${requestId}] Invalid token`);
-      console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Invalid token" url=${req.url}`);
+      console.log(
+        `[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Invalid token" url=${req.url}`
+      );
       twilioWs.close(1008, 'Invalid token');
       return;
     }
@@ -88,7 +88,9 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
     console.log(
       `[TwilioStream] [${requestId}] Missing token params, but secret configured - rejecting`
     );
-    console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Missing authentication" url=${req.url}`);
+    console.log(
+      `[TwilioStream] [${requestId}] CLOSING ws code=1008 reason="Missing authentication" url=${req.url}`
+    );
     twilioWs.close(1008, 'Missing authentication');
     return;
   } else {
@@ -108,7 +110,9 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
     console.error(`[TwilioStream] [${requestId}] OPENAI_API_KEY not set`);
-    console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1011 reason="Server misconfigured" url=${req.url}`);
+    console.log(
+      `[TwilioStream] [${requestId}] CLOSING ws code=1011 reason="Server misconfigured" url=${req.url}`
+    );
     twilioWs.close(1011, 'Server misconfigured');
     return;
   }
@@ -143,7 +147,7 @@ Be professional, empathetic, and concise. Do not provide legal advice.`,
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,
+          threshold: 0.75,
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
         },
@@ -289,7 +293,9 @@ Be professional, empathetic, and concise. Do not provide legal advice.`,
     console.log(`[TwilioStream] [${requestId}] OpenAI WebSocket closed: ${code} ${reason}`);
     openAiReady = false;
     if (twilioWs.readyState === WebSocket.OPEN) {
-      console.log(`[TwilioStream] [${requestId}] CLOSING ws code=1000 reason="OpenAI connection closed" url=${req.url}`);
+      console.log(
+        `[TwilioStream] [${requestId}] CLOSING ws code=1000 reason="OpenAI connection closed" url=${req.url}`
+      );
       twilioWs.close(1000, 'OpenAI connection closed');
     }
   });
