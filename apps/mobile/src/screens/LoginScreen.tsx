@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Modal,
   FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, setOrgContext } from "../services/api";
+import { colors } from "../theme/colors";
 
 interface Firm {
   id: string;
@@ -27,9 +28,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [firms, setFirms] = useState<Firm[]>([]);
-  const [selectedFirm, setSelectedFirm] = useState<Firm | null>(null);
-  const [showFirmPicker, setShowFirmPicker] = useState(false);
-  const [isLoadingFirms, setIsLoadingFirms] = useState(false);
   const [loginStep, setLoginStep] = useState<"credentials" | "firm">("credentials");
 
   async function handleLogin() {
@@ -59,8 +57,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   }
 
   async function handleFirmSelect(firm: Firm) {
-    setSelectedFirm(firm);
-    setShowFirmPicker(false);
     try {
       await setOrgContext(firm.id);
       onLoginSuccess();
@@ -80,14 +76,17 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             data={firms}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.firmRow}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.firmRow,
+                  pressed && styles.firmRowPressed,
+                ]}
                 onPress={() => handleFirmSelect(item)}
                 testID={`firm-select-${item.id}`}
               >
                 <Text style={styles.firmName}>{item.name}</Text>
                 <Text style={styles.firmArrow}>→</Text>
-              </TouchableOpacity>
+              </Pressable>
             )}
             contentContainerStyle={styles.firmList}
           />
@@ -114,7 +113,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <TextInput
             style={styles.input}
             placeholder="Email"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -124,25 +123,29 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#6b7280"
+            placeholderTextColor={colors.textMuted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             testID="input-password"
           />
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+              isLoading && styles.buttonDisabled,
+            ]}
             onPress={handleLogin}
             disabled={isLoading}
             testID="button-login"
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.buttonText}>Sign In</Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
     </SafeAreaView>
@@ -152,7 +155,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
@@ -162,13 +165,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#fff",
+    color: colors.textPrimary,
     textAlign: "center",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: "#9ca3af",
+    color: colors.textSecondary,
     textAlign: "center",
     marginBottom: 48,
   },
@@ -176,26 +179,29 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   input: {
-    backgroundColor: "#1f2937",
+    backgroundColor: colors.surface,
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
-    color: "#fff",
+    color: colors.textPrimary,
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: colors.border,
   },
   button: {
-    backgroundColor: "#57A6D5",
+    backgroundColor: colors.primary,
     borderRadius: 8,
     padding: 16,
     alignItems: "center",
     marginTop: 8,
   },
+  buttonPressed: {
+    backgroundColor: colors.primaryPressed,
+  },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -206,20 +212,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#1f2937",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#374151",
+    borderColor: colors.border,
+  },
+  firmRowPressed: {
+    backgroundColor: colors.border,
   },
   firmName: {
-    color: "#fff",
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: "500",
   },
   firmArrow: {
-    color: "#57A6D5",
+    color: colors.primary,
     fontSize: 18,
   },
   backButton: {
@@ -228,7 +237,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   backButtonText: {
-    color: "#9ca3af",
+    color: colors.textSecondary,
     fontSize: 14,
   },
 });
