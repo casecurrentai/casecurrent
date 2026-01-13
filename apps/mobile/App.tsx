@@ -1,11 +1,19 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { NavigationContainer, LinkingOptions } from "@react-navigation/native";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { NavigationContainer, LinkingOptions, NavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Platform } from "react-native";
+import * as Application from "expo-application";
 import { initializeAuth, getAuthToken, clearAuthToken } from "./src/services/api";
 import { connectRealtime, disconnectRealtime } from "./src/services/realtime";
+import {
+  registerForPushNotifications,
+  registerDeviceWithServer,
+  addNotificationResponseListener,
+  type NotificationData,
+} from "./src/services/pushNotifications";
 import LoginScreen from "./src/screens/LoginScreen";
 import InboxScreen from "./src/screens/InboxScreen";
 import LeadsScreen from "./src/screens/LeadsScreen";
@@ -49,6 +57,23 @@ const linking: LinkingOptions<RootStackParamList> = {
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+
+  const getDeviceId = useCallback(async (): Promise<string> => {
+    if (Platform.OS === 'android') {
+      return Application.getAndroidId() || 'android-unknown';
+    }
+    const iosId = await Application.getIosIdForVendorAsync();
+    return iosId || 'ios-unknown';
+  }, []);
+
+  const setupPushNotifications = useCallback(async () => {
+    const token = await registerForPushNotifications();
+    if (token) {
+      const deviceId = await getDeviceId();
+      await registerDeviceWithServer(deviceId);
+    }
+  }, [getDeviceId]);
 
   useEffect(() => {
     async function init() {
@@ -57,6 +82,7 @@ export default function App() {
       setIsLoading(false);
       if (token) {
         connectRealtime();
+        setupPushNotifications();
       }
     }
     init();
@@ -64,6 +90,16 @@ export default function App() {
     return () => {
       disconnectRealtime();
     };
+  }, [setupPushNotifications]);
+
+  useEffect(() => {
+    const subscription = addNotificationResponseListener((data: NotificationData) => {
+      if (data.leadId && navigationRef.current) {
+        navigationRef.current.navigate('LeadDetail', { leadId: data.leadId });
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -72,10 +108,11 @@ export default function App() {
     setIsAuthenticated(false);
   }, []);
 
-  const handleLoginSuccess = useCallback(() => {
+  const handleLoginSuccess = useCallback(async () => {
     setIsAuthenticated(true);
     connectRealtime();
-  }, []);
+    await setupPushNotifications();
+  }, [setupPushNotifications]);
 
   function MainTabs() {
     return (
@@ -118,7 +155,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer ref={navigationRef} linking={linking}>
         <Stack.Navigator
           screenOptions={{
             headerStyle: { backgroundColor: "#FFFFFF" },
