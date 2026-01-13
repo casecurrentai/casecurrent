@@ -1,0 +1,59 @@
+Create a MOBILE BUILD DOSSIER for CaseCurrent that I can paste into ChatGPT and also save elsewhere for backup.
+
+Rules:
+- DO NOT include any secrets or tokens. Redact any values for keys like EXPO_TOKEN, OPENAI_API_KEY, TWILIO_AUTH_TOKEN, DATABASE_URL, etc. If a file contains secrets, replace the value with "[REDACTED]".
+- Output must be copy/paste friendly and organized with clear section headers.
+- Include the FULL CONTENTS of the requested files (not summaries), unless they contain secrets—then redact.
+
+Part 1 — File inventory (mobile-related)
+Print a tree of all mobile-related files and configs:
+- apps/mobile/**
+- eas.json
+- app.json / app.config.* (wherever it exists)
+- package.json files relevant to mobile (apps/mobile/package.json and root package.json if it contains mobile scripts)
+- any CI workflow that runs EAS (e.g., .github/workflows/*ios* or *expo*)
+
+Part 2 — Print full file contents (redacted where needed)
+Output the full contents of these files (in this order), each wrapped in a code block with the file path as the label:
+1) eas.json
+2) apps/mobile/app.config.ts (or app.json / app.config.js, whichever is used)
+3) apps/mobile/package.json
+4) apps/mobile/README_EAS.md and apps/mobile/README.md (if present)
+5) apps/mobile/App.tsx
+6) apps/mobile/src/services/api.ts
+7) apps/mobile/src/services/realtime.ts
+8) apps/mobile/tsconfig.json (if present)
+9) apps/mobile/babel.config.* (if present)
+10) apps/mobile/metro.config.* (if present)
+11) apps/mobile/.env* files if they exist (BUT redact values)
+12) Any EAS/Expo related config: expo config files, eas project ID reference, etc.
+
+Part 3 — Environment and build settings summary (no secrets)
+Provide a table of:
+- EAS build profiles (development/preview/production/ios-device/etc)
+- For each profile: distribution type, simulator true/false, env var keys used (values redacted except safe public ones like https://casecurrent.co)
+
+Part 4 — WebSocket + API endpoint verification
+Confirm from the backend code:
+- What endpoint the mobile app calls for REST (base URL + /v1/...)
+- Whether the WebSocket server is mounted at /v1/realtime and how auth works
+Output the exact backend snippet showing WebSocketServer path and any relevant auth check (redact secrets).
+
+Part 5 — Remaining domain/email references audit
+Run grep (and print results) for:
+- casecurrent.io
+- counseltech.legal
+- counseltech.net
+- hello@casecurrent
+- info@casecurrent
+Show file paths and line numbers for any matches (ignore attached_assets/).
+
+Part 6 — Republish note
+State clearly whether a Replit “Republish” is required for these changes to take effect, and what component it affects (backend/web only vs mobile builds).
+
+Deliverable:
+At the very top, include:
+- “MOBILE BUILD DOSSIER — CaseCurrent — <today’s date>”
+- A short 5-bullet overview of what’s included.
+
+Now produce the dossier.
