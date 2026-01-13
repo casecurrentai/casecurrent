@@ -1,10 +1,10 @@
-import type { Express } from "express";
-import type { Server } from "http";
-import * as crypto from "crypto";
-import swaggerUi from "swagger-ui-express";
-import { WebSocketServer, WebSocket } from "ws";
-import { prisma } from "./db";
-import { swaggerSpec } from "./openapi";
+import type { Express } from 'express';
+import type { Server } from 'http';
+import * as crypto from 'crypto';
+import swaggerUi from 'swagger-ui-express';
+import { WebSocketServer, WebSocket } from 'ws';
+import { prisma } from './db';
+import { swaggerSpec } from './openapi';
 import {
   generateToken,
   hashPassword,
@@ -19,23 +19,23 @@ import {
   isPlatformAdmin,
   verifyToken,
   type AuthenticatedRequest,
-} from "./auth";
-import { handleOpenAIWebhook, getLastAcceptCallStatus } from "./openai/webhook";
-import { getOpenAIProjectId, isOpenAIConfigured } from "./openai/client";
-import { recordEvent, getRecentEvents, getEventCount } from "./flightRecorder";
-import { 
-  getTelephonyStatus, 
-  getActiveProvider, 
+} from './auth';
+import { handleOpenAIWebhook, getLastAcceptCallStatus } from './openai/webhook';
+import { getOpenAIProjectId, isOpenAIConfigured } from './openai/client';
+import { recordEvent, getRecentEvents, getEventCount } from './flightRecorder';
+import {
+  getTelephonyStatus,
+  getActiveProvider,
   mapDbStatusToCanonical,
   mapPlivoWebhookToDbStatus,
   calculateDurationSeconds,
   normalizeOutcome,
   isTerminalStatus,
   outcomeRequiresFollowup,
-  type CanonicalCallStatus 
-} from "./telephony/status";
-import { generateStreamToken, handleTwilioMediaStream } from "./telephony/twilio/streamHandler";
-import { DATABASE_URL } from "./env";
+  type CanonicalCallStatus,
+} from './telephony/status';
+import { generateStreamToken, handleTwilioMediaStream } from './telephony/twilio/streamHandler';
+import { DATABASE_URL } from './env';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -50,12 +50,15 @@ interface WSClient {
 const wsClients = new Map<string, WSClient>();
 
 // Emit realtime event to all clients in an org
-export function emitRealtimeEvent(orgId: string, event: {
-  type: string;
-  leadId?: string;
-  timestamp: string;
-  data: Record<string, unknown>;
-}) {
+export function emitRealtimeEvent(
+  orgId: string,
+  event: {
+    type: string;
+    leadId?: string;
+    timestamp: string;
+    data: Record<string, unknown>;
+  }
+) {
   const message = JSON.stringify(event);
   for (const [clientId, client] of wsClients) {
     if (client.orgId === orgId && client.ws.readyState === WebSocket.OPEN) {
@@ -74,38 +77,35 @@ const logBuffer: string[] = [];
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const startTime = Date.now();
-const BUILD_VERSION = "v4-" + new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+const BUILD_VERSION = 'v4-' + new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
 
 // Intercept console.log/error to buffer logs
 console.log = (...args: any[]) => {
-  const line = `[${new Date().toISOString()}] LOG: ${args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")}`;
+  const line = `[${new Date().toISOString()}] LOG: ${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')}`;
   logBuffer.push(line);
   if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
   originalConsoleLog.apply(console, args);
 };
 console.error = (...args: any[]) => {
-  const line = `[${new Date().toISOString()}] ERR: ${args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")}`;
+  const line = `[${new Date().toISOString()}] ERR: ${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')}`;
   logBuffer.push(line);
   if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
   originalConsoleError.apply(console, args);
 };
-import { maskPhone, maskCallSid, maskSipUri, maskProjectId } from "./utils/logMasking";
+import { maskPhone, maskCallSid, maskSipUri, maskProjectId } from './utils/logMasking';
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Swagger UI
-  app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  app.get("/docs.json", (_req, res) => {
-    res.setHeader("Content-Type", "application/json");
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get('/docs.json', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     res.send(swaggerSpec);
   });
 
@@ -117,18 +117,18 @@ export async function registerRoutes(
   const twilioWss = new WebSocketServer({ noServer: true });
 
   // Mobile realtime WebSocket handler
-  realtimeWss.on("connection", (ws, req) => {
-    const url = new URL(req.url || "", `http://${req.headers.host}`);
-    const token = url.searchParams.get("token");
+  realtimeWss.on('connection', (ws, req) => {
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
 
     if (!token) {
-      ws.close(4001, "Missing token");
+      ws.close(4001, 'Missing token');
       return;
     }
 
     const payload = verifyToken(token);
     if (!payload) {
-      ws.close(4002, "Invalid token");
+      ws.close(4002, 'Invalid token');
       return;
     }
 
@@ -142,20 +142,22 @@ export async function registerRoutes(
 
     console.log(`[WS] Client connected: ${clientId} (org: ${payload.orgId})`);
 
-    ws.send(JSON.stringify({
-      type: "connected",
-      timestamp: new Date().toISOString(),
-      data: { clientId },
-    }));
+    ws.send(
+      JSON.stringify({
+        type: 'connected',
+        timestamp: new Date().toISOString(),
+        data: { clientId },
+      })
+    );
 
-    ws.on("message", (data) => {
+    ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        if (msg.type === "ping") {
+        if (msg.type === 'ping') {
           const client = wsClients.get(clientId);
           if (client) {
             client.lastPing = Date.now();
-            ws.send(JSON.stringify({ type: "pong", timestamp: new Date().toISOString() }));
+            ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
           }
         }
       } catch (err) {
@@ -163,43 +165,43 @@ export async function registerRoutes(
       }
     });
 
-    ws.on("close", () => {
+    ws.on('close', () => {
       wsClients.delete(clientId);
       console.log(`[WS] Client disconnected: ${clientId}`);
     });
 
-    ws.on("error", (err) => {
+    ws.on('error', (err) => {
       console.error(`[WS] Client error ${clientId}:`, err);
       wsClients.delete(clientId);
     });
   });
 
   // Twilio Media Streams WebSocket handler
-  twilioWss.on("connection", (ws, req) => {
+  twilioWss.on('connection', (ws, req) => {
     console.log(`[WebSocket] New Twilio stream connection: ${req.url}`);
     handleTwilioMediaStream(ws, req);
   });
 
   // Register unified upgrade dispatcher on HTTP server
-  httpServer.on("upgrade", (request, socket, head) => {
-    const pathname = request.url?.split("?")[0] || "";
-    
-    if (pathname === "/v1/realtime") {
+  httpServer.on('upgrade', (request, socket, head) => {
+    const pathname = request.url?.split('?')[0] || '';
+
+    if (pathname === '/v1/realtime') {
       realtimeWss.handleUpgrade(request, socket, head, (ws) => {
-        realtimeWss.emit("connection", ws, request);
+        realtimeWss.emit('connection', ws, request);
       });
-    } else if (pathname.startsWith("/v1/telephony/twilio/stream")) {
+    } else if (pathname.startsWith('/v1/telephony/twilio/stream')) {
       console.log(`[WebSocket] Upgrading Twilio stream: ${request.url}`);
       twilioWss.handleUpgrade(request, socket, head, (ws) => {
-        twilioWss.emit("connection", ws, request);
+        twilioWss.emit('connection', ws, request);
       });
     }
     // Don't destroy socket for other paths - let Vite/other handlers process them
   });
 
   // Explicit HTTP handler to prevent SPA fallback from returning index.html
-  app.get("/v1/telephony/twilio/stream", (_req, res) => {
-    res.status(426).json({ error: "Upgrade Required", message: "WebSocket upgrade required" });
+  app.get('/v1/telephony/twilio/stream', (_req, res) => {
+    res.status(426).json({ error: 'Upgrade Required', message: 'WebSocket upgrade required' });
   });
 
   // Cleanup stale connections every 60 seconds
@@ -209,7 +211,7 @@ export async function registerRoutes(
     for (const [clientId, client] of wsClients) {
       if (now - client.lastPing > staleThreshold) {
         console.log(`[WS] Removing stale client: ${clientId}`);
-        client.ws.close(4003, "Connection stale");
+        client.ws.close(4003, 'Connection stale');
         wsClients.delete(clientId);
       }
     }
@@ -229,22 +231,22 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/HealthResponse'
    */
-  app.get("/api/health", async (_req, res) => {
-    let dbStatus = "unknown";
+  app.get('/api/health', async (_req, res) => {
+    let dbStatus = 'unknown';
     let orgCount = 0;
 
     try {
       await prisma.$queryRaw`SELECT 1`;
       const count = await prisma.organization.count();
-      dbStatus = "connected";
+      dbStatus = 'connected';
       orgCount = count;
     } catch (error) {
-      console.error("Database health check failed:", error);
-      dbStatus = "disconnected";
+      console.error('Database health check failed:', error);
+      dbStatus = 'disconnected';
     }
 
     res.json({
-      status: "healthy",
+      status: 'healthy',
       timestamp: new Date().toISOString(),
       database: dbStatus,
       orgCount,
@@ -254,52 +256,52 @@ export async function registerRoutes(
   // ============================================
   // GATE 5: DIAGNOSTIC ENDPOINTS (token-gated)
   // ============================================
-  
-  app.get("/v1/diag/logs", (req, res) => {
+
+  app.get('/v1/diag/logs', (req, res) => {
     const diagToken = process.env.DIAG_TOKEN;
     if (!diagToken) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: 'Not found' });
     }
     const token = req.query.token as string;
     if (token !== diagToken) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
-    
+
     // Mask secrets in logs
-    const maskedLogs = logBuffer.map(line => {
+    const maskedLogs = logBuffer.map((line) => {
       return line
-        .replace(/whsec_[A-Za-z0-9+/=]+/g, "whsec_[REDACTED]")
-        .replace(/sk-[A-Za-z0-9]+/g, "sk-[REDACTED]")
-        .replace(/Bearer [A-Za-z0-9._-]+/g, "Bearer [REDACTED]");
+        .replace(/whsec_[A-Za-z0-9+/=]+/g, 'whsec_[REDACTED]')
+        .replace(/sk-[A-Za-z0-9]+/g, 'sk-[REDACTED]')
+        .replace(/Bearer [A-Za-z0-9._-]+/g, 'Bearer [REDACTED]');
     });
-    
-    res.setHeader("Content-Type", "text/plain");
-    res.send(maskedLogs.join("\n"));
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(maskedLogs.join('\n'));
   });
 
-  app.get("/v1/diag/status", async (req, res) => {
+  app.get('/v1/diag/status', async (req, res) => {
     const diagToken = process.env.DIAG_TOKEN;
     if (!diagToken) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: 'Not found' });
     }
     const token = req.query.token as string;
     if (token !== diagToken) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
-    
+
     let dbOk = false;
     try {
       await prisma.$queryRaw`SELECT 1`;
       dbOk = true;
     } catch {}
-    
+
     let openaiOk = false;
     try {
       openaiOk = isOpenAIConfigured();
     } catch {}
-    
+
     const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-    
+
     res.json({
       dbOk,
       openaiOk,
@@ -311,24 +313,24 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/v1/diag/timeline", (req, res) => {
+  app.get('/v1/diag/timeline', (req, res) => {
     const diagToken = process.env.DIAG_TOKEN;
     if (!diagToken) {
-      if (process.env.NODE_ENV === "production") {
-        console.warn("[DIAG] DIAG_TOKEN not set in production - timeline endpoint disabled");
-        return res.status(404).json({ error: "Not found" });
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[DIAG] DIAG_TOKEN not set in production - timeline endpoint disabled');
+        return res.status(404).json({ error: 'Not found' });
       }
-      console.warn("[DIAG] DIAG_TOKEN not set - using dev default");
+      console.warn('[DIAG] DIAG_TOKEN not set - using dev default');
     }
     const token = req.query.token as string;
-    const expectedToken = diagToken || "dev-diag-token";
+    const expectedToken = diagToken || 'dev-diag-token';
     if (token !== expectedToken) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
-    
+
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const events = getRecentEvents(limit);
-    
+
     res.json({
       count: events.length,
       totalRecorded: getEventCount(),
@@ -362,46 +364,48 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  app.post("/v1/auth/register", async (req, res) => {
+  app.post('/v1/auth/register', async (req, res) => {
     try {
       const { email, password, name, orgName } = req.body;
 
       if (!email || !password || !name || !orgName) {
-        return res.status(400).json({ error: "All fields required: email, password, name, orgName" });
+        return res
+          .status(400)
+          .json({ error: 'All fields required: email, password, name, orgName' });
       }
 
       if (password.length < 8) {
-        return res.status(400).json({ error: "Password must be at least 8 characters" });
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
 
       const slug = slugify(orgName);
-      
+
       const existingOrg = await prisma.organization.findUnique({
         where: { slug },
       });
 
       if (existingOrg) {
-        return res.status(400).json({ error: "Organization name already taken" });
+        return res.status(400).json({ error: 'Organization name already taken' });
       }
 
       const org = await prisma.organization.create({
         data: {
           name: orgName,
           slug,
-          status: "active",
-          timezone: "America/New_York",
+          status: 'active',
+          timezone: 'America/New_York',
         },
       });
 
       const passwordHash = await hashPassword(password);
-      
+
       const user = await prisma.user.create({
         data: {
           orgId: org.id,
           email,
           name,
-          role: "owner",
-          status: "active",
+          role: 'owner',
+          status: 'active',
           passwordHash,
         },
       });
@@ -428,8 +432,8 @@ export async function registerRoutes(
         },
       });
     } catch (error) {
-      console.error("Registration error:", error);
-      res.status(500).json({ error: "Registration failed" });
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
     }
   });
 
@@ -459,32 +463,32 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  app.post("/v1/auth/login", async (req, res) => {
+  app.post('/v1/auth/login', async (req, res) => {
     try {
       const { email, password } = req.body;
-      console.log("[LOGIN] Attempt for email:", email, "password length:", password?.length);
+      console.log('[LOGIN] Attempt for email:', email, 'password length:', password?.length);
 
       if (!email || !password) {
-        console.log("[LOGIN] Missing email or password");
-        return res.status(400).json({ error: "Email and password required" });
+        console.log('[LOGIN] Missing email or password');
+        return res.status(400).json({ error: 'Email and password required' });
       }
 
       const user = await prisma.user.findFirst({
         where: { email },
         include: { organization: true },
       });
-      console.log("[LOGIN] User found:", !!user, user?.email);
+      console.log('[LOGIN] User found:', !!user, user?.email);
 
       if (!user) {
-        console.log("[LOGIN] User not found for email:", email);
-        return res.status(401).json({ error: "Invalid credentials" });
+        console.log('[LOGIN] User not found for email:', email);
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       const validPassword = await comparePassword(password, user.passwordHash);
-      console.log("[LOGIN] Password validation result:", validPassword);
+      console.log('[LOGIN] Password validation result:', validPassword);
       if (!validPassword) {
-        console.log("[LOGIN] Invalid password for user:", email);
-        return res.status(401).json({ error: "Invalid credentials" });
+        console.log('[LOGIN] Invalid password for user:', email);
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       const token = generateToken({
@@ -494,17 +498,12 @@ export async function registerRoutes(
         role: user.role,
       });
 
-      await createAuditLog(
-        user.orgId,
-        user.id,
-        "system",
-        "login",
-        "user",
-        user.id,
-        { email: user.email, timestamp: new Date().toISOString() }
-      );
+      await createAuditLog(user.orgId, user.id, 'system', 'login', 'user', user.id, {
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
 
-      console.log("[LOGIN] Success! Sending response for:", email);
+      console.log('[LOGIN] Success! Sending response for:', email);
       res.json({
         token,
         user: {
@@ -521,8 +520,8 @@ export async function registerRoutes(
         },
       });
     } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Login failed" });
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
     }
   });
 
@@ -553,7 +552,7 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/Error'
    */
-  app.get("/v1/me", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/me', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
@@ -561,7 +560,7 @@ export async function registerRoutes(
       });
 
       if (!user) {
-        return res.status(404).json({ error: "User not found" });
+        return res.status(404).json({ error: 'User not found' });
       }
 
       res.json({
@@ -584,8 +583,8 @@ export async function registerRoutes(
         },
       });
     } catch (error) {
-      console.error("Get me error:", error);
-      res.status(500).json({ error: "Failed to get user profile" });
+      console.error('Get me error:', error);
+      res.status(500).json({ error: 'Failed to get user profile' });
     }
   });
 
@@ -607,14 +606,14 @@ export async function registerRoutes(
    *       401:
    *         description: Unauthorized
    */
-  app.get("/v1/org", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/org', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const org = await prisma.organization.findUnique({
         where: { id: req.user!.orgId },
       });
 
       if (!org) {
-        return res.status(404).json({ error: "Organization not found" });
+        return res.status(404).json({ error: 'Organization not found' });
       }
 
       res.json({
@@ -627,8 +626,8 @@ export async function registerRoutes(
         updatedAt: org.updatedAt,
       });
     } catch (error) {
-      console.error("Get org error:", error);
-      res.status(500).json({ error: "Failed to get organization" });
+      console.error('Get org error:', error);
+      res.status(500).json({ error: 'Failed to get organization' });
     }
   });
 
@@ -657,9 +656,9 @@ export async function registerRoutes(
    *         description: Insufficient permissions
    */
   app.patch(
-    "/v1/org",
+    '/v1/org',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { name, timezone } = req.body;
@@ -670,7 +669,7 @@ export async function registerRoutes(
         if (timezone) updateData.timezone = timezone;
 
         if (Object.keys(updateData).length === 0) {
-          return res.status(400).json({ error: "No valid fields to update" });
+          return res.status(400).json({ error: 'No valid fields to update' });
         }
 
         const org = await prisma.organization.update({
@@ -678,15 +677,10 @@ export async function registerRoutes(
           data: updateData,
         });
 
-        await createAuditLog(
-          orgId,
-          req.user!.userId,
-          "user",
-          "update",
-          "organization",
-          orgId,
-          { changes: updateData, timestamp: new Date().toISOString() }
-        );
+        await createAuditLog(orgId, req.user!.userId, 'user', 'update', 'organization', orgId, {
+          changes: updateData,
+          timestamp: new Date().toISOString(),
+        });
 
         res.json({
           id: org.id,
@@ -698,8 +692,8 @@ export async function registerRoutes(
           updatedAt: org.updatedAt,
         });
       } catch (error) {
-        console.error("Update org error:", error);
-        res.status(500).json({ error: "Failed to update organization" });
+        console.error('Update org error:', error);
+        res.status(500).json({ error: 'Failed to update organization' });
       }
     }
   );
@@ -710,7 +704,7 @@ export async function registerRoutes(
 
   // Generate HMAC SHA256 signature for webhook payloads
   function signWebhookPayload(payload: string, secret: string): string {
-    return crypto.createHmac("sha256", secret).update(payload).digest("hex");
+    return crypto.createHmac('sha256', secret).update(payload).digest('hex');
   }
 
   // Attempt to deliver a webhook with retry logic
@@ -731,7 +725,7 @@ export async function registerRoutes(
     if (delivery.attemptCount >= MAX_ATTEMPTS) {
       await prisma.outgoingWebhookDelivery.update({
         where: { id: deliveryId },
-        data: { status: "failed" },
+        data: { status: 'failed' },
       });
       console.log(`[WEBHOOK] Delivery ${deliveryId} failed after ${MAX_ATTEMPTS} attempts`);
       return;
@@ -742,18 +736,18 @@ export async function registerRoutes(
 
     try {
       const response = await fetch(delivery.endpoint.url, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "X-CT-Signature": signature,
-          "X-CT-Event": delivery.eventType,
-          "X-CT-Delivery-ID": deliveryId,
+          'Content-Type': 'application/json',
+          'X-CT-Signature': signature,
+          'X-CT-Event': delivery.eventType,
+          'X-CT-Delivery-ID': deliveryId,
         },
         body: payloadStr,
         signal: AbortSignal.timeout(10000), // 10 second timeout
       });
 
-      const responseBody = await response.text().catch(() => "");
+      const responseBody = await response.text().catch(() => '');
 
       await prisma.outgoingWebhookDelivery.update({
         where: { id: deliveryId },
@@ -762,27 +756,29 @@ export async function registerRoutes(
           lastAttemptAt: new Date(),
           responseCode: response.status,
           responseBody: responseBody.slice(0, 1000),
-          status: response.ok ? "delivered" : "pending",
+          status: response.ok ? 'delivered' : 'pending',
         },
       });
 
       if (response.ok) {
         console.log(`[WEBHOOK] Delivery ${deliveryId} succeeded (status ${response.status})`);
       } else {
-        console.log(`[WEBHOOK] Delivery ${deliveryId} failed with status ${response.status}, will retry`);
+        console.log(
+          `[WEBHOOK] Delivery ${deliveryId} failed with status ${response.status}, will retry`
+        );
         // Schedule retry with backoff
         const backoffDelay = BACKOFF_MS[delivery.attemptCount] || 15000;
         setTimeout(() => attemptWebhookDelivery(deliveryId), backoffDelay);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       await prisma.outgoingWebhookDelivery.update({
         where: { id: deliveryId },
         data: {
           attemptCount: delivery.attemptCount + 1,
           lastAttemptAt: new Date(),
           responseBody: `Error: ${errorMessage}`,
-          status: "pending",
+          status: 'pending',
         },
       });
       console.log(`[WEBHOOK] Delivery ${deliveryId} error: ${errorMessage}, will retry`);
@@ -793,7 +789,11 @@ export async function registerRoutes(
   }
 
   // Emit webhook event to all matching endpoints
-  async function emitWebhookEvent(orgId: string, eventType: string, payload: Record<string, unknown>) {
+  async function emitWebhookEvent(
+    orgId: string,
+    eventType: string,
+    payload: Record<string, unknown>
+  ) {
     try {
       // Find all active endpoints that subscribe to this event
       const endpoints = await prisma.outgoingWebhookEndpoint.findMany({
@@ -821,18 +821,18 @@ export async function registerRoutes(
               timestamp: new Date().toISOString(),
               data: payload,
             },
-            status: "pending",
+            status: 'pending',
             attemptCount: 0,
           },
         });
 
         console.log(`[WEBHOOK] Created delivery ${delivery.id} for event ${eventType}`);
-        
+
         // Attempt delivery immediately (async, non-blocking)
         setImmediate(() => attemptWebhookDelivery(delivery.id));
       }
     } catch (error) {
-      console.error("[WEBHOOK] Error emitting event:", error);
+      console.error('[WEBHOOK] Error emitting event:', error);
     }
   }
 
@@ -883,12 +883,12 @@ export async function registerRoutes(
    *         description: List of webhook deliveries
    */
   // GET /v1/webhooks - List webhook endpoints
-  app.get("/v1/webhooks", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/webhooks', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const endpoints = await prisma.outgoingWebhookEndpoint.findMany({
         where: { orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           url: true,
@@ -901,30 +901,30 @@ export async function registerRoutes(
       });
       res.json(endpoints);
     } catch (error) {
-      console.error("List webhooks error:", error);
-      res.status(500).json({ error: "Failed to list webhooks" });
+      console.error('List webhooks error:', error);
+      res.status(500).json({ error: 'Failed to list webhooks' });
     }
   });
 
   // POST /v1/webhooks - Create webhook endpoint
-  app.post("/v1/webhooks", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/webhooks', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { url, events } = req.body;
 
       if (!url || !events || !Array.isArray(events)) {
-        return res.status(400).json({ error: "url and events array required" });
+        return res.status(400).json({ error: 'url and events array required' });
       }
 
       // Validate URL format
       try {
         new URL(url);
       } catch {
-        return res.status(400).json({ error: "Invalid URL format" });
+        return res.status(400).json({ error: 'Invalid URL format' });
       }
 
       // Generate secure random secret
-      const secret = crypto.randomBytes(32).toString("hex");
+      const secret = crypto.randomBytes(32).toString('hex');
 
       const endpoint = await prisma.outgoingWebhookEndpoint.create({
         data: {
@@ -940,9 +940,9 @@ export async function registerRoutes(
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "webhook.create",
-          entityType: "webhook_endpoint",
+          actorType: 'user',
+          action: 'webhook.create',
+          entityType: 'webhook_endpoint',
           entityId: endpoint.id,
           details: { url, events },
         },
@@ -958,13 +958,13 @@ export async function registerRoutes(
         createdAt: endpoint.createdAt,
       });
     } catch (error) {
-      console.error("Create webhook error:", error);
-      res.status(500).json({ error: "Failed to create webhook" });
+      console.error('Create webhook error:', error);
+      res.status(500).json({ error: 'Failed to create webhook' });
     }
   });
 
   // GET /v1/webhooks/:id - Get webhook endpoint (without secret)
-  app.get("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/webhooks/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -982,18 +982,18 @@ export async function registerRoutes(
       });
 
       if (!endpoint) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        return res.status(404).json({ error: 'Webhook endpoint not found' });
       }
 
       res.json(endpoint);
     } catch (error) {
-      console.error("Get webhook error:", error);
-      res.status(500).json({ error: "Failed to get webhook" });
+      console.error('Get webhook error:', error);
+      res.status(500).json({ error: 'Failed to get webhook' });
     }
   });
 
   // PATCH /v1/webhooks/:id - Update webhook endpoint
-  app.patch("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.patch('/v1/webhooks/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1004,7 +1004,7 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        return res.status(404).json({ error: 'Webhook endpoint not found' });
       }
 
       const updateData: { url?: string; events?: string[]; active?: boolean } = {};
@@ -1013,7 +1013,7 @@ export async function registerRoutes(
           new URL(url);
           updateData.url = url;
         } catch {
-          return res.status(400).json({ error: "Invalid URL format" });
+          return res.status(400).json({ error: 'Invalid URL format' });
         }
       }
       if (events !== undefined && Array.isArray(events)) updateData.events = events;
@@ -1036,9 +1036,9 @@ export async function registerRoutes(
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "webhook.update",
-          entityType: "webhook_endpoint",
+          actorType: 'user',
+          action: 'webhook.update',
+          entityType: 'webhook_endpoint',
           entityId: id,
           details: { changes: updateData },
         },
@@ -1046,13 +1046,13 @@ export async function registerRoutes(
 
       res.json(endpoint);
     } catch (error) {
-      console.error("Update webhook error:", error);
-      res.status(500).json({ error: "Failed to update webhook" });
+      console.error('Update webhook error:', error);
+      res.status(500).json({ error: 'Failed to update webhook' });
     }
   });
 
   // DELETE /v1/webhooks/:id - Delete webhook endpoint
-  app.delete("/v1/webhooks/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.delete('/v1/webhooks/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1062,7 +1062,7 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        return res.status(404).json({ error: 'Webhook endpoint not found' });
       }
 
       await prisma.outgoingWebhookEndpoint.delete({ where: { id } });
@@ -1071,9 +1071,9 @@ export async function registerRoutes(
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "webhook.delete",
-          entityType: "webhook_endpoint",
+          actorType: 'user',
+          action: 'webhook.delete',
+          entityType: 'webhook_endpoint',
           entityId: id,
           details: { url: existing.url },
         },
@@ -1081,53 +1081,57 @@ export async function registerRoutes(
 
       res.status(204).send();
     } catch (error) {
-      console.error("Delete webhook error:", error);
-      res.status(500).json({ error: "Failed to delete webhook" });
+      console.error('Delete webhook error:', error);
+      res.status(500).json({ error: 'Failed to delete webhook' });
     }
   });
 
   // POST /v1/webhooks/:id/rotate-secret - Rotate webhook secret
-  app.post("/v1/webhooks/:id/rotate-secret", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
+  app.post(
+    '/v1/webhooks/:id/rotate-secret',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
 
-      const existing = await prisma.outgoingWebhookEndpoint.findFirst({
-        where: { id, orgId },
-      });
+        const existing = await prisma.outgoingWebhookEndpoint.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!existing) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        if (!existing) {
+          return res.status(404).json({ error: 'Webhook endpoint not found' });
+        }
+
+        const newSecret = crypto.randomBytes(32).toString('hex');
+
+        await prisma.outgoingWebhookEndpoint.update({
+          where: { id },
+          data: { secret: newSecret },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            orgId,
+            actorUserId: req.user!.userId,
+            actorType: 'user',
+            action: 'webhook.rotate_secret',
+            entityType: 'webhook_endpoint',
+            entityId: id,
+            details: { rotatedAt: new Date().toISOString() },
+          },
+        });
+
+        res.json({ secret: newSecret });
+      } catch (error) {
+        console.error('Rotate webhook secret error:', error);
+        res.status(500).json({ error: 'Failed to rotate secret' });
       }
-
-      const newSecret = crypto.randomBytes(32).toString("hex");
-
-      await prisma.outgoingWebhookEndpoint.update({
-        where: { id },
-        data: { secret: newSecret },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          orgId,
-          actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "webhook.rotate_secret",
-          entityType: "webhook_endpoint",
-          entityId: id,
-          details: { rotatedAt: new Date().toISOString() },
-        },
-      });
-
-      res.json({ secret: newSecret });
-    } catch (error) {
-      console.error("Rotate webhook secret error:", error);
-      res.status(500).json({ error: "Failed to rotate secret" });
     }
-  });
+  );
 
   // GET /v1/webhooks/:id/deliveries - Get recent deliveries for an endpoint
-  app.get("/v1/webhooks/:id/deliveries", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/webhooks/:id/deliveries', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1138,12 +1142,12 @@ export async function registerRoutes(
       });
 
       if (!endpoint) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        return res.status(404).json({ error: 'Webhook endpoint not found' });
       }
 
       const deliveries = await prisma.outgoingWebhookDelivery.findMany({
         where: { endpointId: id },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         take: limit,
         select: {
           id: true,
@@ -1158,20 +1162,20 @@ export async function registerRoutes(
 
       res.json(deliveries);
     } catch (error) {
-      console.error("Get webhook deliveries error:", error);
-      res.status(500).json({ error: "Failed to get deliveries" });
+      console.error('Get webhook deliveries error:', error);
+      res.status(500).json({ error: 'Failed to get deliveries' });
     }
   });
 
   // GET /v1/webhook-deliveries - Get all recent deliveries for the org
-  app.get("/v1/webhook-deliveries", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/webhook-deliveries', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
 
       const deliveries = await prisma.outgoingWebhookDelivery.findMany({
         where: { orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         take: limit,
         include: {
           endpoint: {
@@ -1180,25 +1184,27 @@ export async function registerRoutes(
         },
       });
 
-      res.json(deliveries.map(d => ({
-        id: d.id,
-        endpointId: d.endpointId,
-        endpointUrl: d.endpoint.url,
-        eventType: d.eventType,
-        status: d.status,
-        attemptCount: d.attemptCount,
-        lastAttemptAt: d.lastAttemptAt,
-        responseCode: d.responseCode,
-        createdAt: d.createdAt,
-      })));
+      res.json(
+        deliveries.map((d) => ({
+          id: d.id,
+          endpointId: d.endpointId,
+          endpointUrl: d.endpoint.url,
+          eventType: d.eventType,
+          status: d.status,
+          attemptCount: d.attemptCount,
+          lastAttemptAt: d.lastAttemptAt,
+          responseCode: d.responseCode,
+          createdAt: d.createdAt,
+        }))
+      );
     } catch (error) {
-      console.error("Get all deliveries error:", error);
-      res.status(500).json({ error: "Failed to get deliveries" });
+      console.error('Get all deliveries error:', error);
+      res.status(500).json({ error: 'Failed to get deliveries' });
     }
   });
 
   // POST /v1/webhooks/:id/test - Send a test webhook
-  app.post("/v1/webhooks/:id/test", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/webhooks/:id/test', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1208,7 +1214,7 @@ export async function registerRoutes(
       });
 
       if (!endpoint) {
-        return res.status(404).json({ error: "Webhook endpoint not found" });
+        return res.status(404).json({ error: 'Webhook endpoint not found' });
       }
 
       // Create a test delivery
@@ -1216,13 +1222,13 @@ export async function registerRoutes(
         data: {
           orgId,
           endpointId: id,
-          eventType: "test.ping",
+          eventType: 'test.ping',
           payload: {
-            event: "test.ping",
+            event: 'test.ping',
             timestamp: new Date().toISOString(),
-            data: { message: "Test webhook from CaseCurrent" },
+            data: { message: 'Test webhook from CaseCurrent' },
           },
-          status: "pending",
+          status: 'pending',
           attemptCount: 0,
         },
       });
@@ -1242,8 +1248,8 @@ export async function registerRoutes(
         responseBody: result?.responseBody?.slice(0, 500),
       });
     } catch (error) {
-      console.error("Test webhook error:", error);
-      res.status(500).json({ error: "Failed to test webhook" });
+      console.error('Test webhook error:', error);
+      res.status(500).json({ error: 'Failed to test webhook' });
     }
   });
 
@@ -1273,7 +1279,7 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/ContactList'
    */
-  app.get("/v1/contacts", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/contacts', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const q = req.query.q as string | undefined;
@@ -1281,21 +1287,21 @@ export async function registerRoutes(
       const where: { orgId: string; OR?: Array<Record<string, unknown>> } = { orgId };
       if (q) {
         where.OR = [
-          { name: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: 'insensitive' } },
           { primaryPhone: { contains: q } },
-          { primaryEmail: { contains: q, mode: "insensitive" } },
+          { primaryEmail: { contains: q, mode: 'insensitive' } },
         ];
       }
 
       const [contacts, total] = await Promise.all([
-        prisma.contact.findMany({ where, orderBy: { createdAt: "desc" }, take: 100 }),
+        prisma.contact.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }),
         prisma.contact.count({ where }),
       ]);
 
       res.json({ contacts, total });
     } catch (error) {
-      console.error("List contacts error:", error);
-      res.status(500).json({ error: "Failed to list contacts" });
+      console.error('List contacts error:', error);
+      res.status(500).json({ error: 'Failed to list contacts' });
     }
   });
 
@@ -1324,16 +1330,16 @@ export async function registerRoutes(
    *         description: Insufficient permissions
    */
   app.post(
-    "/v1/contacts",
+    '/v1/contacts',
     authMiddleware,
-    requireMinRole("staff"),
+    requireMinRole('staff'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = req.user!.orgId;
         const { name, primaryPhone, primaryEmail } = req.body;
 
         if (!name) {
-          return res.status(400).json({ error: "Name is required" });
+          return res.status(400).json({ error: 'Name is required' });
         }
 
         const contact = await prisma.contact.create({
@@ -1345,17 +1351,17 @@ export async function registerRoutes(
           },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "create", "contact", contact.id, {
+        await createAuditLog(orgId, req.user!.userId, 'user', 'create', 'contact', contact.id, {
           name,
           timestamp: new Date().toISOString(),
         });
 
-        await emitWebhookEvent(orgId, "contact.created", { contactId: contact.id, name });
+        await emitWebhookEvent(orgId, 'contact.created', { contactId: contact.id, name });
 
         res.status(201).json(contact);
       } catch (error) {
-        console.error("Create contact error:", error);
-        res.status(500).json({ error: "Failed to create contact" });
+        console.error('Create contact error:', error);
+        res.status(500).json({ error: 'Failed to create contact' });
       }
     }
   );
@@ -1384,7 +1390,7 @@ export async function registerRoutes(
    *       404:
    *         description: Contact not found
    */
-  app.get("/v1/contacts/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/contacts/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1394,13 +1400,13 @@ export async function registerRoutes(
       });
 
       if (!contact) {
-        return res.status(404).json({ error: "Contact not found" });
+        return res.status(404).json({ error: 'Contact not found' });
       }
 
       res.json(contact);
     } catch (error) {
-      console.error("Get contact error:", error);
-      res.status(500).json({ error: "Failed to get contact" });
+      console.error('Get contact error:', error);
+      res.status(500).json({ error: 'Failed to get contact' });
     }
   });
 
@@ -1428,26 +1434,26 @@ export async function registerRoutes(
    *       404:
    *         description: Contact not found
    */
-  app.get("/v1/contacts/:id/leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/contacts/:id/leads', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
 
       const contact = await prisma.contact.findFirst({ where: { id, orgId } });
       if (!contact) {
-        return res.status(404).json({ error: "Contact not found" });
+        return res.status(404).json({ error: 'Contact not found' });
       }
 
       const leads = await prisma.lead.findMany({
         where: { contactId: id, orgId },
         include: { contact: true, practiceArea: true },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
 
       res.json({ leads, total: leads.length });
     } catch (error) {
-      console.error("Get contact leads error:", error);
-      res.status(500).json({ error: "Failed to get contact leads" });
+      console.error('Get contact leads error:', error);
+      res.status(500).json({ error: 'Failed to get contact leads' });
     }
   });
 
@@ -1483,20 +1489,20 @@ export async function registerRoutes(
    *                       active:
    *                         type: boolean
    */
-  app.get("/v1/practice-areas", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/practice-areas', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
 
       const practiceAreas = await prisma.practiceArea.findMany({
         where: { orgId, active: true },
-        orderBy: { name: "asc" },
+        orderBy: { name: 'asc' },
         select: { id: true, name: true, active: true },
       });
 
       res.json({ practiceAreas });
     } catch (error) {
-      console.error("List practice areas error:", error);
-      res.status(500).json({ error: "Failed to list practice areas" });
+      console.error('List practice areas error:', error);
+      res.status(500).json({ error: 'Failed to list practice areas' });
     }
   });
 
@@ -1550,7 +1556,7 @@ export async function registerRoutes(
    *             schema:
    *               $ref: '#/components/schemas/LeadList'
    */
-  app.get("/v1/leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { status, priority, practice_area_id, q, from, to } = req.query;
@@ -1569,9 +1575,9 @@ export async function registerRoutes(
 
       if (q) {
         where.OR = [
-          { summary: { contains: q, mode: "insensitive" } },
-          { incidentLocation: { contains: q, mode: "insensitive" } },
-          { contact: { is: { name: { contains: q, mode: "insensitive" } } } },
+          { summary: { contains: q, mode: 'insensitive' } },
+          { incidentLocation: { contains: q, mode: 'insensitive' } },
+          { contact: { is: { name: { contains: q, mode: 'insensitive' } } } },
         ];
       }
 
@@ -1579,7 +1585,7 @@ export async function registerRoutes(
         prisma.lead.findMany({
           where,
           include: { contact: true, practiceArea: true },
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 100,
         }),
         prisma.lead.count({ where }),
@@ -1587,8 +1593,8 @@ export async function registerRoutes(
 
       res.json({ leads, total });
     } catch (error) {
-      console.error("List leads error:", error);
-      res.status(500).json({ error: "Failed to list leads" });
+      console.error('List leads error:', error);
+      res.status(500).json({ error: 'Failed to list leads' });
     }
   });
 
@@ -1619,9 +1625,9 @@ export async function registerRoutes(
    *         description: Insufficient permissions
    */
   app.post(
-    "/v1/leads",
+    '/v1/leads',
     authMiddleware,
-    requireMinRole("staff"),
+    requireMinRole('staff'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = req.user!.orgId;
@@ -1640,7 +1646,7 @@ export async function registerRoutes(
         } = req.body;
 
         if (!source) {
-          return res.status(400).json({ error: "Source is required" });
+          return res.status(400).json({ error: 'Source is required' });
         }
 
         let finalContactId = contactId;
@@ -1656,15 +1662,23 @@ export async function registerRoutes(
           });
           finalContactId = newContact.id;
 
-          await createAuditLog(orgId, req.user!.userId, "user", "create", "contact", newContact.id, {
-            name: contactName,
-            createdViaLead: true,
-            timestamp: new Date().toISOString(),
-          });
+          await createAuditLog(
+            orgId,
+            req.user!.userId,
+            'user',
+            'create',
+            'contact',
+            newContact.id,
+            {
+              name: contactName,
+              createdViaLead: true,
+              timestamp: new Date().toISOString(),
+            }
+          );
         }
 
         if (!finalContactId) {
-          return res.status(400).json({ error: "Either contactId or contactName is required" });
+          return res.status(400).json({ error: 'Either contactId or contactName is required' });
         }
 
         const existingContact = await prisma.contact.findFirst({
@@ -1672,7 +1686,7 @@ export async function registerRoutes(
         });
 
         if (!existingContact) {
-          return res.status(400).json({ error: "Contact not found in your organization" });
+          return res.status(400).json({ error: 'Contact not found in your organization' });
         }
 
         const lead = await prisma.lead.create({
@@ -1680,8 +1694,8 @@ export async function registerRoutes(
             orgId,
             contactId: finalContactId,
             source,
-            status: status || "new",
-            priority: priority || "medium",
+            status: status || 'new',
+            priority: priority || 'medium',
             practiceAreaId: practiceAreaId || null,
             incidentDate: incidentDate ? new Date(incidentDate) : null,
             incidentLocation: incidentLocation || null,
@@ -1690,13 +1704,13 @@ export async function registerRoutes(
           include: { contact: true, practiceArea: true },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "create", "lead", lead.id, {
+        await createAuditLog(orgId, req.user!.userId, 'user', 'create', 'lead', lead.id, {
           source,
           contactId: finalContactId,
           timestamp: new Date().toISOString(),
         });
 
-        await emitWebhookEvent(orgId, "lead.created", {
+        await emitWebhookEvent(orgId, 'lead.created', {
           leadId: lead.id,
           contactId: finalContactId,
           source,
@@ -1708,8 +1722,8 @@ export async function registerRoutes(
 
         res.status(201).json(lead);
       } catch (error) {
-        console.error("Create lead error:", error);
-        res.status(500).json({ error: "Failed to create lead" });
+        console.error('Create lead error:', error);
+        res.status(500).json({ error: 'Failed to create lead' });
       }
     }
   );
@@ -1738,7 +1752,7 @@ export async function registerRoutes(
    *       404:
    *         description: Lead not found
    */
-  app.get("/v1/leads/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -1749,13 +1763,13 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       res.json(lead);
     } catch (error) {
-      console.error("Get lead error:", error);
-      res.status(500).json({ error: "Failed to get lead" });
+      console.error('Get lead error:', error);
+      res.status(500).json({ error: 'Failed to get lead' });
     }
   });
 
@@ -1792,30 +1806,32 @@ export async function registerRoutes(
    *         description: Lead not found
    */
   app.patch(
-    "/v1/leads/:id",
+    '/v1/leads/:id',
     authMiddleware,
-    requireMinRole("staff"),
+    requireMinRole('staff'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = req.user!.orgId;
         const { id } = req.params;
-        const { status, priority, practiceAreaId, incidentDate, incidentLocation, summary } = req.body;
+        const { status, priority, practiceAreaId, incidentDate, incidentLocation, summary } =
+          req.body;
 
         const existingLead = await prisma.lead.findFirst({ where: { id, orgId } });
         if (!existingLead) {
-          return res.status(404).json({ error: "Lead not found" });
+          return res.status(404).json({ error: 'Lead not found' });
         }
 
         const updateData: Record<string, unknown> = {};
         if (status !== undefined) updateData.status = status;
         if (priority !== undefined) updateData.priority = priority;
         if (practiceAreaId !== undefined) updateData.practiceAreaId = practiceAreaId || null;
-        if (incidentDate !== undefined) updateData.incidentDate = incidentDate ? new Date(incidentDate) : null;
+        if (incidentDate !== undefined)
+          updateData.incidentDate = incidentDate ? new Date(incidentDate) : null;
         if (incidentLocation !== undefined) updateData.incidentLocation = incidentLocation || null;
         if (summary !== undefined) updateData.summary = summary || null;
 
         if (Object.keys(updateData).length === 0) {
-          return res.status(400).json({ error: "No valid fields to update" });
+          return res.status(400).json({ error: 'No valid fields to update' });
         }
 
         const lead = await prisma.lead.update({
@@ -1824,20 +1840,20 @@ export async function registerRoutes(
           include: { contact: true, practiceArea: true },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update", "lead", id, {
+        await createAuditLog(orgId, req.user!.userId, 'user', 'update', 'lead', id, {
           changes: updateData,
           timestamp: new Date().toISOString(),
         });
 
-        await emitWebhookEvent(orgId, "lead.updated", {
+        await emitWebhookEvent(orgId, 'lead.updated', {
           leadId: id,
           changes: updateData,
         });
 
         res.json(lead);
       } catch (error) {
-        console.error("Update lead error:", error);
-        res.status(500).json({ error: "Failed to update lead" });
+        console.error('Update lead error:', error);
+        res.status(500).json({ error: 'Failed to update lead' });
       }
     }
   );
@@ -1854,16 +1870,16 @@ export async function registerRoutes(
   function checkRateLimit(ip: string): boolean {
     const now = Date.now();
     const record = contactSubmissions.get(ip);
-    
+
     if (!record || record.resetAt < now) {
       contactSubmissions.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
       return true;
     }
-    
+
     if (record.count >= RATE_LIMIT_MAX) {
       return false;
     }
-    
+
     record.count++;
     return true;
   }
@@ -1896,24 +1912,24 @@ export async function registerRoutes(
    *       429:
    *         description: Rate limited
    */
-  app.post("/v1/marketing/contact", async (req, res) => {
+  app.post('/v1/marketing/contact', async (req, res) => {
     try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
       if (!checkRateLimit(clientIp)) {
-        return res.status(429).json({ error: "Too many requests. Please try again later." });
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
       }
 
       const { name, email, firm, message } = req.body;
 
-      if (!name || typeof name !== "string" || name.trim().length < 2) {
-        return res.status(400).json({ error: "Name is required (min 2 characters)" });
+      if (!name || typeof name !== 'string' || name.trim().length < 2) {
+        return res.status(400).json({ error: 'Name is required (min 2 characters)' });
       }
-      if (!email || typeof email !== "string" || !email.includes("@")) {
-        return res.status(400).json({ error: "Valid email is required" });
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Valid email is required' });
       }
-      if (!message || typeof message !== "string" || message.trim().length < 10) {
-        return res.status(400).json({ error: "Message is required (min 10 characters)" });
+      if (!message || typeof message !== 'string' || message.trim().length < 10) {
+        return res.status(400).json({ error: 'Message is required (min 10 characters)' });
       }
 
       const submission = await prisma.marketingContactSubmission.create({
@@ -1924,7 +1940,7 @@ export async function registerRoutes(
           message: message.trim(),
           metadata: {
             ip: clientIp,
-            userAgent: req.headers["user-agent"] || null,
+            userAgent: req.headers['user-agent'] || null,
             submittedAt: new Date().toISOString(),
           },
         },
@@ -1935,8 +1951,8 @@ export async function registerRoutes(
 
       res.status(201).json({ success: true, id: submission.id });
     } catch (error) {
-      console.error("Marketing contact submission error:", error);
-      res.status(500).json({ error: "Failed to submit contact form" });
+      console.error('Marketing contact submission error:', error);
+      res.status(500).json({ error: 'Failed to submit contact form' });
     }
   });
 
@@ -1953,19 +1969,19 @@ export async function registerRoutes(
    *         description: List of submissions
    */
   app.get(
-    "/v1/marketing/contact-submissions",
+    '/v1/marketing/contact-submissions',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const submissions = await prisma.marketingContactSubmission.findMany({
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 100,
         });
         res.json({ submissions, total: submissions.length });
       } catch (error) {
-        console.error("Fetch contact submissions error:", error);
-        res.status(500).json({ error: "Failed to fetch submissions" });
+        console.error('Fetch contact submissions error:', error);
+        res.status(500).json({ error: 'Failed to fetch submissions' });
       }
     }
   );
@@ -2006,32 +2022,42 @@ export async function registerRoutes(
    *       429:
    *         description: Rate limited
    */
-  app.post("/v1/marketing/demo-request", async (req, res) => {
+  app.post('/v1/marketing/demo-request', async (req, res) => {
     try {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
       if (!checkRateLimit(clientIp)) {
-        return res.status(429).json({ error: "Too many requests. Please try again later." });
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
       }
 
-      const { name, email, firm_name, phone, practice_area, current_intake_method, monthly_lead_volume, message, website } = req.body;
+      const {
+        name,
+        email,
+        firm_name,
+        phone,
+        practice_area,
+        current_intake_method,
+        monthly_lead_volume,
+        message,
+        website,
+      } = req.body;
 
       // Honeypot check - reject if filled (bots fill this hidden field)
-      if (website && typeof website === "string" && website.trim().length > 0) {
+      if (website && typeof website === 'string' && website.trim().length > 0) {
         // Silently succeed to not reveal the honeypot
-        return res.status(201).json({ success: true, id: "honeypot" });
+        return res.status(201).json({ success: true, id: 'honeypot' });
       }
 
-      if (!name || typeof name !== "string" || name.trim().length < 2) {
-        return res.status(400).json({ error: "Name is required (min 2 characters)" });
+      if (!name || typeof name !== 'string' || name.trim().length < 2) {
+        return res.status(400).json({ error: 'Name is required (min 2 characters)' });
       }
-      if (!email || typeof email !== "string" || !email.includes("@")) {
-        return res.status(400).json({ error: "Valid email is required" });
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Valid email is required' });
       }
 
       const submission = await prisma.marketingSubmission.create({
         data: {
-          type: "demo",
+          type: 'demo',
           name: name.trim(),
           email: email.trim().toLowerCase(),
           firm: firm_name?.trim() || null,
@@ -2042,7 +2068,7 @@ export async function registerRoutes(
           message: message?.trim() || null,
           metadata: {
             ip: clientIp,
-            userAgent: req.headers["user-agent"] || null,
+            userAgent: req.headers['user-agent'] || null,
             submittedAt: new Date().toISOString(),
           },
         },
@@ -2050,8 +2076,8 @@ export async function registerRoutes(
 
       res.status(201).json({ success: true, id: submission.id });
     } catch (error) {
-      console.error("Demo request submission error:", error);
-      res.status(500).json({ error: "Failed to submit demo request" });
+      console.error('Demo request submission error:', error);
+      res.status(500).json({ error: 'Failed to submit demo request' });
     }
   });
 
@@ -2074,22 +2100,22 @@ export async function registerRoutes(
    *         description: List of submissions
    */
   app.get(
-    "/v1/marketing/submissions",
+    '/v1/marketing/submissions',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { type } = req.query;
-        
+
         const submissions = await prisma.marketingSubmission.findMany({
           where: type ? { type: type as string } : undefined,
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 100,
         });
         res.json({ submissions, total: submissions.length });
       } catch (error) {
-        console.error("Fetch marketing submissions error:", error);
-        res.status(500).json({ error: "Failed to fetch submissions" });
+        console.error('Fetch marketing submissions error:', error);
+        res.status(500).json({ error: 'Failed to fetch submissions' });
       }
     }
   );
@@ -2105,11 +2131,11 @@ export async function registerRoutes(
    *       200:
    *         description: API info
    */
-  app.get("/api", (_req, res) => {
+  app.get('/api', (_req, res) => {
     res.json({
-      status: "ok",
-      service: "CaseCurrent API",
-      version: "1.0.0",
+      status: 'ok',
+      service: 'CaseCurrent API',
+      version: '1.0.0',
     });
   });
 
@@ -2135,7 +2161,7 @@ export async function registerRoutes(
    *         description: List of organizations
    */
   app.get(
-    "/v1/admin/orgs",
+    '/v1/admin/orgs',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2146,12 +2172,12 @@ export async function registerRoutes(
           where: search
             ? {
                 OR: [
-                  { name: { contains: search as string, mode: "insensitive" } },
-                  { slug: { contains: search as string, mode: "insensitive" } },
+                  { name: { contains: search as string, mode: 'insensitive' } },
+                  { slug: { contains: search as string, mode: 'insensitive' } },
                 ],
               }
             : undefined,
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 100,
           include: {
             _count: { select: { users: true, leads: true } },
@@ -2160,8 +2186,8 @@ export async function registerRoutes(
 
         res.json({ organizations: orgs });
       } catch (error) {
-        console.error("Admin list orgs error:", error);
-        res.status(500).json({ error: "Failed to list organizations" });
+        console.error('Admin list orgs error:', error);
+        res.status(500).json({ error: 'Failed to list organizations' });
       }
     }
   );
@@ -2179,7 +2205,7 @@ export async function registerRoutes(
    *         description: Organization created
    */
   app.post(
-    "/v1/admin/orgs",
+    '/v1/admin/orgs',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2197,7 +2223,7 @@ export async function registerRoutes(
 
         if (!orgName || !ownerName || !ownerEmail) {
           return res.status(400).json({
-            error: "Required fields: orgName, ownerName, ownerEmail",
+            error: 'Required fields: orgName, ownerName, ownerEmail',
           });
         }
 
@@ -2207,35 +2233,35 @@ export async function registerRoutes(
           where: { slug },
         });
         if (existingOrg) {
-          return res.status(400).json({ error: "Organization slug already exists" });
+          return res.status(400).json({ error: 'Organization slug already exists' });
         }
 
         const org = await prisma.organization.create({
           data: {
             name: orgName,
             slug,
-            timezone: timezone || "America/New_York",
-            planTier: planTier || "core",
-            subscriptionStatus: subscriptionStatus || "manual",
-            onboardingStatus: "not_started",
+            timezone: timezone || 'America/New_York',
+            planTier: planTier || 'core',
+            subscriptionStatus: subscriptionStatus || 'manual',
+            onboardingStatus: 'not_started',
           },
         });
 
         await prisma.aiConfig.create({
           data: {
             orgId: org.id,
-            voiceGreeting: "Hello, thank you for calling. How may I assist you today?",
-            disclaimerText: "This call may be recorded for quality assurance purposes.",
-            toneProfile: { style: "professional" },
-            handoffRules: { businessHours: { start: "09:00", end: "17:00" } },
+            voiceGreeting: 'Hello, thank you for calling. How may I assist you today?',
+            disclaimerText: 'This call may be recorded for quality assurance purposes.',
+            toneProfile: { style: 'professional' },
+            handoffRules: { businessHours: { start: '09:00', end: '17:00' } },
           },
         });
 
         const defaultPracticeAreas = [
-          "Personal Injury",
-          "Criminal Defense",
-          "Family Law",
-          "Immigration",
+          'Personal Injury',
+          'Criminal Defense',
+          'Family Law',
+          'Immigration',
         ];
         for (const paName of defaultPracticeAreas) {
           await prisma.practiceArea.create({
@@ -2252,7 +2278,7 @@ export async function registerRoutes(
             data: {
               orgId: org.id,
               email: ownerEmail.toLowerCase().trim(),
-              role: "owner",
+              role: 'owner',
               token,
               expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             },
@@ -2265,7 +2291,7 @@ export async function registerRoutes(
               orgId: org.id,
               email: ownerEmail.toLowerCase().trim(),
               name: ownerName,
-              role: "owner",
+              role: 'owner',
               passwordHash,
             },
           });
@@ -2274,8 +2300,8 @@ export async function registerRoutes(
         await createPlatformAdminAuditLog(
           org.id,
           req.user!.userId,
-          "create_organization",
-          "organization",
+          'create_organization',
+          'organization',
           org.id,
           { orgName, ownerEmail, createdInvite: !!createInvite }
         );
@@ -2286,8 +2312,8 @@ export async function registerRoutes(
           invite: invite ? { id: invite.id, token: invite.token } : null,
         });
       } catch (error) {
-        console.error("Admin create org error:", error);
-        res.status(500).json({ error: "Failed to create organization" });
+        console.error('Admin create org error:', error);
+        res.status(500).json({ error: 'Failed to create organization' });
       }
     }
   );
@@ -2305,7 +2331,7 @@ export async function registerRoutes(
    *         description: Organization details
    */
   app.get(
-    "/v1/admin/orgs/:id",
+    '/v1/admin/orgs/:id',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2324,18 +2350,18 @@ export async function registerRoutes(
         });
 
         if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
+          return res.status(404).json({ error: 'Organization not found' });
         }
 
         const recentHealth = await prisma.orgHealthSnapshot.findFirst({
           where: { orgId: id },
-          orderBy: { snapshotAt: "desc" },
+          orderBy: { snapshotAt: 'desc' },
         });
 
         res.json({ organization: org, health: recentHealth });
       } catch (error) {
-        console.error("Admin get org error:", error);
-        res.status(500).json({ error: "Failed to get organization" });
+        console.error('Admin get org error:', error);
+        res.status(500).json({ error: 'Failed to get organization' });
       }
     }
   );
@@ -2353,7 +2379,7 @@ export async function registerRoutes(
    *         description: Invite created
    */
   app.post(
-    "/v1/admin/orgs/:id/invites",
+    '/v1/admin/orgs/:id/invites',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2362,12 +2388,12 @@ export async function registerRoutes(
         const { email, role } = req.body;
 
         if (!email) {
-          return res.status(400).json({ error: "Email required" });
+          return res.status(400).json({ error: 'Email required' });
         }
 
         const org = await prisma.organization.findUnique({ where: { id } });
         if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
+          return res.status(404).json({ error: 'Organization not found' });
         }
 
         const token = generateInviteToken();
@@ -2375,7 +2401,7 @@ export async function registerRoutes(
           data: {
             orgId: id,
             email: email.toLowerCase().trim(),
-            role: role || "owner",
+            role: role || 'owner',
             token,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           },
@@ -2384,16 +2410,18 @@ export async function registerRoutes(
         await createPlatformAdminAuditLog(
           id,
           req.user!.userId,
-          "create_invite",
-          "user_invite",
+          'create_invite',
+          'user_invite',
           invite.id,
-          { email, role: role || "owner" }
+          { email, role: role || 'owner' }
         );
 
-        res.status(201).json({ invite: { id: invite.id, token: invite.token, expiresAt: invite.expiresAt } });
+        res
+          .status(201)
+          .json({ invite: { id: invite.id, token: invite.token, expiresAt: invite.expiresAt } });
       } catch (error) {
-        console.error("Admin create invite error:", error);
-        res.status(500).json({ error: "Failed to create invite" });
+        console.error('Admin create invite error:', error);
+        res.status(500).json({ error: 'Failed to create invite' });
       }
     }
   );
@@ -2411,7 +2439,7 @@ export async function registerRoutes(
    *         description: Impersonation token
    */
   app.post(
-    "/v1/admin/orgs/:id/impersonate",
+    '/v1/admin/orgs/:id/impersonate',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2420,20 +2448,16 @@ export async function registerRoutes(
 
         const org = await prisma.organization.findUnique({ where: { id } });
         if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
+          return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const token = generateImpersonationToken(
-          req.user!.userId,
-          req.user!.email,
-          id
-        );
+        const token = generateImpersonationToken(req.user!.userId, req.user!.email, id);
 
         await createPlatformAdminAuditLog(
           id,
           req.user!.userId,
-          "impersonate_org",
-          "organization",
+          'impersonate_org',
+          'organization',
           id,
           { orgName: org.name }
         );
@@ -2441,12 +2465,12 @@ export async function registerRoutes(
         res.json({
           token,
           organization: { id: org.id, name: org.name, slug: org.slug },
-          expiresIn: "1h",
-          warning: "This is an impersonation token. All actions will be logged.",
+          expiresIn: '1h',
+          warning: 'This is an impersonation token. All actions will be logged.',
         });
       } catch (error) {
-        console.error("Admin impersonate error:", error);
-        res.status(500).json({ error: "Failed to create impersonation token" });
+        console.error('Admin impersonate error:', error);
+        res.status(500).json({ error: 'Failed to create impersonation token' });
       }
     }
   );
@@ -2464,7 +2488,7 @@ export async function registerRoutes(
    *         description: Health snapshot
    */
   app.post(
-    "/v1/admin/orgs/:id/health",
+    '/v1/admin/orgs/:id/health',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2473,7 +2497,7 @@ export async function registerRoutes(
 
         const org = await prisma.organization.findUnique({ where: { id } });
         if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
+          return res.status(404).json({ error: 'Organization not found' });
         }
 
         const now = new Date();
@@ -2487,7 +2511,7 @@ export async function registerRoutes(
             where: {
               orgId: id,
               createdAt: { gte: last24h },
-              status: { in: ["failed", "error"] },
+              status: { in: ['failed', 'error'] },
             },
           }),
         ]);
@@ -2511,8 +2535,8 @@ export async function registerRoutes(
 
         res.json({ snapshot });
       } catch (error) {
-        console.error("Admin health snapshot error:", error);
-        res.status(500).json({ error: "Failed to compute health snapshot" });
+        console.error('Admin health snapshot error:', error);
+        res.status(500).json({ error: 'Failed to compute health snapshot' });
       }
     }
   );
@@ -2541,7 +2565,7 @@ export async function registerRoutes(
    *       401:
    *         description: Invalid or missing secret
    */
-  app.post("/v1/admin/seed", async (req, res) => {
+  app.post('/v1/admin/seed', async (req, res) => {
     try {
       const { secret } = req.body;
       const expectedSecret = process.env.SEED_SECRET;
@@ -2553,48 +2577,52 @@ export async function registerRoutes(
       // If database already has data, require the secret
       if (!isFirstTimeSetup) {
         if (!expectedSecret) {
-          return res.status(500).json({ error: "SEED_SECRET not configured on server" });
+          return res.status(500).json({ error: 'SEED_SECRET not configured on server' });
         }
 
         if (!secret || secret !== expectedSecret) {
           // Check if demo org already exists - allow returning status without secret
           const existingOrg = await prisma.organization.findUnique({
-            where: { slug: "demo-law-firm" },
+            where: { slug: 'demo-law-firm' },
           });
 
           if (existingOrg) {
             const existingUser = await prisma.user.findFirst({
-              where: { orgId: existingOrg.id, email: "owner@demo.com" },
+              where: { orgId: existingOrg.id, email: 'owner@demo.com' },
             });
 
             if (existingUser) {
               return res.json({
-                message: "Demo organization and user already exist",
-                organization: { id: existingOrg.id, name: existingOrg.name, slug: existingOrg.slug },
+                message: 'Demo organization and user already exist',
+                organization: {
+                  id: existingOrg.id,
+                  name: existingOrg.name,
+                  slug: existingOrg.slug,
+                },
                 user: { email: existingUser.email, role: existingUser.role },
                 alreadySeeded: true,
               });
             }
           }
 
-          return res.status(401).json({ error: "Invalid seed secret" });
+          return res.status(401).json({ error: 'Invalid seed secret' });
         }
       }
 
       // Check if demo org already exists
       const existingOrg = await prisma.organization.findUnique({
-        where: { slug: "demo-law-firm" },
+        where: { slug: 'demo-law-firm' },
       });
 
       if (existingOrg) {
         // Check if demo user exists
         const existingUser = await prisma.user.findFirst({
-          where: { orgId: existingOrg.id, email: "owner@demo.com" },
+          where: { orgId: existingOrg.id, email: 'owner@demo.com' },
         });
 
         if (existingUser) {
           return res.json({
-            message: "Demo organization and user already exist",
+            message: 'Demo organization and user already exist',
             organization: { id: existingOrg.id, name: existingOrg.name, slug: existingOrg.slug },
             user: { email: existingUser.email, role: existingUser.role },
             alreadySeeded: true,
@@ -2604,32 +2632,32 @@ export async function registerRoutes(
 
       // Create Organization
       const org = await prisma.organization.upsert({
-        where: { slug: "demo-law-firm" },
+        where: { slug: 'demo-law-firm' },
         update: {},
         create: {
-          name: "Demo Law Firm",
-          slug: "demo-law-firm",
-          status: "active",
-          timezone: "America/New_York",
+          name: 'Demo Law Firm',
+          slug: 'demo-law-firm',
+          status: 'active',
+          timezone: 'America/New_York',
         },
       });
 
       // Create Owner User
-      const passwordHash = await hashPassword("DemoPass123!");
+      const passwordHash = await hashPassword('DemoPass123!');
       const owner = await prisma.user.upsert({
         where: {
           orgId_email: {
             orgId: org.id,
-            email: "owner@demo.com",
+            email: 'owner@demo.com',
           },
         },
         update: {},
         create: {
           orgId: org.id,
-          email: "owner@demo.com",
-          name: "Demo Owner",
-          role: "owner",
-          status: "active",
+          email: 'owner@demo.com',
+          name: 'Demo Owner',
+          role: 'owner',
+          status: 'active',
           passwordHash: passwordHash,
         },
       });
@@ -2637,22 +2665,22 @@ export async function registerRoutes(
       // Create Practice Areas
       const practiceAreas = await Promise.all([
         prisma.practiceArea.upsert({
-          where: { id: "personal-injury-" + org.id },
+          where: { id: 'personal-injury-' + org.id },
           update: {},
           create: {
-            id: "personal-injury-" + org.id,
+            id: 'personal-injury-' + org.id,
             orgId: org.id,
-            name: "Personal Injury",
+            name: 'Personal Injury',
             active: true,
           },
         }),
         prisma.practiceArea.upsert({
-          where: { id: "criminal-defense-" + org.id },
+          where: { id: 'criminal-defense-' + org.id },
           update: {},
           create: {
-            id: "criminal-defense-" + org.id,
+            id: 'criminal-defense-' + org.id,
             orgId: org.id,
-            name: "Criminal Defense",
+            name: 'Criminal Defense',
             active: true,
           },
         }),
@@ -2660,36 +2688,62 @@ export async function registerRoutes(
 
       // Create Intake Question Set
       await prisma.intakeQuestionSet.upsert({
-        where: { id: "default-intake-" + org.id },
+        where: { id: 'default-intake-' + org.id },
         update: {},
         create: {
-          id: "default-intake-" + org.id,
+          id: 'default-intake-' + org.id,
           orgId: org.id,
           practiceAreaId: practiceAreas[0].id,
-          name: "Standard Personal Injury Intake",
+          name: 'Standard Personal Injury Intake',
           version: 1,
           active: true,
           schema: {
-            version: "1.0",
+            version: '1.0',
             sections: [
               {
-                id: "contact_info",
-                title: "Contact Information",
+                id: 'contact_info',
+                title: 'Contact Information',
                 questions: [
-                  { id: "full_name", type: "text", label: "Full Legal Name", required: true },
-                  { id: "phone", type: "phone", label: "Best Phone Number", required: true },
-                  { id: "email", type: "email", label: "Email Address", required: false },
+                  { id: 'full_name', type: 'text', label: 'Full Legal Name', required: true },
+                  { id: 'phone', type: 'phone', label: 'Best Phone Number', required: true },
+                  { id: 'email', type: 'email', label: 'Email Address', required: false },
                 ],
               },
               {
-                id: "incident_details",
-                title: "Incident Details",
+                id: 'incident_details',
+                title: 'Incident Details',
                 questions: [
-                  { id: "incident_date", type: "date", label: "When did the incident occur?", required: true },
-                  { id: "incident_location", type: "text", label: "Where did the incident occur?", required: true },
-                  { id: "incident_description", type: "textarea", label: "Please describe what happened", required: true },
-                  { id: "injuries", type: "textarea", label: "What injuries did you sustain?", required: true },
-                  { id: "medical_treatment", type: "radio", label: "Have you sought medical treatment?", required: true, options: ["Yes", "No", "Planned"] },
+                  {
+                    id: 'incident_date',
+                    type: 'date',
+                    label: 'When did the incident occur?',
+                    required: true,
+                  },
+                  {
+                    id: 'incident_location',
+                    type: 'text',
+                    label: 'Where did the incident occur?',
+                    required: true,
+                  },
+                  {
+                    id: 'incident_description',
+                    type: 'textarea',
+                    label: 'Please describe what happened',
+                    required: true,
+                  },
+                  {
+                    id: 'injuries',
+                    type: 'textarea',
+                    label: 'What injuries did you sustain?',
+                    required: true,
+                  },
+                  {
+                    id: 'medical_treatment',
+                    type: 'radio',
+                    label: 'Have you sought medical treatment?',
+                    required: true,
+                    options: ['Yes', 'No', 'Planned'],
+                  },
                 ],
               },
             ],
@@ -2703,79 +2757,167 @@ export async function registerRoutes(
         update: {},
         create: {
           orgId: org.id,
-          voiceGreeting: "Thank you for calling Demo Law Firm. My name is Alex, and I'm an AI assistant here to help you with your legal matter.",
-          disclaimerText: "Please note that I am an AI assistant and cannot provide legal advice. Our conversation will be recorded and reviewed by our legal team.",
-          toneProfile: { style: "professional", empathy_level: "high", formality: "moderate", pace: "calm" },
-          handoffRules: { 
-            emergency_keywords: ["emergency", "danger", "threat", "hurt", "police"], 
-            escalation_triggers: ["speak to attorney", "talk to lawyer", "human"],
-            business_hours: { start: "09:00", end: "17:00", timezone: "America/New_York", days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] }
+          voiceGreeting:
+            "Thank you for calling Demo Law Firm. My name is Alex, and I'm an AI assistant here to help you with your legal matter.",
+          disclaimerText:
+            'Please note that I am an AI assistant and cannot provide legal advice. Our conversation will be recorded and reviewed by our legal team.',
+          toneProfile: {
+            style: 'professional',
+            empathy_level: 'high',
+            formality: 'moderate',
+            pace: 'calm',
           },
-          qualificationRules: { 
-            min_score_for_accept: 70, 
+          handoffRules: {
+            emergency_keywords: ['emergency', 'danger', 'threat', 'hurt', 'police'],
+            escalation_triggers: ['speak to attorney', 'talk to lawyer', 'human'],
+            business_hours: {
+              start: '09:00',
+              end: '17:00',
+              timezone: 'America/New_York',
+              days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            },
+          },
+          qualificationRules: {
+            min_score_for_accept: 70,
             min_score_for_review: 40,
-            required_fields: ["incident_date", "incident_location", "injuries"],
-            disqualifiers: ["statute_of_limitations_expired", "no_injury", "pre_existing_attorney"],
-            scoring_weights: { injury_severity: 0.3, liability_clarity: 0.25, damages_potential: 0.25, urgency: 0.2 }
+            required_fields: ['incident_date', 'incident_location', 'injuries'],
+            disqualifiers: ['statute_of_limitations_expired', 'no_injury', 'pre_existing_attorney'],
+            scoring_weights: {
+              injury_severity: 0.3,
+              liability_clarity: 0.25,
+              damages_potential: 0.25,
+              urgency: 0.2,
+            },
           },
         },
       });
 
       // Create Default Policy Test Suite
       await prisma.policyTestSuite.upsert({
-        where: { id: "default-policy-suite-" + org.id },
+        where: { id: 'default-policy-suite-' + org.id },
         update: {},
         create: {
-          id: "default-policy-suite-" + org.id,
+          id: 'default-policy-suite-' + org.id,
           orgId: org.id,
-          name: "Qualification Regression Tests",
-          description: "Default suite to validate qualification scoring logic",
+          name: 'Qualification Regression Tests',
+          description: 'Default suite to validate qualification scoring logic',
           active: true,
           testCases: [
-            { id: "tc1", name: "Complete lead with phone+email accepts", input: { contact: { phone: "+15551234567", email: "test@example.com" }, practiceArea: true, intake: { complete: true }, calls: 2 }, expectedDisposition: "accept", expectedMinScore: 70 },
-            { id: "tc2", name: "Minimal info leads to review", input: { contact: { phone: "+15551234567" }, practiceArea: false, intake: { complete: false }, calls: 0 }, expectedDisposition: "review" },
-            { id: "tc3", name: "No contact info declines", input: { contact: {}, practiceArea: false, intake: { complete: false }, calls: 0 }, expectedDisposition: "decline" },
-            { id: "tc4", name: "Partial intake with practice area reviews", input: { contact: { email: "partial@test.com" }, practiceArea: true, intake: { complete: false }, calls: 1 }, expectedDisposition: "review" },
-            { id: "tc5", name: "Complete intake without calls accepts", input: { contact: { phone: "+15559876543", email: "complete@test.com" }, practiceArea: true, intake: { complete: true }, calls: 0 }, expectedDisposition: "accept" },
-            { id: "tc6", name: "High engagement with partial info reviews", input: { contact: { phone: "+15551112222" }, practiceArea: true, intake: { complete: false }, calls: 3 }, expectedDisposition: "review" },
+            {
+              id: 'tc1',
+              name: 'Complete lead with phone+email accepts',
+              input: {
+                contact: { phone: '+15551234567', email: 'test@example.com' },
+                practiceArea: true,
+                intake: { complete: true },
+                calls: 2,
+              },
+              expectedDisposition: 'accept',
+              expectedMinScore: 70,
+            },
+            {
+              id: 'tc2',
+              name: 'Minimal info leads to review',
+              input: {
+                contact: { phone: '+15551234567' },
+                practiceArea: false,
+                intake: { complete: false },
+                calls: 0,
+              },
+              expectedDisposition: 'review',
+            },
+            {
+              id: 'tc3',
+              name: 'No contact info declines',
+              input: { contact: {}, practiceArea: false, intake: { complete: false }, calls: 0 },
+              expectedDisposition: 'decline',
+            },
+            {
+              id: 'tc4',
+              name: 'Partial intake with practice area reviews',
+              input: {
+                contact: { email: 'partial@test.com' },
+                practiceArea: true,
+                intake: { complete: false },
+                calls: 1,
+              },
+              expectedDisposition: 'review',
+            },
+            {
+              id: 'tc5',
+              name: 'Complete intake without calls accepts',
+              input: {
+                contact: { phone: '+15559876543', email: 'complete@test.com' },
+                practiceArea: true,
+                intake: { complete: true },
+                calls: 0,
+              },
+              expectedDisposition: 'accept',
+            },
+            {
+              id: 'tc6',
+              name: 'High engagement with partial info reviews',
+              input: {
+                contact: { phone: '+15551112222' },
+                practiceArea: true,
+                intake: { complete: false },
+                calls: 3,
+              },
+              expectedDisposition: 'review',
+            },
           ],
         },
       });
 
       // Create Default Follow-up Sequence
       await prisma.followupSequence.upsert({
-        where: { id: "default-followup-" + org.id },
+        where: { id: 'default-followup-' + org.id },
         update: {},
         create: {
-          id: "default-followup-" + org.id,
+          id: 'default-followup-' + org.id,
           orgId: org.id,
-          name: "New Lead Welcome Sequence",
-          description: "Automated follow-up for new leads",
-          trigger: "lead_created",
+          name: 'New Lead Welcome Sequence',
+          description: 'Automated follow-up for new leads',
+          trigger: 'lead_created',
           active: true,
           steps: [
-            { delayMinutes: 0, channel: "sms", templateBody: "Thank you for contacting Demo Law Firm. We have received your inquiry and will be in touch shortly." },
-            { delayMinutes: 60, channel: "sms", templateBody: "Hi! Just following up on your inquiry. Is there any additional information you can share about your situation?" },
-            { delayMinutes: 1440, channel: "sms", templateBody: "We wanted to make sure you received our messages. Our team is ready to help. Reply or call us at your convenience." },
+            {
+              delayMinutes: 0,
+              channel: 'sms',
+              templateBody:
+                'Thank you for contacting Demo Law Firm. We have received your inquiry and will be in touch shortly.',
+            },
+            {
+              delayMinutes: 60,
+              channel: 'sms',
+              templateBody:
+                'Hi! Just following up on your inquiry. Is there any additional information you can share about your situation?',
+            },
+            {
+              delayMinutes: 1440,
+              channel: 'sms',
+              templateBody:
+                'We wanted to make sure you received our messages. Our team is ready to help. Reply or call us at your convenience.',
+            },
           ],
-          stopRules: { onResponse: true, onStatusChange: ["disqualified", "closed"] },
+          stopRules: { onResponse: true, onStatusChange: ['disqualified', 'closed'] },
         },
       });
 
       console.log(`[SEED] Demo organization and user created: ${owner.email}`);
 
       res.json({
-        message: "Seed completed successfully",
+        message: 'Seed completed successfully',
         organization: { id: org.id, name: org.name, slug: org.slug },
         user: { email: owner.email, role: owner.role },
         credentials: {
-          email: "owner@demo.com",
-          password: "DemoPass123!",
+          email: 'owner@demo.com',
+          password: 'DemoPass123!',
         },
       });
     } catch (error) {
-      console.error("Admin seed error:", error);
-      res.status(500).json({ error: "Failed to seed database" });
+      console.error('Admin seed error:', error);
+      res.status(500).json({ error: 'Failed to seed database' });
     }
   });
 
@@ -2822,19 +2964,21 @@ export async function registerRoutes(
    *         description: Insufficient permissions
    */
   app.post(
-    "/v1/admin/phone-numbers",
+    '/v1/admin/phone-numbers',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { orgId, e164, label, inboundEnabled = true, provider = "twilio" } = req.body;
+        const { orgId, e164, label, inboundEnabled = true, provider = 'twilio' } = req.body;
 
         if (!orgId || !e164) {
-          return res.status(400).json({ error: "orgId and e164 required" });
+          return res.status(400).json({ error: 'orgId and e164 required' });
         }
 
         if (!/^\+[1-9]\d{6,14}$/.test(e164)) {
-          return res.status(400).json({ error: "Invalid E.164 format. Must start with + followed by 7-15 digits" });
+          return res
+            .status(400)
+            .json({ error: 'Invalid E.164 format. Must start with + followed by 7-15 digits' });
         }
 
         const org = await prisma.organization.findUnique({
@@ -2842,7 +2986,7 @@ export async function registerRoutes(
         });
 
         if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
+          return res.status(404).json({ error: 'Organization not found' });
         }
 
         const existingPhone = await prisma.phoneNumber.findFirst({
@@ -2850,14 +2994,16 @@ export async function registerRoutes(
         });
 
         if (existingPhone) {
-          return res.status(400).json({ error: "Phone number already registered", existingOrgId: existingPhone.orgId });
+          return res
+            .status(400)
+            .json({ error: 'Phone number already registered', existingOrgId: existingPhone.orgId });
         }
 
         const phoneNumber = await prisma.phoneNumber.create({
           data: {
             orgId,
             e164,
-            label: label || "Inbound Line",
+            label: label || 'Inbound Line',
             provider,
             inboundEnabled,
           },
@@ -2865,8 +3011,8 @@ export async function registerRoutes(
 
         await createPlatformAdminAuditLog(
           req.user!.userId,
-          "phone_number.create",
-          "phone_number",
+          'phone_number.create',
+          'phone_number',
           phoneNumber.id,
           JSON.stringify({ orgId, e164: maskPhone(e164), label, inboundEnabled })
         );
@@ -2883,8 +3029,8 @@ export async function registerRoutes(
           createdAt: phoneNumber.createdAt,
         });
       } catch (error) {
-        console.error("Admin create phone number error:", error);
-        res.status(500).json({ error: "Failed to create phone number" });
+        console.error('Admin create phone number error:', error);
+        res.status(500).json({ error: 'Failed to create phone number' });
       }
     }
   );
@@ -2910,7 +3056,7 @@ export async function registerRoutes(
    *         description: Insufficient permissions
    */
   app.get(
-    "/v1/admin/phone-numbers",
+    '/v1/admin/phone-numbers',
     authMiddleware,
     requirePlatformAdmin,
     async (req: AuthenticatedRequest, res) => {
@@ -2924,13 +3070,13 @@ export async function registerRoutes(
               select: { id: true, name: true, slug: true },
             },
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
         });
 
         res.json(phoneNumbers);
       } catch (error) {
-        console.error("Admin list phone numbers error:", error);
-        res.status(500).json({ error: "Failed to list phone numbers" });
+        console.error('Admin list phone numbers error:', error);
+        res.status(500).json({ error: 'Failed to list phone numbers' });
       }
     }
   );
@@ -2949,7 +3095,7 @@ export async function registerRoutes(
    *       200:
    *         description: Invite details
    */
-  app.get("/v1/invites/:token", async (req, res) => {
+  app.get('/v1/invites/:token', async (req, res) => {
     try {
       const { token } = req.params;
 
@@ -2959,15 +3105,15 @@ export async function registerRoutes(
       });
 
       if (!invite) {
-        return res.status(404).json({ error: "Invite not found" });
+        return res.status(404).json({ error: 'Invite not found' });
       }
 
       if (invite.acceptedAt) {
-        return res.status(400).json({ error: "Invite already accepted" });
+        return res.status(400).json({ error: 'Invite already accepted' });
       }
 
       if (invite.expiresAt < new Date()) {
-        return res.status(400).json({ error: "Invite has expired" });
+        return res.status(400).json({ error: 'Invite has expired' });
       }
 
       res.json({
@@ -2980,8 +3126,8 @@ export async function registerRoutes(
         },
       });
     } catch (error) {
-      console.error("Get invite error:", error);
-      res.status(500).json({ error: "Failed to get invite" });
+      console.error('Get invite error:', error);
+      res.status(500).json({ error: 'Failed to get invite' });
     }
   });
 
@@ -2995,17 +3141,17 @@ export async function registerRoutes(
    *       200:
    *         description: Invite accepted, user created
    */
-  app.post("/v1/invites/:token/accept", async (req, res) => {
+  app.post('/v1/invites/:token/accept', async (req, res) => {
     try {
       const { token } = req.params;
       const { name, password } = req.body;
 
       if (!name || !password) {
-        return res.status(400).json({ error: "Name and password required" });
+        return res.status(400).json({ error: 'Name and password required' });
       }
 
       if (password.length < 8) {
-        return res.status(400).json({ error: "Password must be at least 8 characters" });
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
 
       const invite = await prisma.userInvite.findUnique({
@@ -3014,15 +3160,15 @@ export async function registerRoutes(
       });
 
       if (!invite) {
-        return res.status(404).json({ error: "Invite not found" });
+        return res.status(404).json({ error: 'Invite not found' });
       }
 
       if (invite.acceptedAt) {
-        return res.status(400).json({ error: "Invite already accepted" });
+        return res.status(400).json({ error: 'Invite already accepted' });
       }
 
       if (invite.expiresAt < new Date()) {
-        return res.status(400).json({ error: "Invite has expired" });
+        return res.status(400).json({ error: 'Invite has expired' });
       }
 
       const existingUser = await prisma.user.findFirst({
@@ -3030,7 +3176,7 @@ export async function registerRoutes(
       });
 
       if (existingUser) {
-        return res.status(400).json({ error: "User already exists for this organization" });
+        return res.status(400).json({ error: 'User already exists for this organization' });
       }
 
       const passwordHash = await hashPassword(password);
@@ -3050,15 +3196,9 @@ export async function registerRoutes(
         data: { acceptedAt: new Date() },
       });
 
-      await createAuditLog(
-        invite.orgId,
-        user.id,
-        "user",
-        "accept_invite",
-        "user",
-        user.id,
-        { inviteId: invite.id }
-      );
+      await createAuditLog(invite.orgId, user.id, 'user', 'accept_invite', 'user', user.id, {
+        inviteId: invite.id,
+      });
 
       const authToken = generateToken({
         userId: user.id,
@@ -3078,8 +3218,8 @@ export async function registerRoutes(
         },
       });
     } catch (error) {
-      console.error("Accept invite error:", error);
-      res.status(500).json({ error: "Failed to accept invite" });
+      console.error('Accept invite error:', error);
+      res.status(500).json({ error: 'Failed to accept invite' });
     }
   });
 
@@ -3099,36 +3239,32 @@ export async function registerRoutes(
    *       200:
    *         description: Setup status
    */
-  app.get(
-    "/v1/setup/status",
-    authMiddleware,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const org = await prisma.organization.findUnique({
-          where: { id: req.user!.orgId },
-          include: {
-            aiConfig: true,
-            practiceAreas: true,
-            phoneNumbers: true,
-            intakeQuestionSets: true,
-          },
-        });
+  app.get('/v1/setup/status', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: req.user!.orgId },
+        include: {
+          aiConfig: true,
+          practiceAreas: true,
+          phoneNumbers: true,
+          intakeQuestionSets: true,
+        },
+      });
 
-        if (!org) {
-          return res.status(404).json({ error: "Organization not found" });
-        }
-
-        res.json({
-          onboardingStatus: org.onboardingStatus,
-          onboardingCompletedAt: org.onboardingCompletedAt,
-          organization: org,
-        });
-      } catch (error) {
-        console.error("Get setup status error:", error);
-        res.status(500).json({ error: "Failed to get setup status" });
+      if (!org) {
+        return res.status(404).json({ error: 'Organization not found' });
       }
+
+      res.json({
+        onboardingStatus: org.onboardingStatus,
+        onboardingCompletedAt: org.onboardingCompletedAt,
+        organization: org,
+      });
+    } catch (error) {
+      console.error('Get setup status error:', error);
+      res.status(500).json({ error: 'Failed to get setup status' });
     }
-  );
+  });
 
   /**
    * @openapi
@@ -3143,9 +3279,9 @@ export async function registerRoutes(
    *         description: Basics updated
    */
   app.patch(
-    "/v1/setup/basics",
+    '/v1/setup/basics',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { name, timezone } = req.body;
@@ -3155,23 +3291,31 @@ export async function registerRoutes(
         if (name) updateData.name = name;
         if (timezone) updateData.timezone = timezone;
         if (Object.keys(updateData).length === 0) {
-          return res.status(400).json({ error: "No fields to update" });
+          return res.status(400).json({ error: 'No fields to update' });
         }
 
         await prisma.organization.update({
           where: { id: orgId },
           data: {
             ...updateData,
-            onboardingStatus: "in_progress",
+            onboardingStatus: 'in_progress',
           },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_basics", "organization", orgId, updateData);
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_basics',
+          'organization',
+          orgId,
+          updateData
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update basics error:", error);
-        res.status(500).json({ error: "Failed to update basics" });
+        console.error('Update basics error:', error);
+        res.status(500).json({ error: 'Failed to update basics' });
       }
     }
   );
@@ -3189,9 +3333,9 @@ export async function registerRoutes(
    *         description: Business hours updated
    */
   app.patch(
-    "/v1/setup/business-hours",
+    '/v1/setup/business-hours',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { businessHours, afterHoursBehavior } = req.body;
@@ -3210,15 +3354,23 @@ export async function registerRoutes(
 
         await prisma.organization.update({
           where: { id: orgId },
-          data: { onboardingStatus: "in_progress" },
+          data: { onboardingStatus: 'in_progress' },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_business_hours", "ai_config", orgId, { businessHours });
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_business_hours',
+          'ai_config',
+          orgId,
+          { businessHours }
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update business hours error:", error);
-        res.status(500).json({ error: "Failed to update business hours" });
+        console.error('Update business hours error:', error);
+        res.status(500).json({ error: 'Failed to update business hours' });
       }
     }
   );
@@ -3236,16 +3388,16 @@ export async function registerRoutes(
    *         description: Practice areas updated
    */
   app.patch(
-    "/v1/setup/practice-areas",
+    '/v1/setup/practice-areas',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { practiceAreas } = req.body;
         const orgId = req.user!.orgId;
 
         if (!practiceAreas || !Array.isArray(practiceAreas)) {
-          return res.status(400).json({ error: "practiceAreas array required" });
+          return res.status(400).json({ error: 'practiceAreas array required' });
         }
 
         for (const pa of practiceAreas) {
@@ -3259,15 +3411,23 @@ export async function registerRoutes(
 
         await prisma.organization.update({
           where: { id: orgId },
-          data: { onboardingStatus: "in_progress" },
+          data: { onboardingStatus: 'in_progress' },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_practice_areas", "organization", orgId, { count: practiceAreas.length });
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_practice_areas',
+          'organization',
+          orgId,
+          { count: practiceAreas.length }
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update practice areas error:", error);
-        res.status(500).json({ error: "Failed to update practice areas" });
+        console.error('Update practice areas error:', error);
+        res.status(500).json({ error: 'Failed to update practice areas' });
       }
     }
   );
@@ -3285,26 +3445,26 @@ export async function registerRoutes(
    *         description: Phone number added
    */
   app.post(
-    "/v1/setup/phone-numbers",
+    '/v1/setup/phone-numbers',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { label, e164, afterHoursEnabled, routing, isPrimary } = req.body;
         const orgId = req.user!.orgId;
 
         if (!label || !e164) {
-          return res.status(400).json({ error: "Label and e164 required" });
+          return res.status(400).json({ error: 'Label and e164 required' });
         }
 
         const e164Regex = /^\+[1-9]\d{1,14}$/;
         if (!e164Regex.test(e164)) {
-          return res.status(400).json({ error: "Invalid E.164 phone number format" });
+          return res.status(400).json({ error: 'Invalid E.164 phone number format' });
         }
 
         const existingPhone = await prisma.phoneNumber.findUnique({ where: { e164 } });
         if (existingPhone) {
-          return res.status(400).json({ error: "Phone number already registered" });
+          return res.status(400).json({ error: 'Phone number already registered' });
         }
 
         const phone = await prisma.phoneNumber.create({
@@ -3312,7 +3472,7 @@ export async function registerRoutes(
             orgId,
             label,
             e164,
-            provider: "manual",
+            provider: 'manual',
             afterHoursEnabled: afterHoursEnabled || false,
             routing: routing || {},
           },
@@ -3321,16 +3481,24 @@ export async function registerRoutes(
         if (isPrimary) {
           await prisma.organization.update({
             where: { id: orgId },
-            data: { primaryPhoneNumberId: phone.id, onboardingStatus: "in_progress" },
+            data: { primaryPhoneNumberId: phone.id, onboardingStatus: 'in_progress' },
           });
         }
 
-        await createAuditLog(orgId, req.user!.userId, "user", "add_phone_number", "phone_number", phone.id, { label, e164 });
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'add_phone_number',
+          'phone_number',
+          phone.id,
+          { label, e164 }
+        );
 
         res.status(201).json({ phoneNumber: phone });
       } catch (error) {
-        console.error("Add phone number error:", error);
-        res.status(500).json({ error: "Failed to add phone number" });
+        console.error('Add phone number error:', error);
+        res.status(500).json({ error: 'Failed to add phone number' });
       }
     }
   );
@@ -3348,9 +3516,9 @@ export async function registerRoutes(
    *         description: AI config updated
    */
   app.patch(
-    "/v1/setup/ai-config",
+    '/v1/setup/ai-config',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { voiceGreeting, disclaimerText, toneProfile } = req.body;
@@ -3373,15 +3541,23 @@ export async function registerRoutes(
 
         await prisma.organization.update({
           where: { id: orgId },
-          data: { onboardingStatus: "in_progress" },
+          data: { onboardingStatus: 'in_progress' },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_ai_config", "ai_config", orgId, {});
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_ai_config',
+          'ai_config',
+          orgId,
+          {}
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update AI config error:", error);
-        res.status(500).json({ error: "Failed to update AI config" });
+        console.error('Update AI config error:', error);
+        res.status(500).json({ error: 'Failed to update AI config' });
       }
     }
   );
@@ -3399,26 +3575,26 @@ export async function registerRoutes(
    *         description: Intake logic updated
    */
   app.patch(
-    "/v1/setup/intake-logic",
+    '/v1/setup/intake-logic',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { questionSets } = req.body;
         const orgId = req.user!.orgId;
 
         if (!questionSets || !Array.isArray(questionSets)) {
-          return res.status(400).json({ error: "questionSets array required" });
+          return res.status(400).json({ error: 'questionSets array required' });
         }
 
         for (const qs of questionSets) {
           if (qs.schema) {
             try {
-              if (typeof qs.schema === "string") {
+              if (typeof qs.schema === 'string') {
                 JSON.parse(qs.schema);
               }
             } catch {
-              return res.status(400).json({ error: "Invalid JSON in question set schema" });
+              return res.status(400).json({ error: 'Invalid JSON in question set schema' });
             }
           }
 
@@ -3427,7 +3603,7 @@ export async function registerRoutes(
               where: { id: qs.id },
               data: {
                 active: qs.active,
-                schema: typeof qs.schema === "string" ? JSON.parse(qs.schema) : qs.schema,
+                schema: typeof qs.schema === 'string' ? JSON.parse(qs.schema) : qs.schema,
               },
             });
           } else if (qs.name && qs.practiceAreaId) {
@@ -3436,7 +3612,7 @@ export async function registerRoutes(
                 orgId,
                 practiceAreaId: qs.practiceAreaId,
                 name: qs.name,
-                schema: typeof qs.schema === "string" ? JSON.parse(qs.schema) : qs.schema || {},
+                schema: typeof qs.schema === 'string' ? JSON.parse(qs.schema) : qs.schema || {},
                 active: qs.active !== false,
               },
             });
@@ -3445,15 +3621,23 @@ export async function registerRoutes(
 
         await prisma.organization.update({
           where: { id: orgId },
-          data: { onboardingStatus: "in_progress" },
+          data: { onboardingStatus: 'in_progress' },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_intake_logic", "intake_question_set", orgId, {});
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_intake_logic',
+          'intake_question_set',
+          orgId,
+          {}
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update intake logic error:", error);
-        res.status(500).json({ error: "Failed to update intake logic" });
+        console.error('Update intake logic error:', error);
+        res.status(500).json({ error: 'Failed to update intake logic' });
       }
     }
   );
@@ -3471,9 +3655,9 @@ export async function registerRoutes(
    *         description: Follow-up config updated
    */
   app.patch(
-    "/v1/setup/follow-up",
+    '/v1/setup/follow-up',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const { followUpConfig } = req.body;
@@ -3492,15 +3676,23 @@ export async function registerRoutes(
 
         await prisma.organization.update({
           where: { id: orgId },
-          data: { onboardingStatus: "in_progress" },
+          data: { onboardingStatus: 'in_progress' },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "update_follow_up", "ai_config", orgId, {});
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'update_follow_up',
+          'ai_config',
+          orgId,
+          {}
+        );
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Update follow-up error:", error);
-        res.status(500).json({ error: "Failed to update follow-up config" });
+        console.error('Update follow-up error:', error);
+        res.status(500).json({ error: 'Failed to update follow-up config' });
       }
     }
   );
@@ -3518,9 +3710,9 @@ export async function registerRoutes(
    *         description: Setup completed
    */
   app.post(
-    "/v1/setup/complete",
+    '/v1/setup/complete',
     authMiddleware,
-    requireMinRole("admin"),
+    requireMinRole('admin'),
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = req.user!.orgId;
@@ -3528,17 +3720,25 @@ export async function registerRoutes(
         await prisma.organization.update({
           where: { id: orgId },
           data: {
-            onboardingStatus: "complete",
+            onboardingStatus: 'complete',
             onboardingCompletedAt: new Date(),
           },
         });
 
-        await createAuditLog(orgId, req.user!.userId, "user", "complete_onboarding", "organization", orgId, {});
+        await createAuditLog(
+          orgId,
+          req.user!.userId,
+          'user',
+          'complete_onboarding',
+          'organization',
+          orgId,
+          {}
+        );
 
-        res.json({ success: true, message: "Onboarding completed successfully" });
+        res.json({ success: true, message: 'Onboarding completed successfully' });
       } catch (error) {
-        console.error("Complete setup error:", error);
-        res.status(500).json({ error: "Failed to complete setup" });
+        console.error('Complete setup error:', error);
+        res.status(500).json({ error: 'Failed to complete setup' });
       }
     }
   );
@@ -3555,42 +3755,38 @@ export async function registerRoutes(
    *       200:
    *         description: Current user info
    */
-  app.get(
-    "/v1/auth/me",
-    authMiddleware,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: req.user!.userId },
-          include: { organization: true },
-        });
+  app.get('/v1/auth/me', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        include: { organization: true },
+      });
 
-        if (!user) {
-          return res.status(404).json({ error: "User not found" });
-        }
-
-        res.json({
-          user: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-          },
-          organization: {
-            id: user.organization.id,
-            name: user.organization.name,
-            slug: user.organization.slug,
-            onboardingStatus: user.organization.onboardingStatus,
-          },
-          isPlatformAdmin: isPlatformAdmin(user.email),
-          isImpersonating: req.user?.isImpersonating || false,
-        });
-      } catch (error) {
-        console.error("Get me error:", error);
-        res.status(500).json({ error: "Failed to get user info" });
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
+
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+        organization: {
+          id: user.organization.id,
+          name: user.organization.name,
+          slug: user.organization.slug,
+          onboardingStatus: user.organization.onboardingStatus,
+        },
+        isPlatformAdmin: isPlatformAdmin(user.email),
+        isImpersonating: req.user?.isImpersonating || false,
+      });
+    } catch (error) {
+      console.error('Get me error:', error);
+      res.status(500).json({ error: 'Failed to get user info' });
     }
-  );
+  });
 
   // ============================================
   // INTERACTIONS ROUTES
@@ -3608,45 +3804,49 @@ export async function registerRoutes(
    *       201:
    *         description: Interaction created
    */
-  app.post(
-    "/v1/interactions",
-    authMiddleware,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const { leadId, channel, metadata } = req.body;
-        const orgId = req.user!.orgId;
+  app.post('/v1/interactions', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { leadId, channel, metadata } = req.body;
+      const orgId = req.user!.orgId;
 
-        if (!leadId || !channel) {
-          return res.status(400).json({ error: "leadId and channel are required" });
-        }
-
-        const lead = await prisma.lead.findFirst({
-          where: { id: leadId, orgId },
-        });
-
-        if (!lead) {
-          return res.status(404).json({ error: "Lead not found" });
-        }
-
-        const interaction = await prisma.interaction.create({
-          data: {
-            orgId,
-            leadId,
-            channel,
-            status: "active",
-            metadata: metadata || {},
-          },
-        });
-
-        await createAuditLog(orgId, req.user!.userId, "user", "create_interaction", "interaction", interaction.id, { channel });
-
-        res.status(201).json(interaction);
-      } catch (error) {
-        console.error("Create interaction error:", error);
-        res.status(500).json({ error: "Failed to create interaction" });
+      if (!leadId || !channel) {
+        return res.status(400).json({ error: 'leadId and channel are required' });
       }
+
+      const lead = await prisma.lead.findFirst({
+        where: { id: leadId, orgId },
+      });
+
+      if (!lead) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+
+      const interaction = await prisma.interaction.create({
+        data: {
+          orgId,
+          leadId,
+          channel,
+          status: 'active',
+          metadata: metadata || {},
+        },
+      });
+
+      await createAuditLog(
+        orgId,
+        req.user!.userId,
+        'user',
+        'create_interaction',
+        'interaction',
+        interaction.id,
+        { channel }
+      );
+
+      res.status(201).json(interaction);
+    } catch (error) {
+      console.error('Create interaction error:', error);
+      res.status(500).json({ error: 'Failed to create interaction' });
     }
-  );
+  });
 
   /**
    * @openapi
@@ -3666,40 +3866,36 @@ export async function registerRoutes(
    *       200:
    *         description: List of interactions
    */
-  app.get(
-    "/v1/leads/:id/interactions",
-    authMiddleware,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const { id } = req.params;
-        const orgId = req.user!.orgId;
+  app.get('/v1/leads/:id/interactions', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const orgId = req.user!.orgId;
 
-        const lead = await prisma.lead.findFirst({
-          where: { id, orgId },
-        });
+      const lead = await prisma.lead.findFirst({
+        where: { id, orgId },
+      });
 
-        if (!lead) {
-          return res.status(404).json({ error: "Lead not found" });
-        }
-
-        const interactions = await prisma.interaction.findMany({
-          where: { leadId: id, orgId },
-          include: {
-            call: true,
-            messages: {
-              orderBy: { createdAt: "asc" },
-            },
-          },
-          orderBy: { startedAt: "desc" },
-        });
-
-        res.json(interactions);
-      } catch (error) {
-        console.error("Get lead interactions error:", error);
-        res.status(500).json({ error: "Failed to get interactions" });
+      if (!lead) {
+        return res.status(404).json({ error: 'Lead not found' });
       }
+
+      const interactions = await prisma.interaction.findMany({
+        where: { leadId: id, orgId },
+        include: {
+          call: true,
+          messages: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+
+      res.json(interactions);
+    } catch (error) {
+      console.error('Get lead interactions error:', error);
+      res.status(500).json({ error: 'Failed to get interactions' });
     }
-  );
+  });
 
   // ============================================
   // BOOTSTRAP - ONE-TIME PHONE NUMBER SETUP
@@ -3709,13 +3905,13 @@ export async function registerRoutes(
    * Bootstrap endpoint to ensure phone number exists in production
    * Protected by SEED_SECRET to prevent unauthorized access
    */
-  app.post("/v1/bootstrap/phone-number", async (req, res) => {
+  app.post('/v1/bootstrap/phone-number', async (req, res) => {
     try {
       const { secret, orgId, orgName, orgSlug, e164, label, provider } = req.body;
-      
+
       // Validate secret
       if (secret !== process.env.SEED_SECRET) {
-        return res.status(401).json({ error: "Invalid secret" });
+        return res.status(401).json({ error: 'Invalid secret' });
       }
 
       // Ensure organization exists (create if not, or find by slug)
@@ -3746,7 +3942,9 @@ export async function registerRoutes(
       }
 
       if (!org) {
-        return res.status(400).json({ error: "Organization not found. Provide orgName and orgSlug to create." });
+        return res
+          .status(400)
+          .json({ error: 'Organization not found. Provide orgName and orgSlug to create.' });
       }
 
       // Use the actual org ID (may differ from provided if found by slug)
@@ -3761,15 +3959,21 @@ export async function registerRoutes(
         // Update if needed
         const updated = await prisma.phoneNumber.update({
           where: { id: existing.id },
-          data: { 
-            orgId: actualOrgId, 
+          data: {
+            orgId: actualOrgId,
             inboundEnabled: true,
             label: label || existing.label,
             provider: provider || existing.provider,
           },
         });
         console.log(`[Bootstrap] Updated phone number ${maskPhone(e164)} for org ${actualOrgId}`);
-        return res.json({ action: "updated", id: updated.id, e164: updated.e164, orgId: actualOrgId, orgCreated: false });
+        return res.json({
+          action: 'updated',
+          id: updated.id,
+          e164: updated.e164,
+          orgId: actualOrgId,
+          orgCreated: false,
+        });
       }
 
       // Create new phone number
@@ -3777,16 +3981,21 @@ export async function registerRoutes(
         data: {
           orgId: actualOrgId,
           e164,
-          label: label || "Inbound Line",
-          provider: provider || "twilio",
+          label: label || 'Inbound Line',
+          provider: provider || 'twilio',
           inboundEnabled: true,
         },
       });
       console.log(`[Bootstrap] Created phone number ${maskPhone(e164)} for org ${actualOrgId}`);
-      return res.json({ action: "created", id: created.id, e164: created.e164, orgId: actualOrgId });
+      return res.json({
+        action: 'created',
+        id: created.id,
+        e164: created.e164,
+        orgId: actualOrgId,
+      });
     } catch (error: any) {
-      console.error("[Bootstrap] Error:", error?.message || error);
-      res.status(500).json({ error: "Bootstrap failed", details: error?.message });
+      console.error('[Bootstrap] Error:', error?.message || error);
+      res.status(500).json({ error: 'Bootstrap failed', details: error?.message });
     }
   });
 
@@ -3807,7 +4016,7 @@ export async function registerRoutes(
    *       401:
    *         description: Invalid signature
    */
-  app.post("/v1/telephony/openai/webhook", async (req, res) => {
+  app.post('/v1/telephony/openai/webhook', async (req, res) => {
     await handleOpenAIWebhook(req, res);
   });
 
@@ -3826,50 +4035,59 @@ export async function registerRoutes(
    *       200:
    *         description: TwiML response
    */
-  app.post("/v1/telephony/twilio/voice", async (req, res) => {
+  app.post('/v1/telephony/twilio/voice', async (req, res) => {
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
-    
+
     // IMMEDIATE TOP-OF-HANDLER LOGGING (before any branching)
-    console.log("Incoming call received from: " + (req.body?.From ?? "UNKNOWN"));
-    console.log("CallSid: " + (req.body?.CallSid ?? "UNKNOWN"));
-    
+    console.log('Incoming call received from: ' + (req.body?.From ?? 'UNKNOWN'));
+    console.log('CallSid: ' + (req.body?.CallSid ?? 'UNKNOWN'));
+
     try {
       const payload = req.body;
       const { CallSid, From, To, CallStatus, Direction, CallerName } = payload;
 
       recordEvent({
-        source: "twilio-voice-webhook",
+        source: 'twilio-voice-webhook',
         requestId,
         callSid: CallSid,
         e164: To,
         summary: `Inbound call from ${From} to ${To}`,
-        payload: { CallSid, From, To, CallStatus, Direction, method: req.method, url: req.originalUrl, contentType: req.headers["content-type"] },
+        payload: {
+          CallSid,
+          From,
+          To,
+          CallStatus,
+          Direction,
+          method: req.method,
+          url: req.originalUrl,
+          contentType: req.headers['content-type'],
+        },
       });
 
       // === STRUCTURED DIAGNOSTIC BLOCK ===
       // Get DB fingerprint
-      let dbFingerprint = "unknown";
+      let dbFingerprint = 'unknown';
       const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
       if (urlMatch) {
         const host = urlMatch[1];
         const dbName = urlMatch[3];
         dbFingerprint = `${host}/...${dbName.length > 6 ? dbName.slice(-6) : dbName}`;
       }
-      
+
       // Get phone_numbers count at request time
       const phoneCount = await prisma.phoneNumber.count();
-      
+
       console.log(`[Twilio Voice] ========== REQUEST ${requestId} ==========`);
-      console.log(`[Twilio Voice] [${requestId}] Raw To: "${To || ""}"`);
-      console.log(`[Twilio Voice] [${requestId}] Raw From: "${maskPhone(From || "")}"`);
-      console.log(`[Twilio Voice] [${requestId}] CallSid: "${CallSid || ""}"`);
-      console.log(`[Twilio Voice] [${requestId}] Content-Type: ${req.headers["content-type"]}`);
+      console.log(`[Twilio Voice] [${requestId}] Raw To: "${To || ''}"`);
+      console.log(`[Twilio Voice] [${requestId}] Raw From: "${maskPhone(From || '')}"`);
+      console.log(`[Twilio Voice] [${requestId}] CallSid: "${CallSid || ''}"`);
+      console.log(`[Twilio Voice] [${requestId}] Content-Type: ${req.headers['content-type']}`);
       console.log(`[Twilio Voice] [${requestId}] DB: ${dbFingerprint}`);
       console.log(`[Twilio Voice] [${requestId}] phone_numbers count: ${phoneCount}`);
 
       if (!CallSid || !From || !To) {
         console.log(`[Twilio Voice] [${requestId}] ERROR: Missing required params`);
-        res.set("Content-Type", "text/xml");
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Missing required call information.</Say>
@@ -3884,7 +4102,7 @@ export async function registerRoutes(
 
       if (existingCall) {
         console.log(`[Twilio Voice] [${requestId}] Duplicate webhook, returning cached TwiML`);
-        res.set("Content-Type", "text/xml");
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thank you for calling. Please hold while we connect you.</Say>
@@ -3893,35 +4111,37 @@ export async function registerRoutes(
       }
 
       // === NORMALIZE To VALUE ===
-      const rawTo = To || "";
+      const rawTo = To || '';
       let normalizedTo = rawTo.trim();
-      
+
       // Handle sip: URI format (e.g., sip:+18443214257@...)
-      if (normalizedTo.toLowerCase().startsWith("sip:")) {
+      if (normalizedTo.toLowerCase().startsWith('sip:')) {
         const sipMatch = normalizedTo.match(/^sip:([^@]+)@/i);
         if (sipMatch) {
           normalizedTo = sipMatch[1];
         }
       }
-      
-      const digitsOnly = normalizedTo.replace(/\D/g, "");
-      
+
+      const digitsOnly = normalizedTo.replace(/\D/g, '');
+
       // Build candidate list
       const candidates: string[] = [];
-      
+
       // a) exact trimmed (after sip extraction)
       if (normalizedTo) candidates.push(normalizedTo);
-      
+
       // b) "+" + digitsOnly
-      if (digitsOnly) candidates.push("+" + digitsOnly);
-      
+      if (digitsOnly) candidates.push('+' + digitsOnly);
+
       // c) "+1" + digitsOnly (if 10 digits - US number without country code)
-      if (digitsOnly.length === 10) candidates.push("+1" + digitsOnly);
-      
+      if (digitsOnly.length === 10) candidates.push('+1' + digitsOnly);
+
       // De-dupe candidates
-      const uniqueCandidates = [...new Set(candidates.filter(c => c && c.length > 0))];
-      
-      console.log(`[Twilio Voice] [${requestId}] Candidates: ${uniqueCandidates.map(c => `"${c}"`).join(", ")}`);
+      const uniqueCandidates = [...new Set(candidates.filter((c) => c && c.length > 0))];
+
+      console.log(
+        `[Twilio Voice] [${requestId}] Candidates: ${uniqueCandidates.map((c) => `"${c}"`).join(', ')}`
+      );
 
       // === SINGLE LOOKUP WITH ALL CANDIDATES ===
       const phoneNumber = await prisma.phoneNumber.findFirst({
@@ -3935,8 +4155,10 @@ export async function registerRoutes(
       if (!phoneNumber) {
         // Log the failure with candidates
         console.log(`[Twilio Voice] [${requestId}] NO MATCH FOUND`);
-        console.log(`[Twilio Voice] [${requestId}] Searched candidates: ${uniqueCandidates.join(", ")}`);
-        
+        console.log(
+          `[Twilio Voice] [${requestId}] Searched candidates: ${uniqueCandidates.join(', ')}`
+        );
+
         // Log top 5 phone_numbers rows (masked)
         const topPhones = await prisma.phoneNumber.findMany({
           take: 5,
@@ -3945,20 +4167,24 @@ export async function registerRoutes(
         console.log(`[Twilio Voice] [${requestId}] Top 5 DB rows:`);
         for (const pn of topPhones) {
           const last4 = pn.e164.slice(-4);
-          console.log(`[Twilio Voice] [${requestId}]   e164=****${last4} orgId=${pn.orgId} enabled=${pn.inboundEnabled}`);
+          console.log(
+            `[Twilio Voice] [${requestId}]   e164=****${last4} orgId=${pn.orgId} enabled=${pn.inboundEnabled}`
+          );
         }
-        
+
         console.log(`[Twilio Voice] ========== END ${requestId} (NOT CONFIGURED) ==========`);
-        
-        res.set("Content-Type", "text/xml");
+
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>This number is not currently configured. Please try again later.</Say>
   <Hangup/>
 </Response>`);
       }
-      
-      console.log(`[Twilio Voice] [${requestId}] MATCH FOUND: e164=${phoneNumber.e164} orgId=${phoneNumber.orgId}`);
+
+      console.log(
+        `[Twilio Voice] [${requestId}] MATCH FOUND: e164=${phoneNumber.e164} orgId=${phoneNumber.orgId}`
+      );
 
       const orgId = phoneNumber.orgId;
 
@@ -3970,7 +4196,7 @@ export async function registerRoutes(
         contact = await prisma.contact.create({
           data: {
             orgId,
-            name: CallerName || "Unknown Caller",
+            name: CallerName || 'Unknown Caller',
             primaryPhone: From,
           },
         });
@@ -3980,9 +4206,9 @@ export async function registerRoutes(
         where: {
           orgId,
           contactId: contact.id,
-          status: { in: ["new", "in_progress"] },
+          status: { in: ['new', 'in_progress'] },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!lead) {
@@ -3990,9 +4216,9 @@ export async function registerRoutes(
           data: {
             orgId,
             contactId: contact.id,
-            source: "phone",
-            status: "new",
-            priority: "medium",
+            source: 'phone',
+            status: 'new',
+            priority: 'medium',
           },
         });
       }
@@ -4001,8 +4227,8 @@ export async function registerRoutes(
         data: {
           orgId,
           leadId: lead.id,
-          channel: "call",
-          status: "active",
+          channel: 'call',
+          status: 'active',
           metadata: payload,
         },
       });
@@ -4013,8 +4239,8 @@ export async function registerRoutes(
           leadId: lead.id,
           interactionId: interaction.id,
           phoneNumberId: phoneNumber.id,
-          direction: Direction?.toLowerCase() === "outbound-api" ? "outbound" : "inbound",
-          provider: "twilio",
+          direction: Direction?.toLowerCase() === 'outbound-api' ? 'outbound' : 'inbound',
+          provider: 'twilio',
           twilioCallSid: CallSid,
           fromE164: From,
           toE164: To,
@@ -4026,46 +4252,55 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId,
-          actorType: "system",
-          action: "inbound_call_received",
-          entityType: "call",
+          actorType: 'system',
+          action: 'inbound_call_received',
+          entityType: 'call',
           entityId: call.id,
           details: { twilioCallSid: CallSid, from: From, to: To },
         },
       });
 
-      res.set("Content-Type", "text/xml");
+      res.set('Content-Type', 'text/xml');
 
       // Check if OpenAI Realtime is configured - if so, use Media Streams
       const openaiConfigured = isOpenAIConfigured();
       console.log(`[Twilio Voice] [${requestId}] isOpenAIConfigured: ${openaiConfigured}`);
-      
+
       if (openaiConfigured) {
         try {
           // Build stream URL with HMAC token for authentication
           const ts = Math.floor(Date.now() / 1000);
-          const streamSecret = process.env.STREAM_TOKEN_SECRET || "";
-          const streamToken = streamSecret ? generateStreamToken(streamSecret, ts) : "no-auth";
-          
+          const streamSecret = process.env.STREAM_TOKEN_SECRET || '';
+          const streamToken = streamSecret ? generateStreamToken(streamSecret, ts) : 'no-auth';
+
           // Use PUBLIC_HOST env var for stream URL (required for production)
-          const wsProtocol = "wss";
+          const wsProtocol = 'wss';
           const host = process.env.PUBLIC_HOST;
           if (!host) {
-            console.warn(`[Twilio Voice] [${requestId}] WARNING: PUBLIC_HOST not set. Using fallback. Set PUBLIC_HOST for production!`);
+            console.warn(
+              `[Twilio Voice] [${requestId}] WARNING: PUBLIC_HOST not set. Using fallback. Set PUBLIC_HOST for production!`
+            );
           }
-          const effectiveHost = host || "casecurrent.co";
+          const effectiveHost = host || 'casecurrent.co';
           const streamUrl = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
           const streamUrlMasked = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
-          
+
           // XML-escape the URL for safe embedding in TwiML attributes (& -> &amp;)
-          const xmlEscapeAttr = (str: string) => str.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const xmlEscapeAttr = (str: string) =>
+            str
+              .replace(/&/g, '&amp;')
+              .replace(/"/g, '&quot;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;');
           const streamUrlXmlSafe = xmlEscapeAttr(streamUrl);
           const callSidXmlSafe = xmlEscapeAttr(CallSid);
-          
+
           console.log(`[Twilio Voice] [${requestId}] Stream URL: ${streamUrlMasked}`);
           console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Connect><Stream>`);
-          console.log(`[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`);
-          
+          console.log(
+            `[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`
+          );
+
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
@@ -4073,11 +4308,10 @@ export async function registerRoutes(
       <Parameter name="callSid" value="${callSidXmlSafe}"/>
     </Stream>
   </Connect>
-  <Say voice="alice">The call has ended. Thank you for calling.</Say>
 </Response>`;
-          
+
           recordEvent({
-            source: "twilio-voice-webhook",
+            source: 'twilio-voice-webhook',
             requestId,
             callSid: CallSid,
             orgId,
@@ -4085,7 +4319,7 @@ export async function registerRoutes(
             summary: `TwiML returned with <Connect><Stream> to OpenAI Realtime`,
             payload: { streamUrl: streamUrlMasked, twiml },
           });
-          
+
           res.send(twiml);
         } catch (streamError) {
           console.error(`[Twilio Voice] [${requestId}] Stream setup error:`, streamError);
@@ -4107,11 +4341,11 @@ export async function registerRoutes(
   <Record maxLength="120" transcribe="true" transcribeCallback="/v1/telephony/twilio/transcription"/>
 </Response>`);
       }
-      
+
       console.log(`[Twilio Voice] ========== END ${requestId} ==========`);
     } catch (error) {
-      console.error("Twilio voice webhook error:", error);
-      res.set("Content-Type", "text/xml");
+      console.error('Twilio voice webhook error:', error);
+      res.set('Content-Type', 'text/xml');
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>We encountered an error. Please try again later.</Say>
@@ -4130,7 +4364,7 @@ export async function registerRoutes(
    *       200:
    *         description: Diagnostic status
    */
-  app.get("/v1/telephony/twilio/voice/diag", (req, res) => {
+  app.get('/v1/telephony/twilio/voice/diag', (req, res) => {
     res.json({
       ok: true,
       now: new Date().toISOString(),
@@ -4149,7 +4383,7 @@ export async function registerRoutes(
    *       200:
    *         description: Diagnostic status
    */
-  app.get("/v1/telephony/twilio/stream/diag", (req, res) => {
+  app.get('/v1/telephony/twilio/stream/diag', (req, res) => {
     res.json({
       ok: true,
       now: new Date().toISOString(),
@@ -4168,22 +4402,40 @@ export async function registerRoutes(
    *       200:
    *         description: TwiML response
    */
-  app.post("/v1/telephony/twilio/dial-result", async (req, res) => {
+  app.post('/v1/telephony/twilio/dial-result', async (req, res) => {
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const payload = req.body;
-    const { CallSid, DialCallSid, DialCallStatus, DialCallDuration, DialSipResponseCode, ErrorCode, ErrorMessage } = payload;
-    
+    const {
+      CallSid,
+      DialCallSid,
+      DialCallStatus,
+      DialCallDuration,
+      DialSipResponseCode,
+      ErrorCode,
+      ErrorMessage,
+    } = payload;
+
     recordEvent({
-      source: "twilio-dial-result",
+      source: 'twilio-dial-result',
       requestId,
       callSid: CallSid,
-      summary: `Dial result: ${DialCallStatus || "unknown"} (SIP ${DialSipResponseCode || "N/A"})`,
-      payload: { CallSid, DialCallSid, DialCallStatus, DialCallDuration, DialSipResponseCode, ErrorCode, ErrorMessage },
+      summary: `Dial result: ${DialCallStatus || 'unknown'} (SIP ${DialSipResponseCode || 'N/A'})`,
+      payload: {
+        CallSid,
+        DialCallSid,
+        DialCallStatus,
+        DialCallDuration,
+        DialSipResponseCode,
+        ErrorCode,
+        ErrorMessage,
+      },
     });
-    
-    console.log(`[Twilio Dial Result] CallSid=${maskCallSid(CallSid || "")} Status=${DialCallStatus} SipCode=${DialSipResponseCode} Error=${ErrorCode}/${ErrorMessage}`);
-    
-    res.set("Content-Type", "text/xml");
+
+    console.log(
+      `[Twilio Dial Result] CallSid=${maskCallSid(CallSid || '')} Status=${DialCallStatus} SipCode=${DialSipResponseCode} Error=${ErrorCode}/${ErrorMessage}`
+    );
+
+    res.set('Content-Type', 'text/xml');
     res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>The call has ended. Thank you for calling.</Say>
@@ -4201,21 +4453,39 @@ export async function registerRoutes(
    *       200:
    *         description: Status acknowledged
    */
-  app.post("/v1/telephony/twilio/sip-status", async (req, res) => {
+  app.post('/v1/telephony/twilio/sip-status', async (req, res) => {
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const payload = req.body;
-    const { CallSid, CallStatus, SipResponseCode, ErrorCode, ErrorMessage, Timestamp, ParentCallSid } = payload;
-    
+    const {
+      CallSid,
+      CallStatus,
+      SipResponseCode,
+      ErrorCode,
+      ErrorMessage,
+      Timestamp,
+      ParentCallSid,
+    } = payload;
+
     recordEvent({
-      source: "twilio-sip-status",
+      source: 'twilio-sip-status',
       requestId,
       callSid: CallSid,
-      summary: `SIP status: ${CallStatus || "unknown"} (SIP ${SipResponseCode || "N/A"})`,
-      payload: { CallSid, ParentCallSid, CallStatus, SipResponseCode, ErrorCode, ErrorMessage, Timestamp },
+      summary: `SIP status: ${CallStatus || 'unknown'} (SIP ${SipResponseCode || 'N/A'})`,
+      payload: {
+        CallSid,
+        ParentCallSid,
+        CallStatus,
+        SipResponseCode,
+        ErrorCode,
+        ErrorMessage,
+        Timestamp,
+      },
     });
-    
-    console.log(`[Twilio SIP Status] CallSid=${maskCallSid(CallSid || "")} Status=${CallStatus} SipCode=${SipResponseCode} Error=${ErrorCode}/${ErrorMessage}`);
-    
+
+    console.log(
+      `[Twilio SIP Status] CallSid=${maskCallSid(CallSid || '')} Status=${CallStatus} SipCode=${SipResponseCode} Error=${ErrorCode}/${ErrorMessage}`
+    );
+
     res.status(200).json({ received: true });
   });
 
@@ -4229,13 +4499,13 @@ export async function registerRoutes(
    *       200:
    *         description: Status updated
    */
-  app.post("/v1/telephony/twilio/status", async (req, res) => {
+  app.post('/v1/telephony/twilio/status', async (req, res) => {
     try {
       const payload = req.body;
       const { CallSid, CallStatus, CallDuration } = payload;
 
       if (!CallSid) {
-        return res.status(400).json({ error: "Missing CallSid" });
+        return res.status(400).json({ error: 'Missing CallSid' });
       }
 
       const call = await prisma.call.findFirst({
@@ -4243,22 +4513,22 @@ export async function registerRoutes(
       });
 
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ error: 'Call not found' });
       }
 
       const updateData: any = {
         transcriptJson: {
-          ...(call.transcriptJson as any || {}),
+          ...((call.transcriptJson as any) || {}),
           statusPayload: payload,
         },
       };
 
-      if (["completed", "busy", "no-answer", "canceled", "failed"].includes(CallStatus)) {
+      if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(CallStatus)) {
         updateData.endedAt = new Date();
-        
+
         await prisma.interaction.update({
           where: { id: call.interactionId },
-          data: { endedAt: new Date(), status: "completed" },
+          data: { endedAt: new Date(), status: 'completed' },
         });
       }
 
@@ -4274,17 +4544,17 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId: call.orgId,
-          actorType: "system",
-          action: "call_status_updated",
-          entityType: "call",
+          actorType: 'system',
+          action: 'call_status_updated',
+          entityType: 'call',
           entityId: call.id,
           details: { status: CallStatus, duration: CallDuration },
         },
       });
 
       // Emit call.completed webhook when call ends
-      if (CallStatus === "completed") {
-        await emitWebhookEvent(call.orgId, "call.completed", {
+      if (CallStatus === 'completed') {
+        await emitWebhookEvent(call.orgId, 'call.completed', {
           callId: call.id,
           leadId: call.leadId,
           direction: call.direction,
@@ -4295,8 +4565,8 @@ export async function registerRoutes(
 
       res.json({ success: true });
     } catch (error) {
-      console.error("Twilio status webhook error:", error);
-      res.status(500).json({ error: "Failed to update call status" });
+      console.error('Twilio status webhook error:', error);
+      res.status(500).json({ error: 'Failed to update call status' });
     }
   });
 
@@ -4310,13 +4580,13 @@ export async function registerRoutes(
    *       200:
    *         description: Recording stored
    */
-  app.post("/v1/telephony/twilio/recording", async (req, res) => {
+  app.post('/v1/telephony/twilio/recording', async (req, res) => {
     try {
       const payload = req.body;
       const { CallSid, RecordingUrl, RecordingSid, RecordingDuration } = payload;
 
       if (!CallSid || !RecordingUrl) {
-        return res.status(400).json({ error: "Missing CallSid or RecordingUrl" });
+        return res.status(400).json({ error: 'Missing CallSid or RecordingUrl' });
       }
 
       const call = await prisma.call.findFirst({
@@ -4324,7 +4594,7 @@ export async function registerRoutes(
       });
 
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ error: 'Call not found' });
       }
 
       await prisma.call.update({
@@ -4332,7 +4602,7 @@ export async function registerRoutes(
         data: {
           recordingUrl: RecordingUrl,
           transcriptJson: {
-            ...(call.transcriptJson as any || {}),
+            ...((call.transcriptJson as any) || {}),
             recordingPayload: payload,
             transcriptionJobEnqueued: true,
             transcriptionJobEnqueuedAt: new Date().toISOString(),
@@ -4343,18 +4613,18 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId: call.orgId,
-          actorType: "system",
-          action: "recording_received",
-          entityType: "call",
+          actorType: 'system',
+          action: 'recording_received',
+          entityType: 'call',
           entityId: call.id,
           details: { recordingSid: RecordingSid, duration: RecordingDuration },
         },
       });
 
-      res.json({ success: true, message: "Recording stored, transcription job enqueued" });
+      res.json({ success: true, message: 'Recording stored, transcription job enqueued' });
     } catch (error) {
-      console.error("Twilio recording webhook error:", error);
-      res.status(500).json({ error: "Failed to process recording" });
+      console.error('Twilio recording webhook error:', error);
+      res.status(500).json({ error: 'Failed to process recording' });
     }
   });
 
@@ -4370,18 +4640,18 @@ export async function registerRoutes(
    */
   // STOP word detection helper
   function isStopWord(text: string): boolean {
-    const stopWords = ["stop", "unsubscribe", "cancel", "end", "quit"];
+    const stopWords = ['stop', 'unsubscribe', 'cancel', 'end', 'quit'];
     const normalized = text.trim().toLowerCase();
     return stopWords.includes(normalized);
   }
 
-  app.post("/v1/telephony/twilio/sms", async (req, res) => {
+  app.post('/v1/telephony/twilio/sms', async (req, res) => {
     try {
       const payload = req.body;
       const { MessageSid, From, To, Body } = payload;
 
       if (!MessageSid || !From || !To) {
-        return res.status(400).json({ error: "Missing required Twilio SMS parameters" });
+        return res.status(400).json({ error: 'Missing required Twilio SMS parameters' });
       }
 
       const existingMessage = await prisma.message.findFirst({
@@ -4389,7 +4659,7 @@ export async function registerRoutes(
       });
 
       if (existingMessage) {
-        res.set("Content-Type", "text/xml");
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
       }
@@ -4401,7 +4671,7 @@ export async function registerRoutes(
 
       if (!phoneNumber) {
         console.log(`No phone number found for SMS to ${To}`);
-        res.set("Content-Type", "text/xml");
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
       }
@@ -4416,7 +4686,7 @@ export async function registerRoutes(
         contact = await prisma.contact.create({
           data: {
             orgId,
-            name: "Unknown Sender",
+            name: 'Unknown Sender',
             primaryPhone: From,
           },
         });
@@ -4426,9 +4696,9 @@ export async function registerRoutes(
         where: {
           orgId,
           contactId: contact.id,
-          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
+          status: { in: ['new', 'in_progress', 'engaged', 'intake_started'] },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
 
       const isNewLead = !lead;
@@ -4438,16 +4708,16 @@ export async function registerRoutes(
           data: {
             orgId,
             contactId: contact.id,
-            source: "sms",
-            status: "new",
-            priority: "medium",
+            source: 'sms',
+            status: 'new',
+            priority: 'medium',
             lastActivityAt: new Date(),
           },
         });
       }
 
       // Check for STOP word - handle DNC
-      if (isStopWord(Body || "")) {
+      if (isStopWord(Body || '')) {
         // Set DNC on lead
         await prisma.lead.update({
           where: { id: lead.id },
@@ -4463,11 +4733,11 @@ export async function registerRoutes(
         await prisma.outboundMessage.updateMany({
           where: {
             leadId: lead.id,
-            status: "queued",
+            status: 'queued',
           },
           data: {
-            status: "cancelled",
-            reason: "Lead requested STOP",
+            status: 'cancelled',
+            reason: 'Lead requested STOP',
           },
         });
 
@@ -4475,22 +4745,22 @@ export async function registerRoutes(
         await prisma.followupJob.updateMany({
           where: {
             leadId: lead.id,
-            status: "pending",
+            status: 'pending',
           },
           data: {
-            status: "cancelled",
-            cancelReason: "Lead requested STOP",
+            status: 'cancelled',
+            cancelReason: 'Lead requested STOP',
           },
         });
 
         await prisma.auditLog.create({
           data: {
             orgId,
-            actorType: "system",
-            action: "dnc_set",
-            entityType: "lead",
+            actorType: 'system',
+            action: 'dnc_set',
+            entityType: 'lead',
             entityId: lead.id,
-            details: { reason: "STOP received via SMS", from: From },
+            details: { reason: 'STOP received via SMS', from: From },
           },
         });
 
@@ -4498,14 +4768,14 @@ export async function registerRoutes(
 
         // Emit realtime event for DNC
         emitRealtimeEvent(orgId, {
-          type: "lead.dnc_set",
+          type: 'lead.dnc_set',
           leadId: lead.id,
           timestamp: new Date().toISOString(),
-          data: { reason: "STOP received" },
+          data: { reason: 'STOP received' },
         });
 
         // Return empty response - no reply to STOP
-        res.set("Content-Type", "text/xml");
+        res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
       }
@@ -4513,10 +4783,10 @@ export async function registerRoutes(
       let interaction = await prisma.interaction.findFirst({
         where: {
           leadId: lead.id,
-          channel: "sms",
-          status: "active",
+          channel: 'sms',
+          status: 'active',
         },
-        orderBy: { startedAt: "desc" },
+        orderBy: { startedAt: 'desc' },
       });
 
       if (!interaction) {
@@ -4524,8 +4794,8 @@ export async function registerRoutes(
           data: {
             orgId,
             leadId: lead.id,
-            channel: "sms",
-            status: "active",
+            channel: 'sms',
+            status: 'active',
             metadata: { initialPayload: payload },
           },
         });
@@ -4536,18 +4806,18 @@ export async function registerRoutes(
           orgId,
           leadId: lead.id,
           interactionId: interaction.id,
-          direction: "inbound",
-          channel: "sms",
-          provider: "twilio",
+          direction: 'inbound',
+          channel: 'sms',
+          provider: 'twilio',
           providerMessageId: MessageSid,
           from: From,
           to: To,
-          body: Body || "",
+          body: Body || '',
         },
       });
 
       // Update lead status and activity
-      const newStatus = lead.status === "new" ? "engaged" : lead.status;
+      const newStatus = lead.status === 'new' ? 'engaged' : lead.status;
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
@@ -4560,21 +4830,21 @@ export async function registerRoutes(
       await prisma.outboundMessage.updateMany({
         where: {
           leadId: lead.id,
-          status: "queued",
-          ruleId: { in: ["AFTER_HOURS_SMS_2", "AFTER_HOURS_SMS_3", "AFTER_HOURS_SMS_4"] },
+          status: 'queued',
+          ruleId: { in: ['AFTER_HOURS_SMS_2', 'AFTER_HOURS_SMS_3', 'AFTER_HOURS_SMS_4'] },
         },
         data: {
-          status: "cancelled",
-          reason: "Lead engaged via inbound SMS",
+          status: 'cancelled',
+          reason: 'Lead engaged via inbound SMS',
         },
       });
 
       await prisma.auditLog.create({
         data: {
           orgId,
-          actorType: "system",
-          action: "inbound_sms_received",
-          entityType: "message",
+          actorType: 'system',
+          action: 'inbound_sms_received',
+          entityType: 'message',
           entityId: message.id,
           details: { from: From, to: To, bodyPreview: Body?.substring(0, 100) },
         },
@@ -4582,7 +4852,7 @@ export async function registerRoutes(
 
       // Emit realtime event
       emitRealtimeEvent(orgId, {
-        type: "sms.received",
+        type: 'sms.received',
         leadId: lead.id,
         timestamp: new Date().toISOString(),
         data: {
@@ -4595,21 +4865,21 @@ export async function registerRoutes(
 
       if (isNewLead) {
         emitRealtimeEvent(orgId, {
-          type: "lead.created",
+          type: 'lead.created',
           leadId: lead.id,
           timestamp: new Date().toISOString(),
-          data: { source: "sms", phone: From },
+          data: { source: 'sms', phone: From },
         });
       }
 
-      res.set("Content-Type", "text/xml");
+      res.set('Content-Type', 'text/xml');
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>Thank you for contacting us. An attorney will review your message shortly.</Message>
 </Response>`);
     } catch (error) {
-      console.error("Twilio SMS webhook error:", error);
-      res.set("Content-Type", "text/xml");
+      console.error('Twilio SMS webhook error:', error);
+      res.set('Content-Type', 'text/xml');
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
     }
@@ -4629,16 +4899,18 @@ export async function registerRoutes(
    *       200:
    *         description: Plivo XML response
    */
-  app.post("/v1/telephony/plivo/voice", async (req, res) => {
+  app.post('/v1/telephony/plivo/voice', async (req, res) => {
     try {
       const payload = req.body;
       const { CallUUID, From, To, CallStatus, Direction } = payload;
 
-      console.log(`[Plivo Voice] Inbound call: CallUUID=${CallUUID} From=${From} To=${To} Status=${CallStatus}`);
+      console.log(
+        `[Plivo Voice] Inbound call: CallUUID=${CallUUID} From=${From} To=${To} Status=${CallStatus}`
+      );
 
       if (!To) {
         console.log(`[Plivo Voice] Missing To number`);
-        res.set("Content-Type", "application/xml");
+        res.set('Content-Type', 'application/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak>We're sorry, an error occurred.</Speak>
@@ -4653,7 +4925,7 @@ export async function registerRoutes(
 
       if (!phoneNumber) {
         console.log(`[Plivo Voice] No phone number found for ${To}`);
-        res.set("Content-Type", "application/xml");
+        res.set('Content-Type', 'application/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak>This number is not configured. Goodbye.</Speak>
@@ -4672,7 +4944,7 @@ export async function registerRoutes(
         contact = await prisma.contact.create({
           data: {
             orgId,
-            name: "Unknown Caller",
+            name: 'Unknown Caller',
             primaryPhone: From,
           },
         });
@@ -4683,9 +4955,9 @@ export async function registerRoutes(
         where: {
           orgId,
           contactId: contact.id,
-          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
+          status: { in: ['new', 'in_progress', 'engaged', 'intake_started'] },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!lead) {
@@ -4693,9 +4965,9 @@ export async function registerRoutes(
           data: {
             orgId,
             contactId: contact.id,
-            source: "phone",
-            status: "new",
-            priority: "high",
+            source: 'phone',
+            status: 'new',
+            priority: 'high',
             lastActivityAt: new Date(),
           },
         });
@@ -4706,9 +4978,9 @@ export async function registerRoutes(
         data: {
           orgId,
           leadId: lead.id,
-          channel: "call",
-          status: mapPlivoWebhookToDbStatus(CallStatus || "ringing"),
-          metadata: { provider: "plivo", direction: Direction },
+          channel: 'call',
+          status: mapPlivoWebhookToDbStatus(CallStatus || 'ringing'),
+          metadata: { provider: 'plivo', direction: Direction },
         },
       });
 
@@ -4719,8 +4991,8 @@ export async function registerRoutes(
           leadId: lead.id,
           interactionId: interaction.id,
           phoneNumberId: phoneNumber.id,
-          direction: Direction?.toLowerCase() === "outbound" ? "outbound" : "inbound",
-          provider: "plivo",
+          direction: Direction?.toLowerCase() === 'outbound' ? 'outbound' : 'inbound',
+          provider: 'plivo',
           providerCallId: CallUUID,
           fromE164: From,
           toE164: To,
@@ -4731,11 +5003,11 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId,
-          actorType: "system",
-          action: "inbound_call_received",
-          entityType: "call",
+          actorType: 'system',
+          action: 'inbound_call_received',
+          entityType: 'call',
           entityId: call.id,
-          details: { from: From, to: To, provider: "plivo", callUUID: CallUUID },
+          details: { from: From, to: To, provider: 'plivo', callUUID: CallUUID },
         },
       });
 
@@ -4744,28 +5016,28 @@ export async function registerRoutes(
         where: { id: lead.id },
         data: {
           lastActivityAt: new Date(),
-          status: lead.status === "new" ? "engaged" : lead.status,
+          status: lead.status === 'new' ? 'engaged' : lead.status,
         },
       });
 
       // Emit realtime event
       emitRealtimeEvent(orgId, {
-        type: "call.inbound",
+        type: 'call.inbound',
         leadId: lead.id,
         timestamp: new Date().toISOString(),
-        data: { callId: call.id, from: From, provider: "plivo" },
+        data: { callId: call.id, from: From, provider: 'plivo' },
       });
 
       // Return basic voicemail response (no AI integration for Plivo yet)
-      res.set("Content-Type", "application/xml");
+      res.set('Content-Type', 'application/xml');
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak>Thank you for calling. Please leave a message after the tone.</Speak>
   <Record maxLength="120" action="/v1/telephony/plivo/recording" method="POST" />
 </Response>`);
     } catch (error) {
-      console.error("Plivo voice webhook error:", error);
-      res.set("Content-Type", "application/xml");
+      console.error('Plivo voice webhook error:', error);
+      res.set('Content-Type', 'application/xml');
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak>An error occurred. Please try again later.</Speak>
@@ -4784,7 +5056,7 @@ export async function registerRoutes(
    *       200:
    *         description: Plivo XML response
    */
-  app.post("/v1/telephony/plivo/sms", async (req, res) => {
+  app.post('/v1/telephony/plivo/sms', async (req, res) => {
     try {
       const payload = req.body;
       const { MessageUUID, From, To, Text } = payload;
@@ -4792,7 +5064,7 @@ export async function registerRoutes(
       console.log(`[Plivo SMS] Inbound: MessageUUID=${MessageUUID} From=${From} To=${To}`);
 
       if (!MessageUUID || !From || !To) {
-        return res.status(400).json({ error: "Missing required Plivo SMS parameters" });
+        return res.status(400).json({ error: 'Missing required Plivo SMS parameters' });
       }
 
       // Check for duplicate
@@ -4801,7 +5073,7 @@ export async function registerRoutes(
       });
 
       if (existingMessage) {
-        return res.json({ status: "duplicate" });
+        return res.json({ status: 'duplicate' });
       }
 
       const phoneNumber = await prisma.phoneNumber.findFirst({
@@ -4811,7 +5083,7 @@ export async function registerRoutes(
 
       if (!phoneNumber) {
         console.log(`[Plivo SMS] No phone number found for ${To}`);
-        return res.json({ status: "ignored" });
+        return res.json({ status: 'ignored' });
       }
 
       const orgId = phoneNumber.orgId;
@@ -4825,7 +5097,7 @@ export async function registerRoutes(
         contact = await prisma.contact.create({
           data: {
             orgId,
-            name: "Unknown Sender",
+            name: 'Unknown Sender',
             primaryPhone: From,
           },
         });
@@ -4836,9 +5108,9 @@ export async function registerRoutes(
         where: {
           orgId,
           contactId: contact.id,
-          status: { in: ["new", "in_progress", "engaged", "intake_started"] },
+          status: { in: ['new', 'in_progress', 'engaged', 'intake_started'] },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
 
       const isNewLead = !lead;
@@ -4848,16 +5120,16 @@ export async function registerRoutes(
           data: {
             orgId,
             contactId: contact.id,
-            source: "sms",
-            status: "new",
-            priority: "medium",
+            source: 'sms',
+            status: 'new',
+            priority: 'medium',
             lastActivityAt: new Date(),
           },
         });
       }
 
       // Check for STOP word
-      if (isStopWord(Text || "")) {
+      if (isStopWord(Text || '')) {
         await prisma.lead.update({
           where: { id: lead.id },
           data: {
@@ -4871,15 +5143,15 @@ export async function registerRoutes(
         await prisma.auditLog.create({
           data: {
             orgId,
-            actorType: "system",
-            action: "dnc_set_via_sms",
-            entityType: "lead",
+            actorType: 'system',
+            action: 'dnc_set_via_sms',
+            entityType: 'lead',
             entityId: lead.id,
-            details: { provider: "plivo", text: Text },
+            details: { provider: 'plivo', text: Text },
           },
         });
 
-        return res.json({ status: "dnc_set" });
+        return res.json({ status: 'dnc_set' });
       }
 
       // Create interaction
@@ -4887,9 +5159,9 @@ export async function registerRoutes(
         data: {
           orgId,
           leadId: lead.id,
-          channel: "sms",
-          status: "completed",
-          metadata: { provider: "plivo" },
+          channel: 'sms',
+          status: 'completed',
+          metadata: { provider: 'plivo' },
         },
       });
 
@@ -4899,13 +5171,13 @@ export async function registerRoutes(
           orgId,
           leadId: lead.id,
           interactionId: interaction.id,
-          direction: "inbound",
-          channel: "sms",
-          provider: "plivo",
+          direction: 'inbound',
+          channel: 'sms',
+          provider: 'plivo',
           providerMessageId: MessageUUID,
           from: From,
           to: To,
-          body: Text || "",
+          body: Text || '',
         },
       });
 
@@ -4913,7 +5185,7 @@ export async function registerRoutes(
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
-          status: lead.status === "new" ? "engaged" : lead.status,
+          status: lead.status === 'new' ? 'engaged' : lead.status,
           lastActivityAt: new Date(),
         },
       });
@@ -4921,17 +5193,17 @@ export async function registerRoutes(
       await prisma.auditLog.create({
         data: {
           orgId,
-          actorType: "system",
-          action: "inbound_sms_received",
-          entityType: "message",
+          actorType: 'system',
+          action: 'inbound_sms_received',
+          entityType: 'message',
           entityId: message.id,
-          details: { from: From, to: To, provider: "plivo", bodyPreview: Text?.substring(0, 100) },
+          details: { from: From, to: To, provider: 'plivo', bodyPreview: Text?.substring(0, 100) },
         },
       });
 
       // Emit realtime event
       emitRealtimeEvent(orgId, {
-        type: "sms.received",
+        type: 'sms.received',
         leadId: lead.id,
         timestamp: new Date().toISOString(),
         data: {
@@ -4939,23 +5211,23 @@ export async function registerRoutes(
           from: From,
           bodyPreview: Text?.substring(0, 50),
           isNewLead,
-          provider: "plivo",
+          provider: 'plivo',
         },
       });
 
       if (isNewLead) {
         emitRealtimeEvent(orgId, {
-          type: "lead.created",
+          type: 'lead.created',
           leadId: lead.id,
           timestamp: new Date().toISOString(),
-          data: { source: "sms", phone: From, provider: "plivo" },
+          data: { source: 'sms', phone: From, provider: 'plivo' },
         });
       }
 
-      res.json({ status: "received", messageId: message.id });
+      res.json({ status: 'received', messageId: message.id });
     } catch (error) {
-      console.error("Plivo SMS webhook error:", error);
-      res.status(500).json({ error: "Failed to process SMS" });
+      console.error('Plivo SMS webhook error:', error);
+      res.status(500).json({ error: 'Failed to process SMS' });
     }
   });
 
@@ -4969,7 +5241,7 @@ export async function registerRoutes(
    *       200:
    *         description: Success
    */
-  app.post("/v1/telephony/plivo/recording", async (req, res) => {
+  app.post('/v1/telephony/plivo/recording', async (req, res) => {
     try {
       const { CallUUID, RecordingUrl, RecordingDuration } = req.body;
 
@@ -4991,10 +5263,10 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ status: "ok" });
+      res.json({ status: 'ok' });
     } catch (error) {
-      console.error("Plivo recording callback error:", error);
-      res.status(500).json({ error: "Failed to process recording" });
+      console.error('Plivo recording callback error:', error);
+      res.status(500).json({ error: 'Failed to process recording' });
     }
   });
 
@@ -5008,7 +5280,7 @@ export async function registerRoutes(
    *       200:
    *         description: Success
    */
-  app.post("/v1/telephony/plivo/status", async (req, res) => {
+  app.post('/v1/telephony/plivo/status', async (req, res) => {
     try {
       const { CallUUID, CallStatus, Duration, HangupCause } = req.body;
 
@@ -5048,10 +5320,10 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ status: "ok" });
+      res.json({ status: 'ok' });
     } catch (error) {
-      console.error("Plivo status callback error:", error);
-      res.status(500).json({ error: "Failed to process status" });
+      console.error('Plivo status callback error:', error);
+      res.status(500).json({ error: 'Failed to process status' });
     }
   });
 
@@ -5060,7 +5332,7 @@ export async function registerRoutes(
   // ============================================
 
   // GET /v1/leads/:id/intake - Get intake for a lead
-  app.get("/v1/leads/:id/intake", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads/:id/intake', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
 
@@ -5071,7 +5343,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       const intake = await prisma.intake.findUnique({
@@ -5092,13 +5364,13 @@ export async function registerRoutes(
 
       res.json({ exists: true, intake });
     } catch (error) {
-      console.error("Get intake error:", error);
-      res.status(500).json({ error: "Failed to get intake" });
+      console.error('Get intake error:', error);
+      res.status(500).json({ error: 'Failed to get intake' });
     }
   });
 
   // POST /v1/leads/:id/intake/init - Initialize intake for a lead
-  app.post("/v1/leads/:id/intake/init", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/intake/init', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
 
@@ -5110,7 +5382,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // Check if intake already exists
@@ -5119,7 +5391,7 @@ export async function registerRoutes(
       });
 
       if (existingIntake) {
-        return res.status(400).json({ error: "Intake already exists for this lead" });
+        return res.status(400).json({ error: 'Intake already exists for this lead' });
       }
 
       // Find appropriate question set
@@ -5133,7 +5405,7 @@ export async function registerRoutes(
             practiceAreaId: lead.practiceAreaId,
             active: true,
           },
-          orderBy: { version: "desc" },
+          orderBy: { version: 'desc' },
         });
       }
 
@@ -5145,7 +5417,7 @@ export async function registerRoutes(
             practiceAreaId: null,
             active: true,
           },
-          orderBy: { version: "desc" },
+          orderBy: { version: 'desc' },
         });
       }
 
@@ -5157,7 +5429,7 @@ export async function registerRoutes(
           practiceAreaId: lead.practiceAreaId,
           questionSetId: questionSet?.id || null,
           answers: {},
-          completionStatus: "partial",
+          completionStatus: 'partial',
         },
         include: {
           questionSet: {
@@ -5173,9 +5445,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "intake_initialized",
-          entityType: "intake",
+          actorType: 'user',
+          action: 'intake_initialized',
+          entityType: 'intake',
           entityId: intake.id,
           details: {
             leadId,
@@ -5187,21 +5459,21 @@ export async function registerRoutes(
 
       res.status(201).json(intake);
     } catch (error) {
-      console.error("Init intake error:", error);
-      res.status(500).json({ error: "Failed to initialize intake" });
+      console.error('Init intake error:', error);
+      res.status(500).json({ error: 'Failed to initialize intake' });
     }
   });
 
   // PATCH /v1/leads/:id/intake - Update intake answers
-  app.patch("/v1/leads/:id/intake", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.patch('/v1/leads/:id/intake', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
 
       const { id: leadId } = req.params;
       const { answers } = req.body;
 
-      if (!answers || typeof answers !== "object") {
-        return res.status(400).json({ error: "Invalid answers format" });
+      if (!answers || typeof answers !== 'object') {
+        return res.status(400).json({ error: 'Invalid answers format' });
       }
 
       const lead = await prisma.lead.findFirst({
@@ -5209,7 +5481,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       const existingIntake = await prisma.intake.findUnique({
@@ -5217,11 +5489,11 @@ export async function registerRoutes(
       });
 
       if (!existingIntake) {
-        return res.status(404).json({ error: "Intake not found. Initialize first." });
+        return res.status(404).json({ error: 'Intake not found. Initialize first.' });
       }
 
-      if (existingIntake.completionStatus === "complete") {
-        return res.status(400).json({ error: "Cannot update completed intake" });
+      if (existingIntake.completionStatus === 'complete') {
+        return res.status(400).json({ error: 'Cannot update completed intake' });
       }
 
       // Merge new answers with existing
@@ -5247,9 +5519,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "intake_updated",
-          entityType: "intake",
+          actorType: 'user',
+          action: 'intake_updated',
+          entityType: 'intake',
           entityId: intake.id,
           details: {
             leadId,
@@ -5260,90 +5532,94 @@ export async function registerRoutes(
 
       res.json(intake);
     } catch (error) {
-      console.error("Update intake error:", error);
-      res.status(500).json({ error: "Failed to update intake" });
+      console.error('Update intake error:', error);
+      res.status(500).json({ error: 'Failed to update intake' });
     }
   });
 
   // POST /v1/leads/:id/intake/complete - Complete intake
-  app.post("/v1/leads/:id/intake/complete", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
+  app.post(
+    '/v1/leads/:id/intake/complete',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
 
-      const { id: leadId } = req.params;
+        const { id: leadId } = req.params;
 
-      const lead = await prisma.lead.findFirst({
-        where: { id: leadId, orgId: user.orgId },
-      });
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId: user.orgId },
+        });
 
-      if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
-      }
+        if (!lead) {
+          return res.status(404).json({ error: 'Lead not found' });
+        }
 
-      const existingIntake = await prisma.intake.findUnique({
-        where: { leadId },
-      });
+        const existingIntake = await prisma.intake.findUnique({
+          where: { leadId },
+        });
 
-      if (!existingIntake) {
-        return res.status(404).json({ error: "Intake not found. Initialize first." });
-      }
+        if (!existingIntake) {
+          return res.status(404).json({ error: 'Intake not found. Initialize first.' });
+        }
 
-      if (existingIntake.completionStatus === "complete") {
-        return res.status(400).json({ error: "Intake already completed" });
-      }
+        if (existingIntake.completionStatus === 'complete') {
+          return res.status(400).json({ error: 'Intake already completed' });
+        }
 
-      const intake = await prisma.intake.update({
-        where: { leadId },
-        data: {
-          completionStatus: "complete",
-          completedAt: new Date(),
-        },
-        include: {
-          questionSet: {
-            select: { id: true, name: true, schema: true, version: true },
+        const intake = await prisma.intake.update({
+          where: { leadId },
+          data: {
+            completionStatus: 'complete',
+            completedAt: new Date(),
           },
-          practiceArea: {
-            select: { id: true, name: true },
+          include: {
+            questionSet: {
+              select: { id: true, name: true, schema: true, version: true },
+            },
+            practiceArea: {
+              select: { id: true, name: true },
+            },
           },
-        },
-      });
+        });
 
-      await prisma.auditLog.create({
-        data: {
-          orgId: user.orgId,
-          actorUserId: user.userId,
-          actorType: "user",
-          action: "intake_completed",
-          entityType: "intake",
-          entityId: intake.id,
-          details: {
-            leadId,
-            answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
+        await prisma.auditLog.create({
+          data: {
+            orgId: user.orgId,
+            actorUserId: user.userId,
+            actorType: 'user',
+            action: 'intake_completed',
+            entityType: 'intake',
+            entityId: intake.id,
+            details: {
+              leadId,
+              answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
+            },
           },
-        },
-      });
+        });
 
-      // Emit intake.completed webhook
-      await emitWebhookEvent(user.orgId, "intake.completed", {
-        intakeId: intake.id,
-        leadId,
-        answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
-        completedAt: intake.completedAt,
-      });
+        // Emit intake.completed webhook
+        await emitWebhookEvent(user.orgId, 'intake.completed', {
+          intakeId: intake.id,
+          leadId,
+          answersCount: Object.keys((intake.answers as Record<string, any>) || {}).length,
+          completedAt: intake.completedAt,
+        });
 
-      res.json({
-        ...intake,
-        webhookEvent: {
-          type: "intake.completed",
-          recordedAt: new Date().toISOString(),
-          note: "Webhook delivery stub - will be implemented in webhook system",
-        },
-      });
-    } catch (error) {
-      console.error("Complete intake error:", error);
-      res.status(500).json({ error: "Failed to complete intake" });
+        res.json({
+          ...intake,
+          webhookEvent: {
+            type: 'intake.completed',
+            recordedAt: new Date().toISOString(),
+            note: 'Webhook delivery stub - will be implemented in webhook system',
+          },
+        });
+      } catch (error) {
+        console.error('Complete intake error:', error);
+        res.status(500).json({ error: 'Failed to complete intake' });
+      }
     }
-  });
+  );
 
   // ============================================
   // AI PIPELINE & QUALIFICATION (Checkpoint 7)
@@ -5371,22 +5647,22 @@ export async function registerRoutes(
     if (hasPhone && hasEmail) {
       totalScore += contactWeight;
       scoreFactors.push({
-        name: "Contact Information",
+        name: 'Contact Information',
         weight: contactWeight,
-        evidence: "Both phone and email provided",
+        evidence: 'Both phone and email provided',
         evidence_quote: null,
       });
     } else if (hasPhone || hasEmail) {
       totalScore += contactWeight / 2;
       scoreFactors.push({
-        name: "Contact Information",
+        name: 'Contact Information',
         weight: contactWeight / 2,
-        evidence: hasPhone ? "Phone number provided" : "Email provided",
+        evidence: hasPhone ? 'Phone number provided' : 'Email provided',
         evidence_quote: null,
       });
-      missingFields.push(hasPhone ? "email" : "phone");
+      missingFields.push(hasPhone ? 'email' : 'phone');
     } else {
-      missingFields.push("phone", "email");
+      missingFields.push('phone', 'email');
     }
 
     // Factor 2: Practice area assignment
@@ -5395,38 +5671,38 @@ export async function registerRoutes(
     if (lead.practiceAreaId) {
       totalScore += practiceAreaWeight;
       scoreFactors.push({
-        name: "Practice Area",
+        name: 'Practice Area',
         weight: practiceAreaWeight,
-        evidence: `Assigned to practice area: ${lead.practiceArea?.name || "Unknown"}`,
+        evidence: `Assigned to practice area: ${lead.practiceArea?.name || 'Unknown'}`,
         evidence_quote: null,
       });
     } else {
-      missingFields.push("practice_area");
+      missingFields.push('practice_area');
     }
 
     // Factor 3: Intake completion
     const intakeWeight = 25;
     maxScore += intakeWeight;
-    if (intake?.completionStatus === "complete") {
+    if (intake?.completionStatus === 'complete') {
       totalScore += intakeWeight;
       const answerCount = Object.keys(intake.answers || {}).length;
       scoreFactors.push({
-        name: "Intake Completed",
+        name: 'Intake Completed',
         weight: intakeWeight,
         evidence: `Intake form completed with ${answerCount} answers`,
         evidence_quote: null,
       });
-    } else if (intake?.completionStatus === "partial") {
+    } else if (intake?.completionStatus === 'partial') {
       totalScore += intakeWeight / 2;
       scoreFactors.push({
-        name: "Intake In Progress",
+        name: 'Intake In Progress',
         weight: intakeWeight / 2,
-        evidence: "Intake started but not completed",
+        evidence: 'Intake started but not completed',
         evidence_quote: null,
       });
-      missingFields.push("completed_intake");
+      missingFields.push('completed_intake');
     } else {
-      missingFields.push("intake");
+      missingFields.push('intake');
     }
 
     // Factor 4: Incident information
@@ -5435,7 +5711,7 @@ export async function registerRoutes(
     if (lead.incidentDate && lead.incidentLocation) {
       totalScore += incidentWeight;
       scoreFactors.push({
-        name: "Incident Details",
+        name: 'Incident Details',
         weight: incidentWeight,
         evidence: `Incident on ${new Date(lead.incidentDate).toLocaleDateString()} at ${lead.incidentLocation}`,
         evidence_quote: null,
@@ -5443,14 +5719,14 @@ export async function registerRoutes(
     } else if (lead.incidentDate || lead.incidentLocation) {
       totalScore += incidentWeight / 2;
       scoreFactors.push({
-        name: "Partial Incident Details",
+        name: 'Partial Incident Details',
         weight: incidentWeight / 2,
-        evidence: lead.incidentDate ? "Incident date provided" : "Incident location provided",
+        evidence: lead.incidentDate ? 'Incident date provided' : 'Incident location provided',
         evidence_quote: null,
       });
-      missingFields.push(lead.incidentDate ? "incident_location" : "incident_date");
+      missingFields.push(lead.incidentDate ? 'incident_location' : 'incident_date');
     } else {
-      missingFields.push("incident_date", "incident_location");
+      missingFields.push('incident_date', 'incident_location');
     }
 
     // Factor 5: Communication history
@@ -5462,18 +5738,20 @@ export async function registerRoutes(
       let evidence = `${calls.length} call(s) on record`;
       let score = commWeight / 2;
       if (hasTranscript) {
-        evidence += ", transcripts available";
+        evidence += ', transcripts available';
         score = commWeight;
       } else if (hasRecording) {
-        evidence += ", recordings available";
+        evidence += ', recordings available';
         score = (commWeight * 3) / 4;
       }
       totalScore += score;
       scoreFactors.push({
-        name: "Communication History",
+        name: 'Communication History',
         weight: score,
         evidence,
-        evidence_quote: hasTranscript ? calls.find((c) => c.transcriptText)?.transcriptText?.substring(0, 100) || null : null,
+        evidence_quote: hasTranscript
+          ? calls.find((c) => c.transcriptText)?.transcriptText?.substring(0, 100) || null
+          : null,
       });
     }
 
@@ -5481,11 +5759,11 @@ export async function registerRoutes(
     const finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
 
     // Determine disposition
-    let disposition: "accept" | "review" | "decline" = "review";
+    let disposition: 'accept' | 'review' | 'decline' = 'review';
     if (finalScore >= 70 && missingFields.length <= 2 && disqualifiers.length === 0) {
-      disposition = "accept";
+      disposition = 'accept';
     } else if (finalScore < 30 || disqualifiers.length > 0) {
-      disposition = "decline";
+      disposition = 'decline';
     }
 
     // Calculate confidence (based on data completeness)
@@ -5497,17 +5775,24 @@ export async function registerRoutes(
       disqualifiers,
       routing: {
         practice_area_id: lead.practiceAreaId || null,
-        notes: disposition === "accept" ? "Ready for attorney review" : disposition === "decline" ? "Insufficient information" : "Needs additional screening",
+        notes:
+          disposition === 'accept'
+            ? 'Ready for attorney review'
+            : disposition === 'decline'
+              ? 'Insufficient information'
+              : 'Needs additional screening',
       },
       model: {
-        provider: "stub",
-        model: "qualification-v1",
-        version: "1.0.0",
+        provider: 'stub',
+        model: 'qualification-v1',
+        version: '1.0.0',
       },
       explanations: [
         `Lead scored ${finalScore}/100 based on ${scoreFactors.length} evaluation factors.`,
-        missingFields.length > 0 ? `Missing information: ${missingFields.join(", ")}.` : "All required information provided.",
-        disqualifiers.length > 0 ? `Disqualification reasons: ${disqualifiers.join(", ")}.` : "",
+        missingFields.length > 0
+          ? `Missing information: ${missingFields.join(', ')}.`
+          : 'All required information provided.',
+        disqualifiers.length > 0 ? `Disqualification reasons: ${disqualifiers.join(', ')}.` : '',
       ].filter(Boolean),
     };
 
@@ -5515,7 +5800,7 @@ export async function registerRoutes(
   }
 
   // GET /v1/leads/:id/qualification - Get qualification for a lead
-  app.get("/v1/leads/:id/qualification", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads/:id/qualification', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { id: leadId } = req.params;
@@ -5525,7 +5810,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       const qualification = await prisma.qualification.findUnique({
@@ -5538,196 +5823,212 @@ export async function registerRoutes(
 
       res.json({ exists: true, qualification });
     } catch (error) {
-      console.error("Get qualification error:", error);
-      res.status(500).json({ error: "Failed to get qualification" });
+      console.error('Get qualification error:', error);
+      res.status(500).json({ error: 'Failed to get qualification' });
     }
   });
 
   // POST /v1/leads/:id/qualification/run - Run AI qualification
-  app.post("/v1/leads/:id/qualification/run", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
-      const { id: leadId } = req.params;
+  app.post(
+    '/v1/leads/:id/qualification/run',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const { id: leadId } = req.params;
 
-      const lead = await prisma.lead.findFirst({
-        where: { id: leadId, orgId: user.orgId },
-        include: {
-          contact: true,
-          practiceArea: true,
-        },
-      });
-
-      if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
-      }
-
-      // Fetch intake for this lead
-      const intake = await prisma.intake.findUnique({
-        where: { leadId },
-      });
-
-      // Fetch calls for this lead
-      const calls = await prisma.call.findMany({
-        where: { leadId },
-      });
-
-      // Run AI qualification stub
-      const { score, disposition, confidence, reasons } = generateQualificationReasons(lead, intake, calls);
-
-      // Upsert qualification
-      const qualification = await prisma.qualification.upsert({
-        where: { leadId },
-        update: {
-          score,
-          disposition,
-          confidence,
-          reasons,
-        },
-        create: {
-          orgId: user.orgId,
-          leadId,
-          score,
-          disposition,
-          confidence,
-          reasons,
-        },
-      });
-
-      // Update lead status based on qualification
-      if (disposition === "accept" && lead.status === "new") {
-        await prisma.lead.update({
-          where: { id: leadId },
-          data: { status: "qualified" },
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId: user.orgId },
+          include: {
+            contact: true,
+            practiceArea: true,
+          },
         });
-      } else if (disposition === "decline" && lead.status === "new") {
-        await prisma.lead.update({
-          where: { id: leadId },
-          data: { status: "unqualified" },
-        });
-      }
 
-      await prisma.auditLog.create({
-        data: {
-          orgId: user.orgId,
-          actorUserId: user.userId,
-          actorType: "user",
-          action: "qualification_run",
-          entityType: "qualification",
-          entityId: qualification.id,
-          details: {
+        if (!lead) {
+          return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        // Fetch intake for this lead
+        const intake = await prisma.intake.findUnique({
+          where: { leadId },
+        });
+
+        // Fetch calls for this lead
+        const calls = await prisma.call.findMany({
+          where: { leadId },
+        });
+
+        // Run AI qualification stub
+        const { score, disposition, confidence, reasons } = generateQualificationReasons(
+          lead,
+          intake,
+          calls
+        );
+
+        // Upsert qualification
+        const qualification = await prisma.qualification.upsert({
+          where: { leadId },
+          update: {
+            score,
+            disposition,
+            confidence,
+            reasons,
+          },
+          create: {
+            orgId: user.orgId,
             leadId,
             score,
             disposition,
             confidence,
-            factorCount: reasons.score_factors.length,
+            reasons,
           },
-        },
-      });
+        });
 
-      // Emit lead.qualified webhook
-      await emitWebhookEvent(user.orgId, "lead.qualified", {
-        leadId,
-        qualificationId: qualification.id,
-        score,
-        disposition,
-        confidence,
-      });
-
-      console.log(`[AI PIPELINE] qualification.run for lead ${leadId}, score: ${score}, disposition: ${disposition}`);
-
-      res.json(qualification);
-    } catch (error) {
-      console.error("Run qualification error:", error);
-      res.status(500).json({ error: "Failed to run qualification" });
-    }
-  });
-
-  // PATCH /v1/leads/:id/qualification - Human override
-  app.patch("/v1/leads/:id/qualification", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
-      const { id: leadId } = req.params;
-      const { score, disposition, reasons } = req.body;
-
-      const lead = await prisma.lead.findFirst({
-        where: { id: leadId, orgId: user.orgId },
-      });
-
-      if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
-      }
-
-      const existingQualification = await prisma.qualification.findUnique({
-        where: { leadId },
-      });
-
-      if (!existingQualification) {
-        return res.status(404).json({ error: "Qualification not found. Run qualification first." });
-      }
-
-      const updateData: any = {};
-      if (score !== undefined) updateData.score = score;
-      if (disposition !== undefined) updateData.disposition = disposition;
-      if (reasons !== undefined) {
-        // Merge human override into existing reasons
-        const existingReasons = (existingQualification.reasons as any) || {};
-        updateData.reasons = {
-          ...existingReasons,
-          ...reasons,
-          explanations: [
-            ...(existingReasons.explanations || []),
-            `Human override by ${user.email} at ${new Date().toISOString()}`,
-          ],
-        };
-      }
-
-      const qualification = await prisma.qualification.update({
-        where: { leadId },
-        data: updateData,
-      });
-
-      // Update lead status if disposition changed
-      if (disposition) {
-        let newStatus = lead.status;
-        if (disposition === "accept") newStatus = "qualified";
-        else if (disposition === "decline") newStatus = "unqualified";
-
-        if (newStatus !== lead.status) {
+        // Update lead status based on qualification
+        if (disposition === 'accept' && lead.status === 'new') {
           await prisma.lead.update({
             where: { id: leadId },
-            data: { status: newStatus },
+            data: { status: 'qualified' },
+          });
+        } else if (disposition === 'decline' && lead.status === 'new') {
+          await prisma.lead.update({
+            where: { id: leadId },
+            data: { status: 'unqualified' },
           });
         }
-      }
 
-      await prisma.auditLog.create({
-        data: {
-          orgId: user.orgId,
-          actorUserId: user.userId,
-          actorType: "user",
-          action: "qualification_override",
-          entityType: "qualification",
-          entityId: qualification.id,
-          details: {
-            leadId,
-            updatedFields: Object.keys(updateData),
-            newDisposition: disposition,
+        await prisma.auditLog.create({
+          data: {
+            orgId: user.orgId,
+            actorUserId: user.userId,
+            actorType: 'user',
+            action: 'qualification_run',
+            entityType: 'qualification',
+            entityId: qualification.id,
+            details: {
+              leadId,
+              score,
+              disposition,
+              confidence,
+              factorCount: reasons.score_factors.length,
+            },
           },
-        },
-      });
+        });
 
-      res.json(qualification);
-    } catch (error) {
-      console.error("Override qualification error:", error);
-      res.status(500).json({ error: "Failed to override qualification" });
+        // Emit lead.qualified webhook
+        await emitWebhookEvent(user.orgId, 'lead.qualified', {
+          leadId,
+          qualificationId: qualification.id,
+          score,
+          disposition,
+          confidence,
+        });
+
+        console.log(
+          `[AI PIPELINE] qualification.run for lead ${leadId}, score: ${score}, disposition: ${disposition}`
+        );
+
+        res.json(qualification);
+      } catch (error) {
+        console.error('Run qualification error:', error);
+        res.status(500).json({ error: 'Failed to run qualification' });
+      }
     }
-  });
+  );
+
+  // PATCH /v1/leads/:id/qualification - Human override
+  app.patch(
+    '/v1/leads/:id/qualification',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const { id: leadId } = req.params;
+        const { score, disposition, reasons } = req.body;
+
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId: user.orgId },
+        });
+
+        if (!lead) {
+          return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        const existingQualification = await prisma.qualification.findUnique({
+          where: { leadId },
+        });
+
+        if (!existingQualification) {
+          return res
+            .status(404)
+            .json({ error: 'Qualification not found. Run qualification first.' });
+        }
+
+        const updateData: any = {};
+        if (score !== undefined) updateData.score = score;
+        if (disposition !== undefined) updateData.disposition = disposition;
+        if (reasons !== undefined) {
+          // Merge human override into existing reasons
+          const existingReasons = (existingQualification.reasons as any) || {};
+          updateData.reasons = {
+            ...existingReasons,
+            ...reasons,
+            explanations: [
+              ...(existingReasons.explanations || []),
+              `Human override by ${user.email} at ${new Date().toISOString()}`,
+            ],
+          };
+        }
+
+        const qualification = await prisma.qualification.update({
+          where: { leadId },
+          data: updateData,
+        });
+
+        // Update lead status if disposition changed
+        if (disposition) {
+          let newStatus = lead.status;
+          if (disposition === 'accept') newStatus = 'qualified';
+          else if (disposition === 'decline') newStatus = 'unqualified';
+
+          if (newStatus !== lead.status) {
+            await prisma.lead.update({
+              where: { id: leadId },
+              data: { status: newStatus },
+            });
+          }
+        }
+
+        await prisma.auditLog.create({
+          data: {
+            orgId: user.orgId,
+            actorUserId: user.userId,
+            actorType: 'user',
+            action: 'qualification_override',
+            entityType: 'qualification',
+            entityId: qualification.id,
+            details: {
+              leadId,
+              updatedFields: Object.keys(updateData),
+              newDisposition: disposition,
+            },
+          },
+        });
+
+        res.json(qualification);
+      } catch (error) {
+        console.error('Override qualification error:', error);
+        res.status(500).json({ error: 'Failed to override qualification' });
+      }
+    }
+  );
 
   // AI Job Stubs for future implementation
   // These would be triggered by a job queue in production
 
   // Stub: Transcription job
-  app.post("/v1/ai/transcribe/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/ai/transcribe/:callId', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { callId } = req.params;
@@ -5737,11 +6038,11 @@ export async function registerRoutes(
       });
 
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ error: 'Call not found' });
       }
 
       if (!call.recordingUrl) {
-        return res.status(400).json({ error: "No recording URL available" });
+        return res.status(400).json({ error: 'No recording URL available' });
       }
 
       // Stub: In production, this would call a transcription service
@@ -5752,9 +6053,9 @@ export async function registerRoutes(
         data: {
           transcriptText: stubTranscript,
           transcriptJson: {
-            segments: [{ start: 0, end: 60, text: stubTranscript, speaker: "unknown" }],
-            provider: "stub",
-            model: "transcription-v1",
+            segments: [{ start: 0, end: 60, text: stubTranscript, speaker: 'unknown' }],
+            provider: 'stub',
+            model: 'transcription-v1',
             processedAt: new Date().toISOString(),
           },
         },
@@ -5764,24 +6065,24 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "ai.transcribe.stub",
-          entityType: "call",
+          actorType: 'user',
+          action: 'ai.transcribe.stub',
+          entityType: 'call',
           entityId: callId,
-          details: { provider: "stub", model: "transcription-v1" },
+          details: { provider: 'stub', model: 'transcription-v1' },
         },
       });
 
       console.log(`[AI PIPELINE STUB] transcription completed for call ${callId}`);
-      res.json({ success: true, message: "Transcription stub completed" });
+      res.json({ success: true, message: 'Transcription stub completed' });
     } catch (error) {
-      console.error("Transcription error:", error);
-      res.status(500).json({ error: "Failed to transcribe" });
+      console.error('Transcription error:', error);
+      res.status(500).json({ error: 'Failed to transcribe' });
     }
   });
 
   // Stub: Summarization job
-  app.post("/v1/ai/summarize/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/ai/summarize/:callId', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { callId } = req.params;
@@ -5791,11 +6092,11 @@ export async function registerRoutes(
       });
 
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ error: 'Call not found' });
       }
 
       if (!call.transcriptText) {
-        return res.status(400).json({ error: "No transcript available. Run transcription first." });
+        return res.status(400).json({ error: 'No transcript available. Run transcription first.' });
       }
 
       // Stub: In production, this would call an LLM for summarization
@@ -5806,11 +6107,11 @@ export async function registerRoutes(
         data: {
           aiSummary: stubSummary,
           aiFlags: {
-            urgency: "medium",
-            sentiment: "neutral",
-            keyTopics: ["case discussion", "initial contact"],
-            provider: "stub",
-            model: "summarization-v1",
+            urgency: 'medium',
+            sentiment: 'neutral',
+            keyTopics: ['case discussion', 'initial contact'],
+            provider: 'stub',
+            model: 'summarization-v1',
             processedAt: new Date().toISOString(),
           },
         },
@@ -5820,24 +6121,24 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "ai.summarize.stub",
-          entityType: "call",
+          actorType: 'user',
+          action: 'ai.summarize.stub',
+          entityType: 'call',
           entityId: callId,
-          details: { provider: "stub", model: "summarization-v1" },
+          details: { provider: 'stub', model: 'summarization-v1' },
         },
       });
 
       console.log(`[AI PIPELINE STUB] summarization completed for call ${callId}`);
-      res.json({ success: true, message: "Summarization stub completed" });
+      res.json({ success: true, message: 'Summarization stub completed' });
     } catch (error) {
-      console.error("Summarization error:", error);
-      res.status(500).json({ error: "Failed to summarize" });
+      console.error('Summarization error:', error);
+      res.status(500).json({ error: 'Failed to summarize' });
     }
   });
 
   // Stub: Intake extraction job
-  app.post("/v1/ai/extract/:leadId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/ai/extract/:leadId', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { leadId } = req.params;
@@ -5847,7 +6148,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // Get calls with transcripts for this lead
@@ -5856,7 +6157,7 @@ export async function registerRoutes(
       });
 
       if (calls.length === 0) {
-        return res.status(400).json({ error: "No transcripts available for extraction" });
+        return res.status(400).json({ error: 'No transcripts available for extraction' });
       }
 
       // Stub: In production, this would use an LLM to extract structured data
@@ -5864,8 +6165,8 @@ export async function registerRoutes(
         extracted_from_calls: true,
         call_count: calls.length,
         ai_extracted: {
-          contact_reason: "Legal consultation requested",
-          urgency_level: "medium",
+          contact_reason: 'Legal consultation requested',
+          urgency_level: 'medium',
           extraction_date: new Date().toISOString(),
         },
       };
@@ -5896,24 +6197,24 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "ai.extract.stub",
-          entityType: "lead",
+          actorType: 'user',
+          action: 'ai.extract.stub',
+          entityType: 'lead',
           entityId: leadId,
-          details: { provider: "stub", callCount: calls.length },
+          details: { provider: 'stub', callCount: calls.length },
         },
       });
 
       console.log(`[AI PIPELINE STUB] extraction completed for lead ${leadId}`);
-      res.json({ success: true, message: "Extraction stub completed", extractedAnswers });
+      res.json({ success: true, message: 'Extraction stub completed', extractedAnswers });
     } catch (error) {
-      console.error("Extraction error:", error);
-      res.status(500).json({ error: "Failed to extract" });
+      console.error('Extraction error:', error);
+      res.status(500).json({ error: 'Failed to extract' });
     }
   });
 
   // Stub: AI scoring job (runs qualification scoring using shared helper)
-  app.post("/v1/ai/score/:leadId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/ai/score/:leadId', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { leadId } = req.params;
@@ -5927,7 +6228,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // Fetch intake for this lead
@@ -5941,30 +6242,36 @@ export async function registerRoutes(
       });
 
       // Use shared scoring helper (same as qualification run)
-      const { score, disposition, confidence, reasons } = generateQualificationReasons(lead, intake, calls);
+      const { score, disposition, confidence, reasons } = generateQualificationReasons(
+        lead,
+        intake,
+        calls
+      );
 
       // Audit log with consistent entityType/entityId
       await prisma.auditLog.create({
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "ai.score.stub",
-          entityType: "lead",
+          actorType: 'user',
+          action: 'ai.score.stub',
+          entityType: 'lead',
           entityId: leadId,
           details: { score, disposition, confidence },
         },
       });
 
-      console.log(`[AI PIPELINE STUB] scoring completed for lead ${leadId}: score=${score}, disposition=${disposition}`);
+      console.log(
+        `[AI PIPELINE STUB] scoring completed for lead ${leadId}: score=${score}, disposition=${disposition}`
+      );
       res.json({
         success: true,
-        message: "Scoring stub completed",
+        message: 'Scoring stub completed',
         result: { score, disposition, confidence, reasons },
       });
     } catch (error) {
-      console.error("Scoring error:", error);
-      res.status(500).json({ error: "Failed to score" });
+      console.error('Scoring error:', error);
+      res.status(500).json({ error: 'Failed to score' });
     }
   });
 
@@ -5974,7 +6281,7 @@ export async function registerRoutes(
 
   // Deterministic variant assignment using hash
   function assignVariant(leadId: string, experimentId: string, variants: string[]): string {
-    const hash = crypto.createHash("sha256").update(`${experimentId}:${leadId}`).digest("hex");
+    const hash = crypto.createHash('sha256').update(`${experimentId}:${leadId}`).digest('hex');
     const index = parseInt(hash.slice(0, 8), 16) % variants.length;
     return variants[index];
   }
@@ -6014,48 +6321,50 @@ export async function registerRoutes(
    *         description: Created experiment
    */
   // GET /v1/experiments - List experiments
-  app.get("/v1/experiments", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/experiments', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const experiments = await prisma.experiment.findMany({
         where: { orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         include: {
           _count: { select: { assignments: true } },
         },
       });
-      res.json(experiments.map(e => ({
-        ...e,
-        assignmentsCount: e._count.assignments,
-        _count: undefined,
-      })));
+      res.json(
+        experiments.map((e) => ({
+          ...e,
+          assignmentsCount: e._count.assignments,
+          _count: undefined,
+        }))
+      );
     } catch (error) {
-      console.error("List experiments error:", error);
-      res.status(500).json({ error: "Failed to list experiments" });
+      console.error('List experiments error:', error);
+      res.status(500).json({ error: 'Failed to list experiments' });
     }
   });
 
   // POST /v1/experiments - Create experiment
-  app.post("/v1/experiments", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/experiments', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { name, description, kind, config } = req.body;
 
       if (!name || !kind || !config) {
-        return res.status(400).json({ error: "name, kind, and config required" });
+        return res.status(400).json({ error: 'name, kind, and config required' });
       }
 
       const experiment = await prisma.experiment.create({
-        data: { orgId, name, description, kind, config, status: "draft" },
+        data: { orgId, name, description, kind, config, status: 'draft' },
       });
 
       await prisma.auditLog.create({
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "experiment.create",
-          entityType: "experiment",
+          actorType: 'user',
+          action: 'experiment.create',
+          entityType: 'experiment',
           entityId: experiment.id,
           details: { name, kind },
         },
@@ -6063,13 +6372,13 @@ export async function registerRoutes(
 
       res.status(201).json(experiment);
     } catch (error) {
-      console.error("Create experiment error:", error);
-      res.status(500).json({ error: "Failed to create experiment" });
+      console.error('Create experiment error:', error);
+      res.status(500).json({ error: 'Failed to create experiment' });
     }
   });
 
   // GET /v1/experiments/:id - Get experiment details
-  app.get("/v1/experiments/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/experiments/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6082,7 +6391,7 @@ export async function registerRoutes(
       });
 
       if (!experiment) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
       res.json({
@@ -6091,13 +6400,13 @@ export async function registerRoutes(
         _count: undefined,
       });
     } catch (error) {
-      console.error("Get experiment error:", error);
-      res.status(500).json({ error: "Failed to get experiment" });
+      console.error('Get experiment error:', error);
+      res.status(500).json({ error: 'Failed to get experiment' });
     }
   });
 
   // PATCH /v1/experiments/:id - Update experiment
-  app.patch("/v1/experiments/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.patch('/v1/experiments/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6108,11 +6417,11 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
-      if (existing.status === "running") {
-        return res.status(400).json({ error: "Cannot edit running experiment" });
+      if (existing.status === 'running') {
+        return res.status(400).json({ error: 'Cannot edit running experiment' });
       }
 
       const updateData: Record<string, unknown> = {};
@@ -6128,13 +6437,13 @@ export async function registerRoutes(
 
       res.json(experiment);
     } catch (error) {
-      console.error("Update experiment error:", error);
-      res.status(500).json({ error: "Failed to update experiment" });
+      console.error('Update experiment error:', error);
+      res.status(500).json({ error: 'Failed to update experiment' });
     }
   });
 
   // POST /v1/experiments/:id/start - Start experiment
-  app.post("/v1/experiments/:id/start", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/experiments/:id/start', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6144,25 +6453,25 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
-      if (existing.status === "running") {
-        return res.status(400).json({ error: "Experiment already running" });
+      if (existing.status === 'running') {
+        return res.status(400).json({ error: 'Experiment already running' });
       }
 
       const experiment = await prisma.experiment.update({
         where: { id },
-        data: { status: "running", startedAt: new Date(), pausedAt: null },
+        data: { status: 'running', startedAt: new Date(), pausedAt: null },
       });
 
       await prisma.auditLog.create({
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "experiment.start",
-          entityType: "experiment",
+          actorType: 'user',
+          action: 'experiment.start',
+          entityType: 'experiment',
           entityId: id,
           details: {},
         },
@@ -6170,13 +6479,13 @@ export async function registerRoutes(
 
       res.json(experiment);
     } catch (error) {
-      console.error("Start experiment error:", error);
-      res.status(500).json({ error: "Failed to start experiment" });
+      console.error('Start experiment error:', error);
+      res.status(500).json({ error: 'Failed to start experiment' });
     }
   });
 
   // POST /v1/experiments/:id/pause - Pause experiment
-  app.post("/v1/experiments/:id/pause", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/experiments/:id/pause', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6186,25 +6495,25 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
-      if (existing.status !== "running") {
-        return res.status(400).json({ error: "Experiment is not running" });
+      if (existing.status !== 'running') {
+        return res.status(400).json({ error: 'Experiment is not running' });
       }
 
       const experiment = await prisma.experiment.update({
         where: { id },
-        data: { status: "paused", pausedAt: new Date() },
+        data: { status: 'paused', pausedAt: new Date() },
       });
 
       await prisma.auditLog.create({
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "experiment.pause",
-          entityType: "experiment",
+          actorType: 'user',
+          action: 'experiment.pause',
+          entityType: 'experiment',
           entityId: id,
           details: {},
         },
@@ -6212,13 +6521,13 @@ export async function registerRoutes(
 
       res.json(experiment);
     } catch (error) {
-      console.error("Pause experiment error:", error);
-      res.status(500).json({ error: "Failed to pause experiment" });
+      console.error('Pause experiment error:', error);
+      res.status(500).json({ error: 'Failed to pause experiment' });
     }
   });
 
   // POST /v1/experiments/:id/end - End experiment
-  app.post("/v1/experiments/:id/end", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/experiments/:id/end', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6228,25 +6537,25 @@ export async function registerRoutes(
       });
 
       if (!existing) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
-      if (existing.status === "ended") {
-        return res.status(400).json({ error: "Experiment already ended" });
+      if (existing.status === 'ended') {
+        return res.status(400).json({ error: 'Experiment already ended' });
       }
 
       const experiment = await prisma.experiment.update({
         where: { id },
-        data: { status: "ended", endedAt: new Date() },
+        data: { status: 'ended', endedAt: new Date() },
       });
 
       await prisma.auditLog.create({
         data: {
           orgId,
           actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "experiment.end",
-          entityType: "experiment",
+          actorType: 'user',
+          action: 'experiment.end',
+          entityType: 'experiment',
           entityId: id,
           details: {},
         },
@@ -6254,28 +6563,28 @@ export async function registerRoutes(
 
       res.json(experiment);
     } catch (error) {
-      console.error("End experiment error:", error);
-      res.status(500).json({ error: "Failed to end experiment" });
+      console.error('End experiment error:', error);
+      res.status(500).json({ error: 'Failed to end experiment' });
     }
   });
 
   // POST /v1/experiments/:id/assign - Assign lead to experiment
-  app.post("/v1/experiments/:id/assign", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/experiments/:id/assign', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
       const { leadId } = req.body;
 
       if (!leadId) {
-        return res.status(400).json({ error: "leadId required" });
+        return res.status(400).json({ error: 'leadId required' });
       }
 
       const experiment = await prisma.experiment.findFirst({
-        where: { id, orgId, status: "running" },
+        where: { id, orgId, status: 'running' },
       });
 
       if (!experiment) {
-        return res.status(404).json({ error: "Running experiment not found" });
+        return res.status(404).json({ error: 'Running experiment not found' });
       }
 
       // Check if already assigned
@@ -6289,7 +6598,7 @@ export async function registerRoutes(
 
       // Get variants from config
       const config = experiment.config as { variants?: string[] };
-      const variants = config.variants || ["control", "variant_a"];
+      const variants = config.variants || ['control', 'variant_a'];
 
       // Deterministic assignment
       const variant = assignVariant(leadId, id, variants);
@@ -6300,13 +6609,13 @@ export async function registerRoutes(
 
       res.json({ variant: assignment.variant, alreadyAssigned: false });
     } catch (error) {
-      console.error("Assign experiment error:", error);
-      res.status(500).json({ error: "Failed to assign experiment" });
+      console.error('Assign experiment error:', error);
+      res.status(500).json({ error: 'Failed to assign experiment' });
     }
   });
 
   // GET /v1/experiments/:id/report - Get experiment report
-  app.get("/v1/experiments/:id/report", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/experiments/:id/report', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6316,18 +6625,21 @@ export async function registerRoutes(
       });
 
       if (!experiment) {
-        return res.status(404).json({ error: "Experiment not found" });
+        return res.status(404).json({ error: 'Experiment not found' });
       }
 
       // Get assignment counts per variant
       const assignments = await prisma.experimentAssignment.groupBy({
-        by: ["variant"],
+        by: ['variant'],
         where: { experimentId: id },
         _count: { _all: true },
       });
 
       // Get conversion data by joining with qualifications
-      const variantStats: Record<string, { leads: number; conversions: number; avgScore: number | null }> = {};
+      const variantStats: Record<
+        string,
+        { leads: number; conversions: number; avgScore: number | null }
+      > = {};
 
       for (const a of assignments) {
         const assignedLeads = await prisma.experimentAssignment.findMany({
@@ -6335,19 +6647,20 @@ export async function registerRoutes(
           select: { leadId: true },
         });
 
-        const leadIds = assignedLeads.map(al => al.leadId);
-        
+        const leadIds = assignedLeads.map((al) => al.leadId);
+
         const qualifications = await prisma.qualification.findMany({
-          where: { leadId: { in: leadIds }, disposition: "accept" },
+          where: { leadId: { in: leadIds }, disposition: 'accept' },
         });
 
         const allQualifications = await prisma.qualification.findMany({
           where: { leadId: { in: leadIds } },
         });
 
-        const avgScore = allQualifications.length > 0
-          ? allQualifications.reduce((sum, q) => sum + q.score, 0) / allQualifications.length
-          : null;
+        const avgScore =
+          allQualifications.length > 0
+            ? allQualifications.reduce((sum, q) => sum + q.score, 0) / allQualifications.length
+            : null;
 
         variantStats[a.variant] = {
           leads: a._count._all,
@@ -6359,7 +6672,7 @@ export async function registerRoutes(
       // Get daily metrics
       const dailyMetrics = await prisma.experimentMetricsDaily.findMany({
         where: { experimentId: id },
-        orderBy: { date: "asc" },
+        orderBy: { date: 'asc' },
       });
 
       res.json({
@@ -6373,8 +6686,8 @@ export async function registerRoutes(
         totalAssignments: assignments.reduce((sum, a) => sum + a._count._all, 0),
       });
     } catch (error) {
-      console.error("Get experiment report error:", error);
-      res.status(500).json({ error: "Failed to get report" });
+      console.error('Get experiment report error:', error);
+      res.status(500).json({ error: 'Failed to get report' });
     }
   });
 
@@ -6382,13 +6695,13 @@ export async function registerRoutes(
   async function autoAssignExperiments(orgId: string, leadId: string) {
     try {
       const runningExperiments = await prisma.experiment.findMany({
-        where: { orgId, status: "running" },
+        where: { orgId, status: 'running' },
       });
 
       for (const experiment of runningExperiments) {
         const config = experiment.config as { variants?: string[] };
-        const variants = config.variants || ["control", "variant_a"];
-        
+        const variants = config.variants || ['control', 'variant_a'];
+
         // Skip if variants array is empty
         if (!variants.length) {
           console.warn(`[EXPERIMENT] Skipping ${experiment.id}: no variants configured`);
@@ -6403,10 +6716,12 @@ export async function registerRoutes(
           create: { orgId, experimentId: experiment.id, leadId, variant },
         });
 
-        console.log(`[EXPERIMENT] Auto-assigned lead ${leadId} to experiment ${experiment.id} variant=${variant}`);
+        console.log(
+          `[EXPERIMENT] Auto-assigned lead ${leadId} to experiment ${experiment.id} variant=${variant}`
+        );
       }
     } catch (error) {
-      console.error("[EXPERIMENT] Auto-assign error:", error);
+      console.error('[EXPERIMENT] Auto-assign error:', error);
     }
   }
 
@@ -6476,39 +6791,41 @@ export async function registerRoutes(
    *         description: Created follow-up sequence
    */
   // GET /v1/policy-tests/suites - List suites
-  app.get("/v1/policy-tests/suites", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/policy-tests/suites', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const suites = await prisma.policyTestSuite.findMany({
         where: { orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         include: {
           runs: {
-            orderBy: { startedAt: "desc" },
+            orderBy: { startedAt: 'desc' },
             take: 1,
           },
         },
       });
 
-      res.json(suites.map(s => ({
-        ...s,
-        lastRun: s.runs[0] || null,
-        runs: undefined,
-      })));
+      res.json(
+        suites.map((s) => ({
+          ...s,
+          lastRun: s.runs[0] || null,
+          runs: undefined,
+        }))
+      );
     } catch (error) {
-      console.error("List policy suites error:", error);
-      res.status(500).json({ error: "Failed to list suites" });
+      console.error('List policy suites error:', error);
+      res.status(500).json({ error: 'Failed to list suites' });
     }
   });
 
   // POST /v1/policy-tests/suites - Create suite
-  app.post("/v1/policy-tests/suites", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/policy-tests/suites', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { name, description, testCases } = req.body;
 
       if (!name || !testCases || !Array.isArray(testCases)) {
-        return res.status(400).json({ error: "name and testCases array required" });
+        return res.status(400).json({ error: 'name and testCases array required' });
       }
 
       const suite = await prisma.policyTestSuite.create({
@@ -6518,21 +6835,21 @@ export async function registerRoutes(
       await createAuditLog(
         orgId,
         req.user!.userId,
-        "policy_test_suite.create",
-        "policy_test_suite",
+        'policy_test_suite.create',
+        'policy_test_suite',
         suite.id,
         { name, testCasesCount: testCases.length }
       );
 
       res.status(201).json(suite);
     } catch (error) {
-      console.error("Create policy suite error:", error);
-      res.status(500).json({ error: "Failed to create suite" });
+      console.error('Create policy suite error:', error);
+      res.status(500).json({ error: 'Failed to create suite' });
     }
   });
 
   // GET /v1/policy-tests/suites/:id - Get suite
-  app.get("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/policy-tests/suites/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6542,192 +6859,210 @@ export async function registerRoutes(
       });
 
       if (!suite) {
-        return res.status(404).json({ error: "Suite not found" });
+        return res.status(404).json({ error: 'Suite not found' });
       }
 
       res.json(suite);
     } catch (error) {
-      console.error("Get policy suite error:", error);
-      res.status(500).json({ error: "Failed to get suite" });
+      console.error('Get policy suite error:', error);
+      res.status(500).json({ error: 'Failed to get suite' });
     }
   });
 
   // PATCH /v1/policy-tests/suites/:id - Update suite
-  app.patch("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
-      const { name, description, testCases, active } = req.body;
+  app.patch(
+    '/v1/policy-tests/suites/:id',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
+        const { name, description, testCases, active } = req.body;
 
-      const existing = await prisma.policyTestSuite.findFirst({
-        where: { id, orgId },
-      });
+        const existing = await prisma.policyTestSuite.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!existing) {
-        return res.status(404).json({ error: "Suite not found" });
+        if (!existing) {
+          return res.status(404).json({ error: 'Suite not found' });
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (name !== undefined) updateData.name = name;
+        if (description !== undefined) updateData.description = description;
+        if (testCases !== undefined) updateData.testCases = testCases;
+        if (active !== undefined) updateData.active = active;
+
+        const suite = await prisma.policyTestSuite.update({
+          where: { id },
+          data: updateData,
+        });
+
+        res.json(suite);
+      } catch (error) {
+        console.error('Update policy suite error:', error);
+        res.status(500).json({ error: 'Failed to update suite' });
       }
-
-      const updateData: Record<string, unknown> = {};
-      if (name !== undefined) updateData.name = name;
-      if (description !== undefined) updateData.description = description;
-      if (testCases !== undefined) updateData.testCases = testCases;
-      if (active !== undefined) updateData.active = active;
-
-      const suite = await prisma.policyTestSuite.update({
-        where: { id },
-        data: updateData,
-      });
-
-      res.json(suite);
-    } catch (error) {
-      console.error("Update policy suite error:", error);
-      res.status(500).json({ error: "Failed to update suite" });
     }
-  });
+  );
 
   // DELETE /v1/policy-tests/suites/:id - Delete suite
-  app.delete("/v1/policy-tests/suites/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
+  app.delete(
+    '/v1/policy-tests/suites/:id',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
 
-      const existing = await prisma.policyTestSuite.findFirst({
-        where: { id, orgId },
-      });
+        const existing = await prisma.policyTestSuite.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!existing) {
-        return res.status(404).json({ error: "Suite not found" });
+        if (!existing) {
+          return res.status(404).json({ error: 'Suite not found' });
+        }
+
+        await prisma.policyTestSuite.delete({ where: { id } });
+        res.status(204).send();
+      } catch (error) {
+        console.error('Delete policy suite error:', error);
+        res.status(500).json({ error: 'Failed to delete suite' });
       }
-
-      await prisma.policyTestSuite.delete({ where: { id } });
-      res.status(204).send();
-    } catch (error) {
-      console.error("Delete policy suite error:", error);
-      res.status(500).json({ error: "Failed to delete suite" });
     }
-  });
+  );
 
   // POST /v1/policy-tests/suites/:id/run - Run policy test suite
-  app.post("/v1/policy-tests/suites/:id/run", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
+  app.post(
+    '/v1/policy-tests/suites/:id/run',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
 
-      const suite = await prisma.policyTestSuite.findFirst({
-        where: { id, orgId },
-      });
+        const suite = await prisma.policyTestSuite.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!suite) {
-        return res.status(404).json({ error: "Suite not found" });
-      }
-
-      const testCases = suite.testCases as Array<{
-        id: string;
-        name: string;
-        input: Record<string, unknown>;
-        expectedDisposition: string;
-        expectedMinScore?: number;
-      }>;
-
-      // Run each test case
-      const results: Array<{
-        testId: string;
-        name: string;
-        passed: boolean;
-        actualDisposition?: string;
-        actualScore?: number;
-        error?: string;
-      }> = [];
-
-      for (const tc of testCases) {
-        try {
-          // Simulate qualification scoring based on input
-          const mockLead = tc.input as { contact?: { phone?: string; email?: string }; practiceArea?: boolean; intake?: { complete?: boolean; answers?: Record<string, unknown> }; calls?: number };
-          
-          let score = 0;
-          
-          // Contact info scoring (20 points)
-          if (mockLead.contact?.phone) score += 10;
-          if (mockLead.contact?.email) score += 10;
-          
-          // Practice area (15 points)
-          if (mockLead.practiceArea) score += 15;
-          
-          // Intake completion (25 points)
-          if (mockLead.intake?.complete) score += 25;
-          else if (mockLead.intake?.answers && Object.keys(mockLead.intake.answers).length > 0) score += 10;
-          
-          // Incident details (20 points)
-          if (mockLead.intake?.answers) {
-            const answers = mockLead.intake.answers;
-            if (answers.incidentDate) score += 10;
-            if (answers.incidentLocation) score += 10;
-          }
-          
-          // Communication history (20 points)
-          if (mockLead.calls && mockLead.calls > 0) score += Math.min(mockLead.calls * 10, 20);
-
-          let disposition = "review";
-          if (score >= 70) disposition = "accept";
-          else if (score < 30) disposition = "decline";
-
-          const passed = 
-            disposition === tc.expectedDisposition &&
-            (tc.expectedMinScore === undefined || score >= tc.expectedMinScore);
-
-          results.push({
-            testId: tc.id,
-            name: tc.name,
-            passed,
-            actualDisposition: disposition,
-            actualScore: score,
-          });
-        } catch (err) {
-          results.push({
-            testId: tc.id,
-            name: tc.name,
-            passed: false,
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
+        if (!suite) {
+          return res.status(404).json({ error: 'Suite not found' });
         }
+
+        const testCases = suite.testCases as Array<{
+          id: string;
+          name: string;
+          input: Record<string, unknown>;
+          expectedDisposition: string;
+          expectedMinScore?: number;
+        }>;
+
+        // Run each test case
+        const results: Array<{
+          testId: string;
+          name: string;
+          passed: boolean;
+          actualDisposition?: string;
+          actualScore?: number;
+          error?: string;
+        }> = [];
+
+        for (const tc of testCases) {
+          try {
+            // Simulate qualification scoring based on input
+            const mockLead = tc.input as {
+              contact?: { phone?: string; email?: string };
+              practiceArea?: boolean;
+              intake?: { complete?: boolean; answers?: Record<string, unknown> };
+              calls?: number;
+            };
+
+            let score = 0;
+
+            // Contact info scoring (20 points)
+            if (mockLead.contact?.phone) score += 10;
+            if (mockLead.contact?.email) score += 10;
+
+            // Practice area (15 points)
+            if (mockLead.practiceArea) score += 15;
+
+            // Intake completion (25 points)
+            if (mockLead.intake?.complete) score += 25;
+            else if (mockLead.intake?.answers && Object.keys(mockLead.intake.answers).length > 0)
+              score += 10;
+
+            // Incident details (20 points)
+            if (mockLead.intake?.answers) {
+              const answers = mockLead.intake.answers;
+              if (answers.incidentDate) score += 10;
+              if (answers.incidentLocation) score += 10;
+            }
+
+            // Communication history (20 points)
+            if (mockLead.calls && mockLead.calls > 0) score += Math.min(mockLead.calls * 10, 20);
+
+            let disposition = 'review';
+            if (score >= 70) disposition = 'accept';
+            else if (score < 30) disposition = 'decline';
+
+            const passed =
+              disposition === tc.expectedDisposition &&
+              (tc.expectedMinScore === undefined || score >= tc.expectedMinScore);
+
+            results.push({
+              testId: tc.id,
+              name: tc.name,
+              passed,
+              actualDisposition: disposition,
+              actualScore: score,
+            });
+          } catch (err) {
+            results.push({
+              testId: tc.id,
+              name: tc.name,
+              passed: false,
+              error: err instanceof Error ? err.message : 'Unknown error',
+            });
+          }
+        }
+
+        const passedCount = results.filter((r) => r.passed).length;
+        const failedCount = results.filter((r) => !r.passed).length;
+        const status = failedCount === 0 ? 'passed' : 'failed';
+
+        const run = await prisma.policyTestRun.create({
+          data: {
+            orgId,
+            suiteId: id,
+            status,
+            results,
+            summary: { passedCount, failedCount, totalCount: results.length },
+            endedAt: new Date(),
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            orgId,
+            actorUserId: req.user!.userId,
+            actorType: 'user',
+            action: 'policy_test.run',
+            entityType: 'policy_test_suite',
+            entityId: id,
+            details: { runId: run.id, status, passedCount, failedCount },
+          },
+        });
+
+        res.json(run);
+      } catch (error) {
+        console.error('Run policy test error:', error);
+        res.status(500).json({ error: 'Failed to run tests' });
       }
-
-      const passedCount = results.filter(r => r.passed).length;
-      const failedCount = results.filter(r => !r.passed).length;
-      const status = failedCount === 0 ? "passed" : "failed";
-
-      const run = await prisma.policyTestRun.create({
-        data: {
-          orgId,
-          suiteId: id,
-          status,
-          results,
-          summary: { passedCount, failedCount, totalCount: results.length },
-          endedAt: new Date(),
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          orgId,
-          actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "policy_test.run",
-          entityType: "policy_test_suite",
-          entityId: id,
-          details: { runId: run.id, status, passedCount, failedCount },
-        },
-      });
-
-      res.json(run);
-    } catch (error) {
-      console.error("Run policy test error:", error);
-      res.status(500).json({ error: "Failed to run tests" });
     }
-  });
+  );
 
   // GET /v1/policy-tests/runs - Get run history
-  app.get("/v1/policy-tests/runs", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/policy-tests/runs', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const suiteId = req.query.suite_id as string | undefined;
@@ -6737,7 +7072,7 @@ export async function registerRoutes(
 
       const runs = await prisma.policyTestRun.findMany({
         where,
-        orderBy: { startedAt: "desc" },
+        orderBy: { startedAt: 'desc' },
         take: 50,
         include: {
           suite: { select: { name: true } },
@@ -6746,8 +7081,8 @@ export async function registerRoutes(
 
       res.json(runs);
     } catch (error) {
-      console.error("Get policy runs error:", error);
-      res.status(500).json({ error: "Failed to get runs" });
+      console.error('Get policy runs error:', error);
+      res.status(500).json({ error: 'Failed to get runs' });
     }
   });
 
@@ -6756,28 +7091,28 @@ export async function registerRoutes(
   // ============================================
 
   // GET /v1/followup-sequences - List sequences
-  app.get("/v1/followup-sequences", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/followup-sequences', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const sequences = await prisma.followupSequence.findMany({
         where: { orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       });
       res.json(sequences);
     } catch (error) {
-      console.error("List followup sequences error:", error);
-      res.status(500).json({ error: "Failed to list sequences" });
+      console.error('List followup sequences error:', error);
+      res.status(500).json({ error: 'Failed to list sequences' });
     }
   });
 
   // POST /v1/followup-sequences - Create sequence
-  app.post("/v1/followup-sequences", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/followup-sequences', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { name, description, trigger, steps, stopRules } = req.body;
 
       if (!name || !trigger || !steps || !Array.isArray(steps)) {
-        return res.status(400).json({ error: "name, trigger, and steps array required" });
+        return res.status(400).json({ error: 'name, trigger, and steps array required' });
       }
 
       const sequence = await prisma.followupSequence.create({
@@ -6787,21 +7122,21 @@ export async function registerRoutes(
       await createAuditLog(
         orgId,
         req.user!.userId,
-        "followup_sequence.create",
-        "followup_sequence",
+        'followup_sequence.create',
+        'followup_sequence',
         sequence.id,
         { name, trigger, stepsCount: steps.length }
       );
 
       res.status(201).json(sequence);
     } catch (error) {
-      console.error("Create followup sequence error:", error);
-      res.status(500).json({ error: "Failed to create sequence" });
+      console.error('Create followup sequence error:', error);
+      res.status(500).json({ error: 'Failed to create sequence' });
     }
   });
 
   // GET /v1/followup-sequences/:id - Get sequence
-  app.get("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/followup-sequences/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const { id } = req.params;
@@ -6811,163 +7146,179 @@ export async function registerRoutes(
       });
 
       if (!sequence) {
-        return res.status(404).json({ error: "Sequence not found" });
+        return res.status(404).json({ error: 'Sequence not found' });
       }
 
       res.json(sequence);
     } catch (error) {
-      console.error("Get followup sequence error:", error);
-      res.status(500).json({ error: "Failed to get sequence" });
+      console.error('Get followup sequence error:', error);
+      res.status(500).json({ error: 'Failed to get sequence' });
     }
   });
 
   // PATCH /v1/followup-sequences/:id - Update sequence
-  app.patch("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
-      const { name, description, trigger, steps, stopRules, active } = req.body;
+  app.patch(
+    '/v1/followup-sequences/:id',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
+        const { name, description, trigger, steps, stopRules, active } = req.body;
 
-      const existing = await prisma.followupSequence.findFirst({
-        where: { id, orgId },
-      });
+        const existing = await prisma.followupSequence.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!existing) {
-        return res.status(404).json({ error: "Sequence not found" });
+        if (!existing) {
+          return res.status(404).json({ error: 'Sequence not found' });
+        }
+
+        const updateData: Record<string, unknown> = {};
+        if (name !== undefined) updateData.name = name;
+        if (description !== undefined) updateData.description = description;
+        if (trigger !== undefined) updateData.trigger = trigger;
+        if (steps !== undefined) updateData.steps = steps;
+        if (stopRules !== undefined) updateData.stopRules = stopRules;
+        if (active !== undefined) updateData.active = active;
+
+        const sequence = await prisma.followupSequence.update({
+          where: { id },
+          data: updateData,
+        });
+
+        res.json(sequence);
+      } catch (error) {
+        console.error('Update followup sequence error:', error);
+        res.status(500).json({ error: 'Failed to update sequence' });
       }
-
-      const updateData: Record<string, unknown> = {};
-      if (name !== undefined) updateData.name = name;
-      if (description !== undefined) updateData.description = description;
-      if (trigger !== undefined) updateData.trigger = trigger;
-      if (steps !== undefined) updateData.steps = steps;
-      if (stopRules !== undefined) updateData.stopRules = stopRules;
-      if (active !== undefined) updateData.active = active;
-
-      const sequence = await prisma.followupSequence.update({
-        where: { id },
-        data: updateData,
-      });
-
-      res.json(sequence);
-    } catch (error) {
-      console.error("Update followup sequence error:", error);
-      res.status(500).json({ error: "Failed to update sequence" });
     }
-  });
+  );
 
   // DELETE /v1/followup-sequences/:id - Delete sequence
-  app.delete("/v1/followup-sequences/:id", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const { id } = req.params;
+  app.delete(
+    '/v1/followup-sequences/:id',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const { id } = req.params;
 
-      const existing = await prisma.followupSequence.findFirst({
-        where: { id, orgId },
-      });
+        const existing = await prisma.followupSequence.findFirst({
+          where: { id, orgId },
+        });
 
-      if (!existing) {
-        return res.status(404).json({ error: "Sequence not found" });
+        if (!existing) {
+          return res.status(404).json({ error: 'Sequence not found' });
+        }
+
+        await prisma.followupSequence.delete({ where: { id } });
+        res.status(204).send();
+      } catch (error) {
+        console.error('Delete followup sequence error:', error);
+        res.status(500).json({ error: 'Failed to delete sequence' });
       }
-
-      await prisma.followupSequence.delete({ where: { id } });
-      res.status(204).send();
-    } catch (error) {
-      console.error("Delete followup sequence error:", error);
-      res.status(500).json({ error: "Failed to delete sequence" });
     }
-  });
+  );
 
   // POST /v1/leads/:id/followups/trigger - Trigger followup sequence for lead
-  app.post("/v1/leads/:id/followups/trigger", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const orgId = req.user!.orgId;
-      const leadId = req.params.id;
-      const { sequenceId } = req.body;
+  app.post(
+    '/v1/leads/:id/followups/trigger',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const orgId = req.user!.orgId;
+        const leadId = req.params.id;
+        const { sequenceId } = req.body;
 
-      const lead = await prisma.lead.findFirst({
-        where: { id: leadId, orgId },
-        include: { contact: true },
-      });
-
-      if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
-      }
-
-      // Check stop conditions
-      if (lead.status === "disqualified" || lead.status === "closed") {
-        return res.status(400).json({ error: "Lead is disqualified or closed" });
-      }
-
-      let sequence;
-      if (sequenceId) {
-        sequence = await prisma.followupSequence.findFirst({
-          where: { id: sequenceId, orgId, active: true },
+        const lead = await prisma.lead.findFirst({
+          where: { id: leadId, orgId },
+          include: { contact: true },
         });
-      } else {
-        // Find first active sequence matching lead_created trigger
-        sequence = await prisma.followupSequence.findFirst({
-          where: { orgId, active: true, trigger: "lead_created" },
-        });
-      }
 
-      if (!sequence) {
-        return res.status(404).json({ error: "No active sequence found" });
-      }
+        if (!lead) {
+          return res.status(404).json({ error: 'Lead not found' });
+        }
 
-      const steps = sequence.steps as Array<{ delayMinutes: number; channel: string; templateBody: string }>;
-      const createdJobs = [];
+        // Check stop conditions
+        if (lead.status === 'disqualified' || lead.status === 'closed') {
+          return res.status(400).json({ error: 'Lead is disqualified or closed' });
+        }
 
-      for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
-        const scheduledAt = new Date(Date.now() + step.delayMinutes * 60 * 1000);
+        let sequence;
+        if (sequenceId) {
+          sequence = await prisma.followupSequence.findFirst({
+            where: { id: sequenceId, orgId, active: true },
+          });
+        } else {
+          // Find first active sequence matching lead_created trigger
+          sequence = await prisma.followupSequence.findFirst({
+            where: { orgId, active: true, trigger: 'lead_created' },
+          });
+        }
 
-        const job = await prisma.followupJob.create({
+        if (!sequence) {
+          return res.status(404).json({ error: 'No active sequence found' });
+        }
+
+        const steps = sequence.steps as Array<{
+          delayMinutes: number;
+          channel: string;
+          templateBody: string;
+        }>;
+        const createdJobs = [];
+
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          const scheduledAt = new Date(Date.now() + step.delayMinutes * 60 * 1000);
+
+          const job = await prisma.followupJob.create({
+            data: {
+              orgId,
+              sequenceId: sequence.id,
+              leadId,
+              stepIndex: i,
+              scheduledAt,
+              status: 'pending',
+            },
+          });
+
+          createdJobs.push(job);
+
+          // In dev mode, execute the first job immediately if delay is 0
+          if (step.delayMinutes === 0 || i === 0) {
+            // Schedule execution
+            setImmediate(() => executeFollowupJob(job.id));
+          } else {
+            // Schedule for later (in-memory for V1)
+            setTimeout(() => executeFollowupJob(job.id), step.delayMinutes * 60 * 1000);
+          }
+        }
+
+        await prisma.auditLog.create({
           data: {
             orgId,
-            sequenceId: sequence.id,
-            leadId,
-            stepIndex: i,
-            scheduledAt,
-            status: "pending",
+            actorUserId: req.user!.userId,
+            actorType: 'user',
+            action: 'followup.trigger',
+            entityType: 'lead',
+            entityId: leadId,
+            details: { sequenceId: sequence.id, jobsCreated: createdJobs.length },
           },
         });
 
-        createdJobs.push(job);
-
-        // In dev mode, execute the first job immediately if delay is 0
-        if (step.delayMinutes === 0 || i === 0) {
-          // Schedule execution
-          setImmediate(() => executeFollowupJob(job.id));
-        } else {
-          // Schedule for later (in-memory for V1)
-          setTimeout(() => executeFollowupJob(job.id), step.delayMinutes * 60 * 1000);
-        }
+        res.json({
+          sequenceId: sequence.id,
+          sequenceName: sequence.name,
+          jobsScheduled: createdJobs.length,
+          jobs: createdJobs,
+        });
+      } catch (error) {
+        console.error('Trigger followup error:', error);
+        res.status(500).json({ error: 'Failed to trigger followup' });
       }
-
-      await prisma.auditLog.create({
-        data: {
-          orgId,
-          actorUserId: req.user!.userId,
-          actorType: "user",
-          action: "followup.trigger",
-          entityType: "lead",
-          entityId: leadId,
-          details: { sequenceId: sequence.id, jobsCreated: createdJobs.length },
-        },
-      });
-
-      res.json({
-        sequenceId: sequence.id,
-        sequenceName: sequence.name,
-        jobsScheduled: createdJobs.length,
-        jobs: createdJobs,
-      });
-    } catch (error) {
-      console.error("Trigger followup error:", error);
-      res.status(500).json({ error: "Failed to trigger followup" });
     }
-  });
+  );
 
   // Execute a followup job
   async function executeFollowupJob(jobId: string) {
@@ -6977,7 +7328,7 @@ export async function registerRoutes(
         include: { sequence: true },
       });
 
-      if (!job || job.status !== "pending") {
+      if (!job || job.status !== 'pending') {
         console.log(`[FOLLOWUP] Skipping job ${jobId} - not found or not pending`);
         return;
       }
@@ -6985,72 +7336,82 @@ export async function registerRoutes(
       // Check stop rules
       const lead = await prisma.lead.findUnique({
         where: { id: job.leadId },
-        include: { contact: true, messages: { orderBy: { createdAt: "desc" }, take: 1 } },
+        include: { contact: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
       });
 
       if (!lead) {
         await prisma.followupJob.update({
           where: { id: jobId },
-          data: { status: "cancelled", cancelReason: "Lead not found" },
+          data: { status: 'cancelled', cancelReason: 'Lead not found' },
         });
         return;
       }
 
       // Stop if lead is disqualified or closed
-      if (lead.status === "disqualified" || lead.status === "closed") {
+      if (lead.status === 'disqualified' || lead.status === 'closed') {
         await prisma.followupJob.update({
           where: { id: jobId },
-          data: { status: "cancelled", cancelReason: `Lead status: ${lead.status}` },
+          data: { status: 'cancelled', cancelReason: `Lead status: ${lead.status}` },
         });
 
         // Cancel remaining jobs for this lead in this sequence
         await prisma.followupJob.updateMany({
-          where: { 
-            sequenceId: job.sequenceId, 
-            leadId: job.leadId, 
-            status: "pending",
+          where: {
+            sequenceId: job.sequenceId,
+            leadId: job.leadId,
+            status: 'pending',
             stepIndex: { gt: job.stepIndex },
           },
-          data: { status: "cancelled", cancelReason: `Lead status: ${lead.status}` },
+          data: { status: 'cancelled', cancelReason: `Lead status: ${lead.status}` },
         });
         return;
       }
 
       // Stop if lead has responded (has inbound message after sequence started)
       const latestMessage = lead.messages[0];
-      if (latestMessage && latestMessage.direction === "inbound" && latestMessage.createdAt > job.createdAt) {
+      if (
+        latestMessage &&
+        latestMessage.direction === 'inbound' &&
+        latestMessage.createdAt > job.createdAt
+      ) {
         await prisma.followupJob.update({
           where: { id: jobId },
-          data: { status: "cancelled", cancelReason: "Lead responded" },
+          data: { status: 'cancelled', cancelReason: 'Lead responded' },
         });
 
         // Cancel remaining jobs
         await prisma.followupJob.updateMany({
-          where: { 
-            sequenceId: job.sequenceId, 
-            leadId: job.leadId, 
-            status: "pending",
+          where: {
+            sequenceId: job.sequenceId,
+            leadId: job.leadId,
+            status: 'pending',
             stepIndex: { gt: job.stepIndex },
           },
-          data: { status: "cancelled", cancelReason: "Lead responded" },
+          data: { status: 'cancelled', cancelReason: 'Lead responded' },
         });
         return;
       }
 
       // Get the step to execute
-      const steps = job.sequence.steps as Array<{ delayMinutes: number; channel: string; templateBody: string }>;
+      const steps = job.sequence.steps as Array<{
+        delayMinutes: number;
+        channel: string;
+        templateBody: string;
+      }>;
       const step = steps[job.stepIndex];
 
       if (!step) {
         await prisma.followupJob.update({
           where: { id: jobId },
-          data: { status: "failed", cancelReason: "Step not found" },
+          data: { status: 'failed', cancelReason: 'Step not found' },
         });
         return;
       }
 
       // Send the message (stub - in production would use Twilio or other provider)
-      console.log(`[FOLLOWUP] Sending ${step.channel} to lead ${job.leadId}: ${step.templateBody.slice(0, 50)}...`);
+      console.log(
+        `[FOLLOWUP] Sending ${step.channel} to lead ${job.leadId}: ${step.templateBody.slice(0, 50)}...`
+      );
 
       // Create an interaction and message for the followup
       const interaction = await prisma.interaction.create({
@@ -7058,7 +7419,7 @@ export async function registerRoutes(
           orgId: job.orgId,
           leadId: job.leadId,
           channel: step.channel,
-          status: "completed",
+          status: 'completed',
           endedAt: new Date(),
         },
       });
@@ -7068,18 +7429,18 @@ export async function registerRoutes(
           orgId: job.orgId,
           leadId: job.leadId,
           interactionId: interaction.id,
-          direction: "outbound",
+          direction: 'outbound',
           channel: step.channel,
-          provider: "followup_sequence",
-          from: "system",
-          to: lead.contact.primaryPhone || lead.contact.primaryEmail || "unknown",
+          provider: 'followup_sequence',
+          from: 'system',
+          to: lead.contact.primaryPhone || lead.contact.primaryEmail || 'unknown',
           body: step.templateBody,
         },
       });
 
       await prisma.followupJob.update({
         where: { id: jobId },
-        data: { status: "sent", sentAt: new Date() },
+        data: { status: 'sent', sentAt: new Date() },
       });
 
       console.log(`[FOLLOWUP] Job ${jobId} completed - message sent`);
@@ -7087,20 +7448,23 @@ export async function registerRoutes(
       console.error(`[FOLLOWUP] Error executing job ${jobId}:`, error);
       await prisma.followupJob.update({
         where: { id: jobId },
-        data: { status: "failed", cancelReason: error instanceof Error ? error.message : "Unknown error" },
+        data: {
+          status: 'failed',
+          cancelReason: error instanceof Error ? error.message : 'Unknown error',
+        },
       });
     }
   }
 
   // GET /v1/leads/:id/followups - Get followup jobs for a lead
-  app.get("/v1/leads/:id/followups", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads/:id/followups', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const leadId = req.params.id;
 
       const jobs = await prisma.followupJob.findMany({
         where: { orgId, leadId },
-        orderBy: { scheduledAt: "asc" },
+        orderBy: { scheduledAt: 'asc' },
         include: {
           sequence: { select: { name: true } },
         },
@@ -7108,8 +7472,8 @@ export async function registerRoutes(
 
       res.json(jobs);
     } catch (error) {
-      console.error("Get lead followups error:", error);
-      res.status(500).json({ error: "Failed to get followups" });
+      console.error('Get lead followups error:', error);
+      res.status(500).json({ error: 'Failed to get followups' });
     }
   });
 
@@ -7144,7 +7508,7 @@ export async function registerRoutes(
    *       200:
    *         description: Unified thread items
    */
-  app.get("/v1/leads/:id/thread", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/leads/:id/thread', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
       const leadId = req.params.id;
@@ -7156,32 +7520,40 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // Fetch calls
       const calls = await prisma.call.findMany({
         where: { leadId, orgId },
-        orderBy: { startedAt: "desc" },
+        orderBy: { startedAt: 'desc' },
         take: limit,
       });
 
       // Fetch messages
       const messages = await prisma.message.findMany({
         where: { leadId, orgId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         take: limit,
       });
 
       // Fetch audit logs for system events
       const auditLogs = await prisma.auditLog.findMany({
-        where: { 
+        where: {
           orgId,
           entityId: leadId,
-          entityType: "lead",
-          action: { in: ["intake_link_sent", "qualification_run", "status_changed", "lead_created", "appointment_booked"] }
+          entityType: 'lead',
+          action: {
+            in: [
+              'intake_link_sent',
+              'qualification_run',
+              'status_changed',
+              'lead_created',
+              'appointment_booked',
+            ],
+          },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         take: limit,
       });
 
@@ -7199,9 +7571,9 @@ export async function registerRoutes(
         const isMissed = !call.durationSeconds || call.durationSeconds === 0;
         threadItems.push({
           id: call.id,
-          type: isMissed ? "call.missed" : "call.completed",
+          type: isMissed ? 'call.missed' : 'call.completed',
           timestamp: call.startedAt.toISOString(),
-          summary: isMissed 
+          summary: isMissed
             ? `Missed ${call.direction} call from ${call.fromE164}`
             : `${call.direction} call - ${call.durationSeconds}s`,
           payload: {
@@ -7219,9 +7591,9 @@ export async function registerRoutes(
       for (const msg of messages) {
         threadItems.push({
           id: msg.id,
-          type: msg.direction === "inbound" ? "sms.received" : "sms.sent",
+          type: msg.direction === 'inbound' ? 'sms.received' : 'sms.sent',
           timestamp: msg.createdAt.toISOString(),
-          summary: msg.body.slice(0, 100) + (msg.body.length > 100 ? "..." : ""),
+          summary: msg.body.slice(0, 100) + (msg.body.length > 100 ? '...' : ''),
           payload: {
             direction: msg.direction,
             from: msg.from,
@@ -7234,12 +7606,12 @@ export async function registerRoutes(
 
       // Add system events
       for (const log of auditLogs) {
-        let summary = log.action.replace(/_/g, " ");
-        if (log.action === "intake_link_sent") summary = "Intake link sent";
-        if (log.action === "qualification_run") summary = "Qualification completed";
-        if (log.action === "status_changed") summary = "Status updated";
-        if (log.action === "lead_created") summary = "Lead created";
-        if (log.action === "appointment_booked") summary = "Appointment booked";
+        let summary = log.action.replace(/_/g, ' ');
+        if (log.action === 'intake_link_sent') summary = 'Intake link sent';
+        if (log.action === 'qualification_run') summary = 'Qualification completed';
+        if (log.action === 'status_changed') summary = 'Status updated';
+        if (log.action === 'lead_created') summary = 'Lead created';
+        if (log.action === 'appointment_booked') summary = 'Appointment booked';
 
         threadItems.push({
           id: log.id,
@@ -7258,11 +7630,12 @@ export async function registerRoutes(
 
       res.json({
         items: paginatedItems,
-        nextCursor: paginatedItems.length === limit ? paginatedItems[paginatedItems.length - 1]?.id : null,
+        nextCursor:
+          paginatedItems.length === limit ? paginatedItems[paginatedItems.length - 1]?.id : null,
       });
     } catch (error) {
-      console.error("Get lead thread error:", error);
-      res.status(500).json({ error: "Failed to get thread" });
+      console.error('Get lead thread error:', error);
+      res.status(500).json({ error: 'Failed to get thread' });
     }
   });
 
@@ -7295,16 +7668,18 @@ export async function registerRoutes(
    *       200:
    *         description: Device registered
    */
-  app.post("/v1/devices/register", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/devices/register', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { platform, token, deviceId, preferences } = req.body;
 
       if (!platform || !token || !deviceId) {
-        return res.status(400).json({ error: "Missing required fields: platform, token, deviceId" });
+        return res
+          .status(400)
+          .json({ error: 'Missing required fields: platform, token, deviceId' });
       }
 
-      if (!["ios", "android"].includes(platform)) {
+      if (!['ios', 'android'].includes(platform)) {
         return res.status(400).json({ error: "Platform must be 'ios' or 'android'" });
       }
 
@@ -7316,7 +7691,12 @@ export async function registerRoutes(
           token,
           platform,
           active: true,
-          preferences: preferences || { hotLeads: true, inboundSms: true, slaBreaches: true, privacyMode: false },
+          preferences: preferences || {
+            hotLeads: true,
+            inboundSms: true,
+            slaBreaches: true,
+            privacyMode: false,
+          },
           updatedAt: new Date(),
         },
         create: {
@@ -7325,14 +7705,19 @@ export async function registerRoutes(
           platform,
           token,
           deviceId,
-          preferences: preferences || { hotLeads: true, inboundSms: true, slaBreaches: true, privacyMode: false },
+          preferences: preferences || {
+            hotLeads: true,
+            inboundSms: true,
+            slaBreaches: true,
+            privacyMode: false,
+          },
         },
       });
 
       res.json({ success: true, deviceTokenId: deviceToken.id });
     } catch (error) {
-      console.error("Device register error:", error);
-      res.status(500).json({ error: "Failed to register device" });
+      console.error('Device register error:', error);
+      res.status(500).json({ error: 'Failed to register device' });
     }
   });
 
@@ -7358,13 +7743,13 @@ export async function registerRoutes(
    *       200:
    *         description: Device unregistered
    */
-  app.post("/v1/devices/unregister", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/devices/unregister', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { deviceId } = req.body;
 
       if (!deviceId) {
-        return res.status(400).json({ error: "Missing deviceId" });
+        return res.status(400).json({ error: 'Missing deviceId' });
       }
 
       await prisma.deviceToken.updateMany({
@@ -7374,8 +7759,8 @@ export async function registerRoutes(
 
       res.json({ success: true });
     } catch (error) {
-      console.error("Device unregister error:", error);
-      res.status(500).json({ error: "Failed to unregister device" });
+      console.error('Device unregister error:', error);
+      res.status(500).json({ error: 'Failed to unregister device' });
     }
   });
 
@@ -7411,14 +7796,14 @@ export async function registerRoutes(
    *       409:
    *         description: Lead is on DNC list
    */
-  app.post("/v1/leads/:id/messages", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/messages', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
       const { body } = req.body;
 
-      if (!body || typeof body !== "string" || body.trim().length === 0) {
-        return res.status(400).json({ error: "Message body is required" });
+      if (!body || typeof body !== 'string' || body.trim().length === 0) {
+        return res.status(400).json({ error: 'Message body is required' });
       }
 
       const lead = await prisma.lead.findFirst({
@@ -7427,20 +7812,20 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // DNC enforcement
       if (lead.dnc) {
-        return res.status(409).json({ 
-          error: "Cannot send message - lead is on Do Not Contact list",
+        return res.status(409).json({
+          error: 'Cannot send message - lead is on Do Not Contact list',
           dncReason: lead.dncReason,
           dncAt: lead.dncAt,
         });
       }
 
       if (!lead.contact.primaryPhone) {
-        return res.status(400).json({ error: "Lead has no phone number" });
+        return res.status(400).json({ error: 'Lead has no phone number' });
       }
 
       // Get org's primary phone number for sending
@@ -7449,15 +7834,15 @@ export async function registerRoutes(
         include: { phoneNumbers: { where: { inboundEnabled: true }, take: 1 } },
       });
 
-      const fromNumber = org?.phoneNumbers[0]?.e164 || "+18443214257";
+      const fromNumber = org?.phoneNumbers[0]?.e164 || '+18443214257';
 
       // Create interaction
       const interaction = await prisma.interaction.create({
         data: {
           orgId: user.orgId,
           leadId,
-          channel: "sms",
-          status: "completed",
+          channel: 'sms',
+          status: 'completed',
           endedAt: new Date(),
         },
       });
@@ -7468,9 +7853,9 @@ export async function registerRoutes(
           orgId: user.orgId,
           leadId,
           interactionId: interaction.id,
-          direction: "outbound",
-          channel: "sms",
-          provider: "manual",
+          direction: 'outbound',
+          channel: 'sms',
+          provider: 'manual',
           from: fromNumber,
           to: lead.contact.primaryPhone,
           body: body.trim(),
@@ -7483,7 +7868,7 @@ export async function registerRoutes(
         data: {
           lastActivityAt: new Date(),
           lastHumanResponseAt: new Date(),
-          status: lead.status === "new" ? "engaged" : lead.status,
+          status: lead.status === 'new' ? 'engaged' : lead.status,
         },
       });
 
@@ -7492,22 +7877,22 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "outbound_sms_sent",
-          entityType: "message",
+          actorType: 'user',
+          action: 'outbound_sms_sent',
+          entityType: 'message',
           entityId: message.id,
           details: { to: lead.contact.primaryPhone, bodyPreview: body.slice(0, 100) },
         },
       });
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         messageId: message.id,
-        status: "sent",
+        status: 'sent',
       });
     } catch (error) {
-      console.error("Send SMS error:", error);
-      res.status(500).json({ error: "Failed to send message" });
+      console.error('Send SMS error:', error);
+      res.status(500).json({ error: 'Failed to send message' });
     }
   });
 
@@ -7523,13 +7908,13 @@ export async function registerRoutes(
    *       200:
    *         description: Telephony status
    */
-  app.get("/v1/telephony/status", authMiddleware, async (_req: AuthenticatedRequest, res) => {
+  app.get('/v1/telephony/status', authMiddleware, async (_req: AuthenticatedRequest, res) => {
     try {
       const status = getTelephonyStatus();
       res.json(status);
     } catch (error) {
-      console.error("Get telephony status error:", error);
-      res.status(500).json({ error: "Failed to get telephony status" });
+      console.error('Get telephony status error:', error);
+      res.status(500).json({ error: 'Failed to get telephony status' });
     }
   });
 
@@ -7551,7 +7936,7 @@ export async function registerRoutes(
    *       200:
    *         description: Call status
    */
-  app.get("/v1/calls/:callId", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/calls/:callId', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const callId = req.params.callId;
@@ -7562,7 +7947,7 @@ export async function registerRoutes(
       });
 
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ error: 'Call not found' });
       }
 
       const status = mapDbStatusToCanonical(call.interaction?.status || null);
@@ -7575,8 +7960,8 @@ export async function registerRoutes(
         duration,
       });
     } catch (error) {
-      console.error("Get call status error:", error);
-      res.status(500).json({ error: "Failed to get call status" });
+      console.error('Get call status error:', error);
+      res.status(500).json({ error: 'Failed to get call status' });
     }
   });
 
@@ -7607,17 +7992,23 @@ export async function registerRoutes(
    *       200:
    *         description: Outcome logged
    */
-  app.post("/v1/calls/outcome", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/calls/outcome', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const { callId, leadId, outcome, notes } = req.body;
 
       if (!outcome) {
-        return res.status(400).json({ error: "Outcome is required" });
+        return res.status(400).json({ error: 'Outcome is required' });
       }
 
       const normalizedOutcome = normalizeOutcome(outcome);
-      let resolvedCall: { id: string; provider: string; startedAt: Date; endedAt: Date | null; interaction: { id: string; status: string } | null } | null = null;
+      let resolvedCall: {
+        id: string;
+        provider: string;
+        startedAt: Date;
+        endedAt: Date | null;
+        interaction: { id: string; status: string } | null;
+      } | null = null;
 
       if (callId) {
         resolvedCall = await prisma.call.findFirst({
@@ -7626,7 +8017,7 @@ export async function registerRoutes(
         });
       } else if (leadId) {
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-        
+
         resolvedCall = await prisma.call.findFirst({
           where: {
             leadId,
@@ -7657,14 +8048,14 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "call_outcome_logged",
-          entityType: resolvedCall ? "call" : (leadId ? "lead" : "system"),
-          entityId: resolvedCall?.id || leadId || "manual_log",
-          details: { 
-            outcome: normalizedOutcome, 
+          actorType: 'user',
+          action: 'call_outcome_logged',
+          entityType: resolvedCall ? 'call' : leadId ? 'lead' : 'system',
+          entityId: resolvedCall?.id || leadId || 'manual_log',
+          details: {
+            outcome: normalizedOutcome,
             notes: notes || null,
-            source: "manual",
+            source: 'manual',
             provider: resolvedCall?.provider || null,
             callId: resolvedCall?.id || null,
             leadId: leadId || null,
@@ -7715,13 +8106,15 @@ export async function registerRoutes(
       }
 
       if (leadId) {
-        await prisma.lead.update({
-          where: { id: leadId, orgId: user.orgId },
-          data: { 
-            lastActivityAt: new Date(),
-            lastHumanResponseAt: new Date(),
-          },
-        }).catch(() => {});
+        await prisma.lead
+          .update({
+            where: { id: leadId, orgId: user.orgId },
+            data: {
+              lastActivityAt: new Date(),
+              lastHumanResponseAt: new Date(),
+            },
+          })
+          .catch(() => {});
       }
 
       if (outcomeRequiresFollowup(normalizedOutcome)) {
@@ -7729,14 +8122,14 @@ export async function registerRoutes(
           data: {
             orgId: user.orgId,
             actorUserId: user.userId,
-            actorType: "system",
-            action: "followup_automation_check",
-            entityType: resolvedCall ? "call" : (leadId ? "lead" : "system"),
-            entityId: resolvedCall?.id || leadId || "manual_log",
-            details: { 
+            actorType: 'system',
+            action: 'followup_automation_check',
+            entityType: resolvedCall ? 'call' : leadId ? 'lead' : 'system',
+            entityId: resolvedCall?.id || leadId || 'manual_log',
+            details: {
               outcome: normalizedOutcome,
               followup_enqueued: false,
-              followup_reason: "not_implemented",
+              followup_reason: 'not_implemented',
             },
           },
         });
@@ -7744,8 +8137,8 @@ export async function registerRoutes(
 
       res.json({ ok: true, updatedCallId });
     } catch (error) {
-      console.error("Log call outcome error:", error);
-      res.status(500).json({ error: "Failed to log call outcome" });
+      console.error('Log call outcome error:', error);
+      res.status(500).json({ error: 'Failed to log call outcome' });
     }
   });
 
@@ -7767,12 +8160,12 @@ export async function registerRoutes(
    *       200:
    *         description: Dial instructions with provider and callId
    */
-  app.post("/v1/leads/:id/call/start", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/call/start', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
       const provider = getActiveProvider();
-      const DEFAULT_CALLER_ID = "+18443214257";
+      const DEFAULT_CALLER_ID = '+18443214257';
 
       const lead = await prisma.lead.findFirst({
         where: { id: leadId, orgId: user.orgId },
@@ -7780,11 +8173,11 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       if (!lead.contact.primaryPhone) {
-        return res.status(400).json({ error: "Lead has no phone number" });
+        return res.status(400).json({ error: 'Lead has no phone number' });
       }
 
       const org = await prisma.organization.findUnique({
@@ -7799,9 +8192,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           leadId,
-          channel: "call",
-          status: "queued",
-          metadata: { initiatedBy: user.userId, type: "tap_to_call", provider },
+          channel: 'call',
+          status: 'queued',
+          metadata: { initiatedBy: user.userId, type: 'tap_to_call', provider },
         },
       });
 
@@ -7814,7 +8207,7 @@ export async function registerRoutes(
             leadId,
             interactionId: interaction.id,
             phoneNumberId: phoneNumber.id,
-            direction: "outbound",
+            direction: 'outbound',
             provider,
             fromE164: firmCallerId,
             toE164: lead.contact.primaryPhone,
@@ -7828,9 +8221,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "outbound_call_initiated",
-          entityType: "interaction",
+          actorType: 'user',
+          action: 'outbound_call_initiated',
+          entityType: 'interaction',
           entityId: interaction.id,
           details: { to: lead.contact.primaryPhone, firmCallerId, provider, callId },
         },
@@ -7840,7 +8233,7 @@ export async function registerRoutes(
         where: { id: leadId },
         data: {
           lastActivityAt: new Date(),
-          status: lead.status === "new" ? "engaged" : lead.status,
+          status: lead.status === 'new' ? 'engaged' : lead.status,
         },
       });
 
@@ -7852,8 +8245,8 @@ export async function registerRoutes(
         interactionId: interaction.id,
       });
     } catch (error) {
-      console.error("Start call error:", error);
-      res.status(500).json({ error: "Failed to start call" });
+      console.error('Start call error:', error);
+      res.status(500).json({ error: 'Failed to start call' });
     }
   });
 
@@ -7875,7 +8268,7 @@ export async function registerRoutes(
    *       200:
    *         description: Intake link generated
    */
-  app.post("/v1/leads/:id/intake/link", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/intake/link', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
@@ -7886,11 +8279,11 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // Generate secure token
-      const token = crypto.randomBytes(32).toString("hex");
+      const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
       await prisma.leadPortalToken.create({
@@ -7898,7 +8291,7 @@ export async function registerRoutes(
           orgId: user.orgId,
           leadId,
           token,
-          purpose: "intake",
+          purpose: 'intake',
           expiresAt,
         },
       });
@@ -7908,9 +8301,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "intake_link_sent",
-          entityType: "lead",
+          actorType: 'user',
+          action: 'intake_link_sent',
+          entityType: 'lead',
           entityId: leadId,
           details: { expiresAt: expiresAt.toISOString() },
         },
@@ -7921,11 +8314,11 @@ export async function registerRoutes(
         where: { id: leadId },
         data: {
           lastActivityAt: new Date(),
-          nextStep: "Complete intake form",
+          nextStep: 'Complete intake form',
         },
       });
 
-      const baseUrl = process.env.PUBLIC_BASE_URL || "https://casecurrent.co";
+      const baseUrl = process.env.PUBLIC_BASE_URL || 'https://casecurrent.co';
       const intakeLink = `${baseUrl}/p/${token}/intake`;
 
       res.json({
@@ -7935,8 +8328,8 @@ export async function registerRoutes(
         token,
       });
     } catch (error) {
-      console.error("Generate intake link error:", error);
-      res.status(500).json({ error: "Failed to generate intake link" });
+      console.error('Generate intake link error:', error);
+      res.status(500).json({ error: 'Failed to generate intake link' });
     }
   });
 
@@ -7968,16 +8361,29 @@ export async function registerRoutes(
    *       200:
    *         description: Status updated
    */
-  app.post("/v1/leads/:id/status", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/status', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
       const { status } = req.body;
 
-      const validStatuses = ["new", "engaged", "intake_started", "intake_complete", "qualified", "not_qualified", "consult_set", "retained", "closed", "referred"];
-      
+      const validStatuses = [
+        'new',
+        'engaged',
+        'intake_started',
+        'intake_complete',
+        'qualified',
+        'not_qualified',
+        'consult_set',
+        'retained',
+        'closed',
+        'referred',
+      ];
+
       if (!status || !validStatuses.includes(status)) {
-        return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+        return res
+          .status(400)
+          .json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
       }
 
       const lead = await prisma.lead.findFirst({
@@ -7985,7 +8391,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       const oldStatus = lead.status;
@@ -8002,9 +8408,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "status_changed",
-          entityType: "lead",
+          actorType: 'user',
+          action: 'status_changed',
+          entityType: 'lead',
           entityId: leadId,
           details: { oldStatus, newStatus: status },
         },
@@ -8012,8 +8418,8 @@ export async function registerRoutes(
 
       res.json({ success: true, oldStatus, newStatus: status });
     } catch (error) {
-      console.error("Update status error:", error);
-      res.status(500).json({ error: "Failed to update status" });
+      console.error('Update status error:', error);
+      res.status(500).json({ error: 'Failed to update status' });
     }
   });
 
@@ -8045,7 +8451,7 @@ export async function registerRoutes(
    *       200:
    *         description: Lead assigned
    */
-  app.post("/v1/leads/:id/assign", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.post('/v1/leads/:id/assign', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
       const leadId = req.params.id;
@@ -8056,7 +8462,7 @@ export async function registerRoutes(
       });
 
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({ error: 'Lead not found' });
       }
 
       // If userId provided, verify user exists in org
@@ -8065,7 +8471,7 @@ export async function registerRoutes(
           where: { id: userId, orgId: user.orgId },
         });
         if (!assignee) {
-          return res.status(400).json({ error: "User not found in organization" });
+          return res.status(400).json({ error: 'User not found in organization' });
         }
       }
 
@@ -8081,9 +8487,9 @@ export async function registerRoutes(
         data: {
           orgId: user.orgId,
           actorUserId: user.userId,
-          actorType: "user",
-          action: "lead_assigned",
-          entityType: "lead",
+          actorType: 'user',
+          action: 'lead_assigned',
+          entityType: 'lead',
           entityId: leadId,
           details: { assignedTo: userId },
         },
@@ -8091,8 +8497,8 @@ export async function registerRoutes(
 
       res.json({ success: true, assignedTo: userId });
     } catch (error) {
-      console.error("Assign lead error:", error);
-      res.status(500).json({ error: "Failed to assign lead" });
+      console.error('Assign lead error:', error);
+      res.status(500).json({ error: 'Failed to assign lead' });
     }
   });
 
@@ -8115,10 +8521,10 @@ export async function registerRoutes(
    *       200:
    *         description: Analytics summary
    */
-  app.get("/v1/analytics/summary", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/analytics/summary', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const range = req.query.range === "30d" ? 30 : 7;
+      const range = req.query.range === '30d' ? 30 : 7;
       const startDate = new Date(Date.now() - range * 24 * 60 * 60 * 1000);
 
       // Get leads created in period
@@ -8131,7 +8537,7 @@ export async function registerRoutes(
         where: {
           orgId: user.orgId,
           createdAt: { gte: startDate },
-          disposition: "accept",
+          disposition: 'accept',
         },
       });
 
@@ -8140,7 +8546,7 @@ export async function registerRoutes(
         where: {
           orgId: user.orgId,
           createdAt: { gte: startDate },
-          source: { in: ["call", "missed_call", "voicemail"] },
+          source: { in: ['call', 'missed_call', 'voicemail'] },
         },
       });
 
@@ -8149,7 +8555,7 @@ export async function registerRoutes(
         where: {
           orgId: user.orgId,
           createdAt: { gte: startDate },
-          status: "booked",
+          status: 'booked',
         },
       });
 
@@ -8168,18 +8574,21 @@ export async function registerRoutes(
 
       if (leadsWithResponse.length > 0) {
         const responseTimes = leadsWithResponse
-          .map(l => (l.lastHumanResponseAt!.getTime() - l.createdAt.getTime()) / 60000)
-          .filter(t => t > 0)
+          .map((l) => (l.lastHumanResponseAt!.getTime() - l.createdAt.getTime()) / 60000)
+          .filter((t) => t > 0)
           .sort((a, b) => a - b);
 
         if (responseTimes.length > 0) {
           medianResponseMinutes = responseTimes[Math.floor(responseTimes.length / 2)];
-          p90ResponseMinutes = responseTimes[Math.floor(responseTimes.length * 0.9)] || medianResponseMinutes;
+          p90ResponseMinutes =
+            responseTimes[Math.floor(responseTimes.length * 0.9)] || medianResponseMinutes;
         }
       }
 
-      const qualifiedRate = leadsCreated > 0 ? Math.round((qualifiedLeads / leadsCreated) * 100) : 0;
-      const consultBookedRate = leadsCreated > 0 ? Math.round((consultsBooked / leadsCreated) * 100) : 0;
+      const qualifiedRate =
+        leadsCreated > 0 ? Math.round((qualifiedLeads / leadsCreated) * 100) : 0;
+      const consultBookedRate =
+        leadsCreated > 0 ? Math.round((consultsBooked / leadsCreated) * 100) : 0;
 
       res.json({
         range: `${range}d`,
@@ -8195,8 +8604,8 @@ export async function registerRoutes(
         afterHoursConversionRate: null, // TODO: implement when after-hours tracking is added
       });
     } catch (error) {
-      console.error("Analytics summary error:", error);
-      res.status(500).json({ error: "Failed to get analytics" });
+      console.error('Analytics summary error:', error);
+      res.status(500).json({ error: 'Failed to get analytics' });
     }
   });
 
@@ -8219,45 +8628,49 @@ export async function registerRoutes(
    *       200:
    *         description: Captured leads list
    */
-  app.get("/v1/analytics/captured-leads", authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
-      const range = req.query.range === "30d" ? 30 : 7;
-      const startDate = new Date(Date.now() - range * 24 * 60 * 60 * 1000);
+  app.get(
+    '/v1/analytics/captured-leads',
+    authMiddleware,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const user = req.user!;
+        const range = req.query.range === '30d' ? 30 : 7;
+        const startDate = new Date(Date.now() - range * 24 * 60 * 60 * 1000);
 
-      const leads = await prisma.lead.findMany({
-        where: {
-          orgId: user.orgId,
-          createdAt: { gte: startDate },
-        },
-        include: {
-          contact: { select: { name: true, primaryPhone: true } },
-          practiceArea: { select: { name: true } },
-          qualification: { select: { score: true, disposition: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
+        const leads = await prisma.lead.findMany({
+          where: {
+            orgId: user.orgId,
+            createdAt: { gte: startDate },
+          },
+          include: {
+            contact: { select: { name: true, primaryPhone: true } },
+            practiceArea: { select: { name: true } },
+            qualification: { select: { score: true, disposition: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+        });
 
-      res.json({
-        range: `${range}d`,
-        count: leads.length,
-        leads: leads.map(l => ({
-          id: l.id,
-          name: l.contact.name,
-          phone: l.contact.primaryPhone,
-          source: l.source,
-          status: l.status,
-          practiceArea: l.practiceArea?.name,
-          score: l.qualification?.score || l.score,
-          createdAt: l.createdAt.toISOString(),
-        })),
-      });
-    } catch (error) {
-      console.error("Captured leads error:", error);
-      res.status(500).json({ error: "Failed to get captured leads" });
+        res.json({
+          range: `${range}d`,
+          count: leads.length,
+          leads: leads.map((l) => ({
+            id: l.id,
+            name: l.contact.name,
+            phone: l.contact.primaryPhone,
+            source: l.source,
+            status: l.status,
+            practiceArea: l.practiceArea?.name,
+            score: l.qualification?.score || l.score,
+            createdAt: l.createdAt.toISOString(),
+          })),
+        });
+      } catch (error) {
+        console.error('Captured leads error:', error);
+        res.status(500).json({ error: 'Failed to get captured leads' });
+      }
     }
-  });
+  );
 
   return httpServer;
 }
