@@ -371,53 +371,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  // Token-gated production phone number seeding endpoint
-  // TODO: Remove or disable this endpoint after initial production seeding is verified
-  app.post('/v1/diag/seed-phone-number', async (req, res) => {
-    const diagToken = process.env.DIAG_TOKEN;
-    if (!diagToken) {
-      return res.status(404).json({ error: 'Not found' });
-    }
-    
-    const token = req.query.token as string;
-    if (token !== diagToken) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    try {
-      const orgId = 'e552396a-e129-4a16-aa24-a016f9dcaba3';
-      const e164 = '+18443214257';
-
-      const upserted = await prisma.phoneNumber.upsert({
-        where: { e164 },
-        update: {
-          orgId,
-          label: 'Twilio Main Line',
-          provider: 'twilio',
-          inboundEnabled: true,
-        },
-        create: {
-          orgId,
-          e164,
-          label: 'Twilio Main Line',
-          provider: 'twilio',
-          inboundEnabled: true,
-        },
-      });
-
-      const phoneNumbersCount = await prisma.phoneNumber.count();
-
-      res.json({
-        ok: true,
-        upserted: { id: upserted.id, e164: upserted.e164 },
-        phoneNumbersCount,
-      });
-    } catch (error: any) {
-      console.error('[DIAG] seed-phone-number error:', error);
-      res.status(500).json({ ok: false, error: error.message });
-    }
-  });
-
   /**
    * @openapi
    * /v1/auth/register:

@@ -42,7 +42,7 @@ waitForPort = 5000
 
 [userenv.shared]
 SEED_SECRET = "counseltech-demo-seed-2026"
-DIAG_TOKEN = "counseltech-diag-2026"
+DIAG_TOKEN = "diag_346fd73a23476as345s67"
 PUBLIC_BASE_URL = "https://casecurrent.co"
 
 [userenv.development]
