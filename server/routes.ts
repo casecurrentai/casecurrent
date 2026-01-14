@@ -211,12 +211,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Twilio Media Streams WebSocket handler
   twilioWss.on('connection', (ws, req) => {
+    console.log("[WS CONNECT] req.url =", req.url);
     console.log(`[WebSocket] New Twilio stream connection: ${req.url}`);
     handleTwilioMediaStream(ws, req);
   });
 
   // Register unified upgrade dispatcher on HTTP server
   httpServer.on('upgrade', (request, socket, head) => {
+    console.log("[WS UPGRADE] req.url =", request.url);
     const pathname = request.url?.split('?')[0] || '';
 
     if (pathname === '/v1/realtime') {
