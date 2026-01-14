@@ -3408,6 +3408,125 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   );
 
+  /**
+   * @openapi
+   * /v1/admin/phone-numbers/{id}:
+   *   patch:
+   *     summary: Update a phone number (Platform Admin only)
+   *     tags: [Platform Admin]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               label:
+   *                 type: string
+   *               inboundEnabled:
+   *                 type: boolean
+   *               onCallUserId:
+   *                 type: string
+   *                 nullable: true
+   *     responses:
+   *       200:
+   *         description: Phone number updated
+   */
+  app.patch(
+    '/v1/admin/phone-numbers/:id',
+    authMiddleware,
+    requirePlatformAdmin,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { id } = req.params;
+        const { label, inboundEnabled, onCallUserId } = req.body;
+
+        const existing = await prisma.phoneNumber.findUnique({ where: { id } });
+        if (!existing) {
+          return res.status(404).json({ error: 'Phone number not found' });
+        }
+
+        // Validate onCallUserId if provided
+        if (onCallUserId !== undefined && onCallUserId !== null) {
+          const user = await prisma.user.findFirst({
+            where: { id: onCallUserId, orgId: existing.orgId, status: 'active' },
+          });
+          if (!user) {
+            return res.status(400).json({ error: 'On-call user not found or inactive in this org' });
+          }
+        }
+
+        const updated = await prisma.phoneNumber.update({
+          where: { id },
+          data: {
+            ...(label !== undefined && { label }),
+            ...(inboundEnabled !== undefined && { inboundEnabled }),
+            ...(onCallUserId !== undefined && { onCallUserId: onCallUserId || null }),
+          },
+        });
+
+        await createPlatformAdminAuditLog(
+          req.user!.userId,
+          'phone_number.update',
+          'phone_number',
+          id,
+          JSON.stringify({ label, inboundEnabled, onCallUserId })
+        );
+
+        res.json(updated);
+      } catch (error) {
+        console.error('Admin update phone number error:', error);
+        res.status(500).json({ error: 'Failed to update phone number' });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/phone-numbers:
+   *   get:
+   *     summary: List phone numbers for current org
+   *     tags: [Telephony]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of phone numbers for the org
+   */
+  app.get('/v1/phone-numbers', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const phoneNumbers = await prisma.phoneNumber.findMany({
+        where: { orgId: user.orgId },
+        select: {
+          id: true,
+          e164: true,
+          label: true,
+          provider: true,
+          inboundEnabled: true,
+          afterHoursEnabled: true,
+          onCallUserId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      res.json(phoneNumbers);
+    } catch (error) {
+      console.error('List phone numbers error:', error);
+      res.status(500).json({ error: 'Failed to list phone numbers' });
+    }
+  });
+
   // ============================================
   // INVITE ACCEPTANCE ROUTES (PUBLIC)
   // ============================================
@@ -4601,7 +4720,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       // === ON-CALL ROUTING ===
-      // Fetch org to check for on-call user
+      // Priority: phoneNumber.onCallUserId > organization.onCallUserId > fallback to admins
       const org = await prisma.organization.findUnique({
         where: { id: orgId },
         select: { onCallUserId: true },
@@ -4621,21 +4740,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       };
 
+      // Determine on-call user: phoneNumber override > org default
+      const targetOnCallUserId = phoneNumber.onCallUserId || org?.onCallUserId;
+      let onCallSource = phoneNumber.onCallUserId ? 'phone_number' : (org?.onCallUserId ? 'organization' : 'none');
+
       // Verify on-call user exists and is active
       let activeOnCallUser: { id: string } | null = null;
-      if (org?.onCallUserId) {
+      if (targetOnCallUserId) {
         activeOnCallUser = await prisma.user.findFirst({
-          where: { id: org.onCallUserId, status: 'active' },
+          where: { id: targetOnCallUserId, status: 'active' },
           select: { id: true },
         });
         
         if (!activeOnCallUser) {
-          // On-call user is inactive/deleted - clear the reference
-          console.warn(`[Twilio Voice] [${requestId}] On-call user ${org.onCallUserId} is inactive/deleted. Clearing reference.`);
-          await prisma.organization.update({
-            where: { id: orgId },
-            data: { onCallUserId: null },
-          });
+          // On-call user is inactive/deleted - log warning
+          console.warn(`[Twilio Voice] [${requestId}] On-call user ${targetOnCallUserId} (from ${onCallSource}) is inactive/deleted.`);
+          onCallSource = 'none';
         }
       }
 
@@ -4646,6 +4766,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           requestId,
           targetType: 'oncall_user',
           userId: activeOnCallUser.id,
+          onCallSource,
         }));
         
         // Emit WS event to on-call user only

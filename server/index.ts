@@ -116,21 +116,38 @@ app.use((req, res, next) => {
       console.log(`[DB] Fingerprint - Could not parse DATABASE_URL`);
     }
     
-    // TASK C - Check for phone number on startup
+    // TASK C - Seed demo phone number on startup (idempotent)
     const { PrismaClient } = await import("../apps/api/src/generated/prisma");
     const { PrismaPg } = await import("@prisma/adapter-pg");
     const startupPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: DATABASE_URL }) });
     
-    const phoneCheck = await startupPrisma.phoneNumber.findFirst({
-      where: { e164: "+18443214257" },
-      select: { e164: true, orgId: true, inboundEnabled: true },
+    const DEMO_ORG_ID = 'e552396a-e129-4a16-aa24-a016f9dcaba3';
+    const DEMO_PHONE_E164 = '+18443214257';
+    
+    // Ensure org exists first (idempotent)
+    const demoOrg = await startupPrisma.organization.upsert({
+      where: { id: DEMO_ORG_ID },
+      create: { id: DEMO_ORG_ID, name: 'Demo Law Firm', slug: 'demo-law-firm' },
+      update: {},
     });
     
-    if (phoneCheck) {
-      console.log(`[DB STARTUP] Phone +18443214257 EXISTS: orgId=${phoneCheck.orgId} inboundEnabled=${phoneCheck.inboundEnabled}`);
-    } else {
-      console.log(`[DB STARTUP] Phone +18443214257 NOT FOUND in database`);
-    }
+    // Upsert the demo phone number (idempotent)
+    const phoneRecord = await startupPrisma.phoneNumber.upsert({
+      where: { e164: DEMO_PHONE_E164 },
+      create: {
+        orgId: DEMO_ORG_ID,
+        e164: DEMO_PHONE_E164,
+        label: 'Twilio Main Line',
+        provider: 'twilio',
+        inboundEnabled: true,
+      },
+      update: {
+        orgId: DEMO_ORG_ID,
+        inboundEnabled: true,
+      },
+    });
+    
+    console.log(`[DB STARTUP] Demo phone ${DEMO_PHONE_E164} -> org ${phoneRecord.orgId} (inbound=${phoneRecord.inboundEnabled})`);
     
     const totalPhones = await startupPrisma.phoneNumber.count();
     console.log(`[DB STARTUP] Total phone_numbers in database: ${totalPhones}`);

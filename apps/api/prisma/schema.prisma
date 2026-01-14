@@ -76,6 +76,7 @@ model User {
   ownedLeads     Lead[]         @relation("LeadOwner")
   deviceTokens   DeviceToken[]
   appointments   Appointment[]
+  onCallPhoneNumbers PhoneNumber[] @relation("PhoneNumberOnCall")
 
   @@unique([orgId, email])
   @@map("users")
@@ -242,11 +243,13 @@ model PhoneNumber {
   providerSid      String?  @map("provider_sid")
   inboundEnabled   Boolean  @default(true) @map("inbound_enabled")
   afterHoursEnabled Boolean @default(false) @map("after_hours_enabled")
+  onCallUserId     String?  @map("on_call_user_id")
   routing          Json?
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  onCallUser   User?        @relation("PhoneNumberOnCall", fields: [onCallUserId], references: [id])
   calls        Call[]
 
   @@map("phone_numbers")
