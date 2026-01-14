@@ -385,19 +385,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const orgId = 'e552396a-e129-4a16-aa24-a016f9dcaba3';
+      const targetOrgId = 'e552396a-e129-4a16-aa24-a016f9dcaba3';
       const e164 = '+18443214257';
 
+      // Step 1: Ensure organization exists
+      let org = await prisma.organization.findUnique({
+        where: { id: targetOrgId },
+      });
+
+      if (!org) {
+        // Create the organization
+        org = await prisma.organization.create({
+          data: {
+            id: targetOrgId,
+            name: 'CaseCurrent Demo',
+            slug: 'casecurrent-demo',
+          },
+        });
+        console.log('[DIAG] Created organization:', org.id);
+      }
+
+      // Step 2: Upsert phone number
       const upserted = await prisma.phoneNumber.upsert({
         where: { e164 },
         update: {
-          orgId,
+          orgId: org.id,
           label: 'Twilio Main Line',
           provider: 'twilio',
           inboundEnabled: true,
         },
         create: {
-          orgId,
+          orgId: org.id,
           e164,
           label: 'Twilio Main Line',
           provider: 'twilio',
@@ -406,11 +424,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       const phoneNumbersCount = await prisma.phoneNumber.count();
+      const orgCount = await prisma.organization.count();
 
       res.json({
         ok: true,
+        orgId: org.id,
+        orgCreated: !org.createdAt || org.createdAt.getTime() > Date.now() - 5000,
         upserted: { id: upserted.id, e164: upserted.e164 },
         phoneNumbersCount,
+        orgCount,
       });
     } catch (error: any) {
       console.error('[DIAG] seed-phone-number error:', error);

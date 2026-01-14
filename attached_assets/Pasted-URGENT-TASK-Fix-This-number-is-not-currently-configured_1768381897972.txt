@@ -1,0 +1,49 @@
+URGENT TASK: Fix “This number is not currently configured” end-to-end in PRODUCTION (casecurrent.co). Do not stop until inbound calls work.
+
+What we know (ground truth):
+- POST https://casecurrent.co/v1/telephony/twilio/voice returns TwiML “This number is not currently configured…”
+- /v1/diag/seed-phone-number exists (verified in code lines ~376+), but calling it returns:
+  Foreign key constraint violated: phone_numbers_org_id_fkey
+- That means the orgId we used does NOT exist in production Neon DB, so production DB is missing required seed data (org + phone number).
+- Replit Production injects a Neon DATABASE_URL; interactive shell often points to heliumdb. Anything done in shell may not affect prod. Fix must be proven against the DB that the running server uses.
+
+Your job:
+A) Identify the PRODUCTION database connection actually used by the running server
+- Use existing /v1/telephony/twilio/voice/diag (or add a token-gated diag) to print dbHost/dbName.
+- Confirm it is Neon and NOT heliumdb.
+
+B) Determine required seed entities
+- PhoneNumbers require an existing Organization via orgId FK.
+- Find whether ANY organizations exist in prod.
+- If none exist: create a minimal Organization (and any required related rows) that satisfies schema constraints.
+- If org exists: use that orgId.
+
+C) Implement a safe token-gated seeding flow (must be callable in production)
+- Extend the existing /v1/diag/seed-phone-number endpoint (token-gated by DIAG_TOKEN) to:
+  1) Ensure organization exists (create if missing) and capture orgId
+  2) Upsert phone_numbers row for +18443214257, inboundEnabled true, provider 'twilio', label 'Twilio Main Line'
+  3) Return JSON with orgId used and phoneNumbersCount
+- Keep endpoint locked behind DIAG_TOKEN and do not log secrets.
+
+D) Deploy
+- Build and Republish.
+
+E) Proof (NON-NEGOTIABLE)
+1) curl -s https://casecurrent.co/v1/telephony/twilio/voice/diag
+   Must show phoneNumbersCount >= 1 and the last4 includes 4257 (or explicitly show the phone row).
+2) Call the webhook simulation and show it no longer returns “not configured”:
+   curl -i -X POST "https://casecurrent.co/v1/telephony/twilio/voice" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     --data "To=%2B18443214257&From=%2B15005550006&CallSid=CA44444444444444444444444444444444"
+   Must return the “normal” TwiML path (connect/stream/etc.), not the not-configured response.
+3) Confirm a real phone call to +18443214257 routes correctly (or at minimum show server logs for an inbound call where MATCH FOUND occurs).
+
+Constraints:
+- Do not require the user to manually run SQL in Neon console.
+- If you must run SQL, run it via the environment/connection the production server uses (not heliumdb).
+- If migrations are missing in prod Neon, run the correct migration/apply step.
+- If seeding requires more tables (users, settings, etc.), create minimal viable rows consistent with schema.
+- Do not leak secrets (DIAG_TOKEN, DATABASE_URL, tokens).
+
+Stop condition:
+Inbound Twilio webhook no longer says “This number is not currently configured”, and production phone_numbers lookup succeeds.
