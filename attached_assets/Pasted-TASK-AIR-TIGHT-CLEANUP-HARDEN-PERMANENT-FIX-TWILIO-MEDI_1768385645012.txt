@@ -1,0 +1,141 @@
+TASK: AIR-TIGHT CLEANUP + HARDEN + PERMANENT FIX (TWILIO MEDIA STREAM AUTH + RELIABILITY)
+
+Context (current state)
+- We fixed the “one ring → busy/disconnect” by getting Twilio Media Streams to connect and audio to flow.
+- Twilio error was 31921 (WebSocket close error) because our server was closing the WS with code 1008 (“Missing authentication”) when it couldn’t see the token.
+- Root issue: relying on URL query params for auth is brittle (querystring was missing/stripped). We temporarily bypassed security to get audio working (“demo mode”).
+- Now we must move to a production-secure solution: authenticate via TwiML <Parameter> → validated in WS “start.customParameters”.
+
+GOAL
+Production-grade pipeline: Voice webhook returns TwiML → Twilio connects WS → server authenticates via start.customParameters → media flows. No querystring tokens. No secret logging. Tests + diagnostics. Remove temporary debug logs and bypasses.
+
+NON-NEGOTIABLE RULES
+A) Do NOT require auth tokens in the WS URL querystring.
+B) Authenticate ONLY after receiving the Twilio “start” event using start.customParameters.
+C) Never log tokens/secrets/PII. Mask phone numbers. Do not log full URLs if they contain secrets.
+D) Do not close the socket before “start” unless path is invalid.
+E) Add graceful fallback so calls don’t hard-drop if stream fails.
+
+IMPLEMENTATION REQUIREMENTS (DO IN ORDER)
+
+1) REMOVE ALL TEMPORARY AUTH BYPASS
+- Find and revert the “bypass authentication” change in the WS handler.
+- Confirm there is no code path that permanently allows unauthenticated media.
+
+PROOF:
+- Paste the exact diff snippet showing bypass removal (file + lines).
+
+2) UPDATE TWIML GENERATION TO INCLUDE CUSTOM PARAMETERS (AUTH MOVES OFF URL)
+In POST /v1/telephony/twilio/voice (or wherever TwiML is built):
+
+2.1 Stream URL must be clean (no token required in querystring)
+- Use:
+  wss://casecurrent.co/v1/telephony/twilio/stream
+- If you keep ts/callSid in URL for debugging, it must NOT be required for auth; prefer putting these in Parameters.
+
+2.2 Add <Parameter> tags (Twilio-supported mechanism)
+Add at minimum:
+- auth_token: a server-side secret or better: an HMAC signed token (recommended)
+- callSid: req.body.CallSid
+- toE164 / fromE164: normalized
+- orgId or phoneNumberId: the matched config id (helps routing without DB lookups)
+Example (conceptual):
+<Connect>
+  <Stream url="wss://casecurrent.co/v1/telephony/twilio/stream">
+    <Parameter name="auth_token" value="..."/>
+    <Parameter name="callSid" value="..."/>
+    <Parameter name="to" value="+1844..."/>
+  </Stream>
+</Connect>
+
+2.3 Correct TwiML response headers
+- Force: Content-Type: text/xml
+
+2.4 Optional UX polish (recommended)
+- Add a short pre-connect phrase:
+  twiml.say("Connecting you now.");
+- Add fallback after <Connect>:
+  - Say a short message if stream ends immediately, optionally Record or Dial fallback.
+
+PROOF:
+- Paste a redacted sample TwiML response from production showing <Stream> + <Parameter> entries.
+- Confirm no token appears in a querystring.
+
+3) UPDATE WS AUTH TO VALIDATE FROM “START” EVENT (CUSTOM PARAMETERS)
+In the WS handler for /v1/telephony/twilio/stream:
+
+3.1 Connection behavior
+- On wss “connection”: do NOT reject based on req.url token.
+- Set state: authenticated=false
+- Start a timer (5 seconds): if no “start” event arrives → ws.close(1008, "No start")
+
+3.2 Message handling
+- Wrap JSON parsing in try/catch:
+  - On parse error: ws.close(1003, "Bad JSON")
+- On event === "start":
+  - Extract custom params: msg.start.customParameters
+  - Read auth_token from customParameters.auth_token
+  - Validate:
+    - simplest: auth_token === process.env.STREAM_AUTH_SECRET
+    - better: auth_token is HMAC(callSid + ts) and check freshness window (<= 60s)
+  - If invalid/missing: ws.close(1008, "Unauthorized")
+  - If valid: authenticated=true; store callSid; continue
+- On event === "media":
+  - Only process if authenticated; otherwise close with 1008 “Unauthenticated media” (or ignore until authenticated)
+
+3.3 Close/error logging
+- Log only: callSid (once known), close code, close reason, and a short event label.
+- Do NOT log tokens or full payloads.
+
+PROOF:
+- Paste the WS handler code snippet implementing start.customParameters auth.
+- Paste production logs for ONE successful call showing:
+  - “start received”
+  - “auth ok”
+  - “media frames seen”
+  - no 1008 close
+
+4) REMOVE TEMP DEBUG LOGS + LOCK DOWN DIAG
+- Remove the temporary log lines printing req.url (they can leak data later).
+- Keep structured, minimal logs:
+  - ws_upgrade accepted/rejected (no query)
+  - ws_start_received (log parameter keys only)
+  - ws_close code/reason
+- Ensure diag endpoints require X-Diag-Token header (NOT query param), and mask outputs.
+
+PROOF:
+- Paste final logging statements (file+lines).
+- Confirm diag token is only accepted via header.
+
+5) ADD REGRESSION TESTS
+Add tests (jest/node script) for:
+- Voice webhook returns text/xml and includes <Stream> + <Parameter name="callSid">
+- WS handler:
+  - closes with 1008 if no start in timeout
+  - rejects invalid auth_token with 1008
+  - accepts valid auth_token and processes media
+
+PROOF:
+- Paste test file names + command to run + passing output.
+
+6) DEPLOY + VERIFY (PROOF REQUIRED)
+- Publish/republish.
+- Place one real inbound call to +1 (844) 321-4257.
+- Confirm Twilio Debugger shows no 31921 for that call.
+
+PROOF:
+- Twilio call log status + no 31921
+- Replit logs showing start/auth/media
+- Redacted TwiML from production webhook
+
+ENV VARS (required)
+- STREAM_AUTH_SECRET (or STREAM_HMAC_SECRET)
+- DIAG_TOKEN
+- PUBLIC_HOST=casecurrent.co
+
+DELIVERABLE
+Provide final summary:
+- Files changed
+- Tests added
+- Proof snippets (redacted)
+- Confirmation: “No querystring tokens; auth via start.customParameters; bypass removed; logs clean.”

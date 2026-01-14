@@ -211,14 +211,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Twilio Media Streams WebSocket handler
   twilioWss.on('connection', (ws, req) => {
-    console.log("[WS CONNECT] req.url =", req.url);
-    console.log(`[WebSocket] New Twilio stream connection: ${req.url}`);
     handleTwilioMediaStream(ws, req);
   });
 
   // Register unified upgrade dispatcher on HTTP server
   httpServer.on('upgrade', (request, socket, head) => {
-    console.log("[WS UPGRADE] req.url =", request.url);
     const pathname = request.url?.split('?')[0] || '';
 
     if (pathname === '/v1/realtime') {
@@ -226,19 +223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         realtimeWss.emit('connection', ws, request);
       });
     } else if (pathname.startsWith('/v1/telephony/twilio/stream')) {
-      const url = new URL(request.url || '', `wss://${request.headers.host}`);
-      const queryKeys = [...url.searchParams.keys()];
-      const callSidParam = url.searchParams.get('callSid');
-      
-      // HIGH-SIGNAL STRUCTURED LOG for upgrade attempt
-      console.log(JSON.stringify({
-        event: 'twilio_stream_upgrade',
-        path: pathname,
-        queryKeys,
-        callSid: callSidParam ? `****${callSidParam.slice(-8)}` : null,
-        result: 'accepted',
-      }));
-      
+      console.log(JSON.stringify({ event: 'ws_upgrade', path: pathname }));
       twilioWss.handleUpgrade(request, socket, head, (ws) => {
         twilioWss.emit('connection', ws, request);
       });
@@ -4659,61 +4644,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (openaiConfigured) {
         try {
-          // Build stream URL with HMAC token for authentication
+          // Build stream URL (clean, no auth in querystring)
+          const wsProtocol = 'wss';
+          const host = process.env.PUBLIC_HOST || 'casecurrent.co';
+          const streamUrl = `${wsProtocol}://${host}/v1/telephony/twilio/stream`;
+
+          // Build auth token for customParameters (HMAC-based)
           const ts = Math.floor(Date.now() / 1000);
           const streamSecret = process.env.STREAM_TOKEN_SECRET || '';
-          const streamToken = streamSecret ? generateStreamToken(streamSecret, ts) : 'no-auth';
+          const authToken = streamSecret ? generateStreamToken(streamSecret, ts) : '';
 
-          // Use PUBLIC_HOST env var for stream URL (required for production)
-          const wsProtocol = 'wss';
-          const host = process.env.PUBLIC_HOST;
-          if (!host) {
-            console.warn(
-              `[Twilio Voice] [${requestId}] WARNING: PUBLIC_HOST not set. Using fallback. Set PUBLIC_HOST for production!`
-            );
-          }
-          const effectiveHost = host || 'casecurrent.co';
-          const streamUrl = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=${streamToken}&callSid=${encodeURIComponent(CallSid)}`;
-          const streamUrlMasked = `${wsProtocol}://${effectiveHost}/v1/telephony/twilio/stream?ts=${ts}&token=***&callSid=${maskCallSid(CallSid)}`;
-
-          // XML-escape the URL for safe embedding in TwiML attributes (& -> &amp;)
-          const xmlEscapeAttr = (str: string) =>
-            str
-              .replace(/&/g, '&amp;')
-              .replace(/"/g, '&quot;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;');
-          const streamUrlXmlSafe = xmlEscapeAttr(streamUrl);
-          const callSidXmlSafe = xmlEscapeAttr(CallSid);
-
-          console.log(`[Twilio Voice] [${requestId}] Stream URL: ${streamUrlMasked}`);
-          console.log(`[Twilio Voice] [${requestId}] Sending TwiML with <Connect><Stream>`);
-          console.log(
-            `[Twilio Voice] [${requestId}] Call record created with twilioCallSid=${maskCallSid(CallSid)} BEFORE TwiML returned`
-          );
+          // XML-escape helper for safe embedding in TwiML
+          const xmlEsc = (str: string) =>
+            str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrlXmlSafe}">
-      <Parameter name="callSid" value="${callSidXmlSafe}"/>
+    <Stream url="${xmlEsc(streamUrl)}">
+      <Parameter name="auth_token" value="${xmlEsc(authToken)}"/>
+      <Parameter name="ts" value="${ts}"/>
+      <Parameter name="callSid" value="${xmlEsc(CallSid)}"/>
+      <Parameter name="to" value="${xmlEsc(To)}"/>
+      <Parameter name="from" value="${xmlEsc(From)}"/>
+      <Parameter name="orgId" value="${xmlEsc(orgId)}"/>
+      <Parameter name="phoneNumberId" value="${xmlEsc(phoneNumber.id)}"/>
     </Stream>
   </Connect>
 </Response>`;
 
           const durationMs = Date.now() - startTime;
           
-          // HIGH-SIGNAL STRUCTURED LOG (JSON, single line)
           console.log(JSON.stringify({
             event: 'twilio_voice_webhook',
             requestId,
             callSid: maskCallSid(CallSid),
-            rawTo: To,
-            rawFrom: maskPhone(From),
-            matchedPhoneNumberId: phoneNumber.id,
             orgId,
             responseType: 'twiml_stream',
-            streamUrl: streamUrlMasked,
             durationMs,
           }));
 
@@ -4723,8 +4690,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             callSid: CallSid,
             orgId,
             e164: To,
-            summary: `TwiML returned with <Connect><Stream> to OpenAI Realtime`,
-            payload: { streamUrl: streamUrlMasked, twiml },
+            summary: `TwiML returned with <Connect><Stream>`,
+            payload: { streamUrl },
           });
 
           res.send(twiml);
