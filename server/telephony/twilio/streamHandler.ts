@@ -383,7 +383,7 @@ ${generateVoicePromptInstructions()}`;
         session: {
           modalities: ['audio', 'text'],
           instructions,
-          voice: 'cedar',
+          voice: 'marin',
           input_audio_format: 'g711_ulaw',
           output_audio_format: 'g711_ulaw',
           input_audio_transcription: { model: 'whisper-1' },
