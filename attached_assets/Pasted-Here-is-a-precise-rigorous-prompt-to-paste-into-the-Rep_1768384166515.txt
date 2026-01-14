@@ -1,0 +1,55 @@
+Here is a precise, rigorous prompt to paste into the Replit agent. It forces the agent to bypass the failing check and prove it applied the change.
+
+TASK: EMERGENCY FIX FOR WEBSOCKET HANDSHAKE FAILURE (ERROR 1008)
+
+Context:
+We have confirmed via production logs that the WebSocket connection is failing with code=1008 reason="Missing authentication". This happens because the query parameters (?token=...) are missing from req.url by the time it hits the WebSocket connection handler (likely stripped by infrastructure or the upgrade handler). This causes the server to hang up on Twilio immediately.
+
+Objective:
+We need to temporarily bypass the strict token check in the WebSocket connection handler to allow the call to connect and the media stream to start.
+
+Instructions:
+
+Locate the WebSocket Connection Handler:
+Find the file where wss.on("connection", ...) is defined. This is likely in server/telephony/websocket.ts, server/telephony/stream.ts, or server/index.ts.
+
+Modify the Authentication Logic:
+Find the block of code inside the connection handler that looks like this:
+
+code
+TypeScript
+download
+content_copy
+expand_less
+const token = requestUrl.searchParams.get("token");
+if (!token || token !== EXPECTED_TOKEN) {
+   // ... logs error ...
+   ws.close(1008, "Missing authentication");
+   return;
+}
+
+Apply the Fix (Bypass):
+Do not delete the code. Instead, comment out the rejection logic and add a specific log message so we can see the bypass in action. Change it to:
+
+code
+TypeScript
+download
+content_copy
+expand_less
+const token = requestUrl.searchParams.get("token");
+
+// START FIX: Bypass auth for debugging
+if (!token) {
+    console.warn("⚠️ [TwilioStream] AUTH BYPASSED: Token missing from URL (likely stripped). Proceeding with stream.");
+    // ws.close(1008, "Missing authentication"); // COMMENTED OUT
+    // return; // COMMENTED OUT
+} 
+// END FIX
+
+Verification Requirement:
+
+Show me the Diff: Output the exact lines of code you changed in the file.
+
+Console Output: Confirm that you have saved the file and that the server is restarting.
+
+GO.
