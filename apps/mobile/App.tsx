@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Platform } from "react-native";
 import * as Application from "expo-application";
+import { Ionicons } from "@expo/vector-icons";
 import { initializeAuth, getAuthToken, clearAuthToken } from "./src/services/api";
 import { connectRealtime, disconnectRealtime } from "./src/services/realtime";
 import {
@@ -119,7 +120,7 @@ export default function App() {
       <Tab.Navigator
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: "#1764FE",
+          tabBarActiveTintColor: "#57A6D5",
           tabBarInactiveTintColor: "#475569",
           tabBarStyle: {
             backgroundColor: "#FFFFFF",
@@ -130,19 +131,42 @@ export default function App() {
         <Tab.Screen
           name="Inbox"
           component={InboxScreen}
-          options={{ tabBarLabel: "Inbox" }}
+          options={{
+            tabBarLabel: "Inbox",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="mail" size={size} color={color} />
+            ),
+          }}
         />
         <Tab.Screen
           name="Leads"
           component={LeadsScreen}
-          options={{ tabBarLabel: "Leads" }}
+          options={{
+            tabBarLabel: "Leads",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="people" size={size} color={color} />
+            ),
+          }}
         />
         <Tab.Screen
           name="Analytics"
           component={AnalyticsScreen}
-          options={{ tabBarLabel: "Analytics" }}
+          options={{
+            tabBarLabel: "Analytics",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="bar-chart" size={size} color={color} />
+            ),
+          }}
         />
-        <Tab.Screen name="Settings" options={{ tabBarLabel: "Settings" }}>
+        <Tab.Screen
+          name="Settings"
+          options={{
+            tabBarLabel: "Settings",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="settings" size={size} color={color} />
+            ),
+          }}
+        >
           {(props) => <SettingsScreen {...props} onLogout={handleLogout} />}
         </Tab.Screen>
       </Tab.Navigator>
