@@ -1,0 +1,44 @@
+Before we publish, we need PROOF the rewrite didn’t break stream handling.
+
+1) Show the actual diff (required)
+- Paste the relevant sections (or `git diff`) for:
+  a) server/telephony/twilio/streamHandler.ts
+  b) server/routes.ts (the TwiML generation block)
+- I need to see:
+  - How start.customParameters are parsed
+  - The exact HMAC validation logic (inputs, ts window)
+  - Any ws.close() conditions and codes
+
+2) Confirm env vars (required)
+- Confirm these exist in production Replit Secrets:
+  - STREAM_AUTH_SECRET
+  - DIAG_TOKEN (if diag endpoints exist)
+- Confirm what format auth_token expects (raw secret vs HMAC(token = HMAC(secret, callSid|ts|...))).
+PROOF: paste a redacted print of which env vars are present (true/false), not values.
+
+3) Ensure TwiML sets Content-Type and no URL tokens (required)
+- Paste the full TwiML snippet returned from /v1/telephony/twilio/voice (redact auth_token value).
+- Confirm response header is text/xml.
+- Confirm Stream url is EXACTLY:
+  wss://casecurrent.co/v1/telephony/twilio/stream
+(no querystring required for auth)
+
+4) Replace Jest with a minimal smoke script (required)
+Because Jest is failing, add a simple Node script:
+- scripts/smoke-stream-auth.mjs (or similar)
+It should:
+  - POST to /v1/telephony/twilio/voice with test form data
+  - Assert TwiML contains <Parameter name="auth_token">
+  - Optionally open a WS to the stream endpoint and send a simulated "start" message with customParameters to confirm handler doesn’t immediately close (or unit-test the auth function directly).
+PROOF: paste the script and output of running it once.
+
+5) Then Publish + Live Call Verification (required)
+After publish:
+- Place 1 real call to +1 (844) 321-4257
+- Paste production logs for that CallSid showing:
+  - ws_connection_accepted
+  - twilio_start paramKeys (not values)
+  - ws_auth ok (and why)
+  - stream_authenticated
+  - at least one media frame received
+- Confirm Twilio Debugger shows NO 31921 for the call (or paste the call record status).
