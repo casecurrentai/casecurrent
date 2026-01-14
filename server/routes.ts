@@ -4671,12 +4671,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *       200:
    *         description: Diagnostic status
    */
-  app.get('/v1/telephony/twilio/voice/diag', (req, res) => {
+  app.get('/v1/telephony/twilio/voice/diag', async (req, res) => {
+    let dbHost = 'unknown';
+    let dbName = 'unknown';
+    
+    const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+    if (urlMatch) {
+      dbHost = urlMatch[1];
+      dbName = urlMatch[3];
+    }
+    
+    const phoneNumbersCount = await prisma.phoneNumber.count();
+    
+    const topPhones = await prisma.phoneNumber.findMany({
+      take: 3,
+      select: { e164: true },
+    });
+    const topPhoneE164Last4 = topPhones.map(p => '****' + p.e164.slice(-4));
+    
     res.json({
       ok: true,
       now: new Date().toISOString(),
       envHasTwilioAuthToken: !!process.env.TWILIO_AUTH_TOKEN,
       envHasTwilioAccountSid: !!process.env.TWILIO_ACCOUNT_SID,
+      dbHost,
+      dbName,
+      phoneNumbersCount,
+      topPhoneE164Last4,
     });
   });
 
