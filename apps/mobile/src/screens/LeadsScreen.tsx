@@ -11,8 +11,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { api } from "../services/api";
+import { colors } from "../theme/colors";
 import type { Lead } from "../types";
 import type { RootStackParamList } from "../../App";
 
@@ -69,7 +71,7 @@ export default function LeadsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#1764FE" style={styles.loader} />
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -78,14 +80,17 @@ export default function LeadsScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Leads</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by name or phone..."
-          placeholderTextColor="#94A3B8"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          testID="input-search"
-        />
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or phone..."
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            testID="input-search"
+          />
+        </View>
         <View style={styles.filterRow}>
           {statusFilters.map((filter) => (
             <TouchableOpacity
@@ -95,6 +100,7 @@ export default function LeadsScreen() {
                 statusFilter === filter.value && styles.filterButtonActive,
               ]}
               onPress={() => setStatusFilter(filter.value)}
+              activeOpacity={0.7}
               testID={`filter-${filter.value || "all"}`}
             >
               <Text
@@ -117,6 +123,7 @@ export default function LeadsScreen() {
           <TouchableOpacity
             style={styles.leadRow}
             onPress={() => navigation.navigate("LeadDetail", { leadId: item.id })}
+            activeOpacity={0.7}
             testID={`lead-row-${item.id}`}
           >
             <View style={styles.leadInfo}>
@@ -124,7 +131,9 @@ export default function LeadsScreen() {
               <Text style={styles.leadPhone}>{item.contact?.primaryPhone || "No phone"}</Text>
             </View>
             <View style={styles.leadMeta}>
-              <Text style={styles.statusText}>{item.status}</Text>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusText}>{item.status.replace(/_/g, " ")}</Text>
+              </View>
               {item.score !== undefined && item.score > 0 && (
                 <Text style={styles.scoreText}>{item.score}</Text>
               )}
@@ -135,13 +144,16 @@ export default function LeadsScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#1764FE"
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No leads found</Text>
+            <Ionicons name="people-outline" size={48} color={colors.primary} />
+            <Text style={styles.emptyTitle}>No leads found</Text>
+            <Text style={styles.emptyText}>Try adjusting your search or filters</Text>
           </View>
         }
       />
@@ -152,7 +164,7 @@ export default function LeadsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
   },
   loader: {
     flex: 1,
@@ -161,24 +173,32 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#0F172A",
+    color: colors.primary,
     marginBottom: 12,
   },
-  searchInput: {
-    backgroundColor: "#F8FAFC",
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
+  },
+  searchIcon: {
+    marginLeft: 12,
+  },
+  searchInput: {
+    flex: 1,
     padding: 12,
     fontSize: 16,
-    color: "#0F172A",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 12,
+    color: colors.textPrimary,
   },
   filterRow: {
     flexDirection: "row",
@@ -186,36 +206,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterButton: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
   },
   filterButtonActive: {
-    backgroundColor: "#1764FE",
-    borderColor: "#1764FE",
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterText: {
-    color: "#475569",
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: "500",
   },
   filterTextActive: {
-    color: "#FFFFFF",
+    color: colors.background,
   },
   listContent: {
     padding: 12,
+    flexGrow: 1,
   },
   leadRow: {
     flexDirection: "row",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.surface,
     borderRadius: 8,
     padding: 16,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
   },
   leadInfo: {
     flex: 1,
@@ -223,23 +244,30 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#0F172A",
+    color: colors.textPrimary,
   },
   leadPhone: {
     fontSize: 14,
-    color: "#475569",
+    color: colors.textSecondary,
     marginTop: 2,
   },
   leadMeta: {
     alignItems: "flex-end",
   },
+  statusBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
   statusText: {
-    color: "#475569",
-    fontSize: 12,
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: "500",
     textTransform: "uppercase",
   },
   scoreText: {
-    color: "#1764FE",
+    color: colors.primary,
     fontSize: 16,
     fontWeight: "bold",
     marginTop: 4,
@@ -247,9 +275,18 @@ const styles = StyleSheet.create({
   emptyState: {
     padding: 48,
     alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 12,
   },
   emptyText: {
-    color: "#94A3B8",
-    fontSize: 16,
+    color: colors.textMuted,
+    fontSize: 14,
+    marginTop: 4,
   },
 });

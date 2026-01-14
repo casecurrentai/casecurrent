@@ -183,7 +183,8 @@ export default function App() {
         <Stack.Navigator
           screenOptions={{
             headerStyle: { backgroundColor: "#FFFFFF" },
-            headerTintColor: "#0F172A",
+            headerTintColor: "#57A6D5",
+            headerTitleStyle: { color: "#0F172A" },
           }}
         >
           {!isAuthenticated ? (

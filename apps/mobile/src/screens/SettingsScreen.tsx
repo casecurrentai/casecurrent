@@ -12,8 +12,10 @@ import {
   FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
 import { disconnectRealtime } from "../services/realtime";
+import { colors } from "../theme/colors";
 
 interface SettingsScreenProps {
   onLogout: () => void;
@@ -51,8 +53,8 @@ function SettingRow({ label, value, onToggle, subtitle }: SettingRowProps) {
         <Switch
           value={value}
           onValueChange={onToggle}
-          trackColor={{ false: "#E5E7EB", true: "#1764FE" }}
-          thumbColor="#fff"
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor={colors.background}
         />
       )}
     </View>
@@ -65,7 +67,6 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
   const [slaBreachNotif, setSlaBreachNotif] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // On-call state
   const [onCallUser, setOnCallUser] = useState<OnCallUser | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [isLoadingOnCall, setIsLoadingOnCall] = useState(true);
@@ -159,6 +160,7 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
                     onCallUser?.userId === item.id && styles.userItemSelected,
                   ]}
                   onPress={() => handleSetOnCall(item.id)}
+                  activeOpacity={0.7}
                   testID={`button-select-user-${item.id || "none"}`}
                 >
                   <View>
@@ -168,7 +170,7 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
                     ) : null}
                   </View>
                   {onCallUser?.userId === item.id && (
-                    <Text style={styles.checkmark}>Selected</Text>
+                    <Ionicons name="checkmark" size={20} color={colors.primary} />
                   )}
                 </TouchableOpacity>
               )}
@@ -186,7 +188,6 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
       </View>
 
       <ScrollView style={styles.content}>
-        {/* On-Call Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>On-Call Routing</Text>
           <Text style={styles.sectionDescription}>
@@ -194,7 +195,7 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
           </Text>
 
           {isLoadingOnCall ? (
-            <ActivityIndicator size="small" color="#1764FE" style={{ marginVertical: 16 }} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 16 }} />
           ) : (
             <View style={styles.onCallContainer}>
               <View style={styles.onCallInfo}>
@@ -212,10 +213,11 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
                   style={styles.changeButton}
                   onPress={() => setShowUserPicker(true)}
                   disabled={isSavingOnCall}
+                  activeOpacity={0.7}
                   testID="button-change-oncall"
                 >
                   {isSavingOnCall ? (
-                    <ActivityIndicator size="small" color="#1764FE" />
+                    <ActivityIndicator size="small" color={colors.background} />
                   ) : (
                     <Text style={styles.changeButtonText}>Change</Text>
                   )}
@@ -224,6 +226,8 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
             </View>
           )}
         </View>
+
+        <View style={styles.divider} />
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications</Text>
@@ -247,13 +251,19 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
           />
         </View>
 
+        <View style={styles.divider} />
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Firm Info</Text>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Timezone</Text>
-            <Text style={styles.infoValue}>America/New_York</Text>
+            <View style={styles.infoBadge}>
+              <Text style={styles.infoBadgeText}>America/New_York</Text>
+            </View>
           </View>
         </View>
+
+        <View style={styles.divider} />
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -261,8 +271,10 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
             style={styles.logoutButton}
             onPress={handleLogout}
             disabled={isLoggingOut}
+            activeOpacity={0.7}
             testID="button-logout"
           >
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
             <Text style={styles.logoutText}>
               {isLoggingOut ? "Signing out..." : "Sign Out"}
             </Text>
@@ -282,37 +294,40 @@ export default function SettingsScreen({ onLogout, userRole = "staff" }: Setting
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
   },
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#0F172A",
+    color: colors.primary,
   },
   content: {
     flex: 1,
   },
   section: {
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
   },
   sectionTitle: {
     fontSize: 12,
-    color: "#475569",
+    color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 8,
+    fontWeight: "600",
   },
   sectionDescription: {
     fontSize: 14,
-    color: "#64748B",
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   settingRow: {
@@ -326,32 +341,43 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
-    color: "#0F172A",
+    color: colors.textPrimary,
     fontWeight: "500",
   },
   settingSubtitle: {
     fontSize: 12,
-    color: "#94A3B8",
+    color: colors.textMuted,
     marginTop: 2,
   },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
   },
   infoLabel: {
     fontSize: 16,
-    color: "#475569",
+    color: colors.textSecondary,
   },
-  infoValue: {
-    fontSize: 16,
-    color: "#0F172A",
+  infoBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  infoBadgeText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: "500",
   },
   logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     backgroundColor: "#FEE2E2",
     borderRadius: 8,
     padding: 14,
-    alignItems: "center",
     borderWidth: 1,
     borderColor: "#FECACA",
   },
@@ -365,40 +391,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   footerText: {
-    color: "#94A3B8",
+    color: colors.textMuted,
     fontSize: 12,
   },
-  // On-Call Styles
   onCallContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.surface,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: colors.border,
   },
   onCallInfo: {
     flex: 1,
   },
   onCallLabel: {
     fontSize: 12,
-    color: "#64748B",
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   onCallValue: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#0F172A",
+    color: colors.textPrimary,
   },
   onCallEmail: {
     fontSize: 12,
-    color: "#64748B",
+    color: colors.textSecondary,
     marginTop: 2,
   },
   changeButton: {
-    backgroundColor: "#1764FE",
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
@@ -406,18 +431,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   changeButtonText: {
-    color: "#FFFFFF",
+    color: colors.background,
     fontWeight: "600",
     fontSize: 14,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     maxHeight: "70%",
@@ -428,16 +452,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: colors.border,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#0F172A",
+    color: colors.textPrimary,
   },
   modalClose: {
     fontSize: 16,
-    color: "#1764FE",
+    color: colors.primary,
     fontWeight: "500",
   },
   userItem: {
@@ -446,24 +470,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: colors.surface,
   },
   userItemSelected: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryTint,
   },
   userName: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#0F172A",
+    color: colors.textPrimary,
   },
   userEmail: {
     fontSize: 12,
-    color: "#64748B",
+    color: colors.textSecondary,
     marginTop: 2,
-  },
-  checkmark: {
-    color: "#1764FE",
-    fontWeight: "600",
-    fontSize: 14,
   },
 });

@@ -10,9 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { api } from "../services/api";
 import { addRealtimeListener } from "../services/realtime";
+import { colors } from "../theme/colors";
 import type { Lead, RealtimeEvent } from "../types";
 import type { RootStackParamList } from "../../App";
 
@@ -34,12 +36,12 @@ function formatTimeAgo(dateString: string): string {
 
 function getStatusColor(status: string): string {
   switch (status) {
-    case "new": return "#ef4444";
-    case "engaged": return "#f59e0b";
-    case "intake_started": return "#3b82f6";
-    case "intake_complete": return "#10b981";
-    case "qualified": return "#22c55e";
-    default: return "#6b7280";
+    case "new": return colors.statusNew;
+    case "engaged": return colors.statusEngaged;
+    case "intake_started": return colors.statusIntake;
+    case "intake_complete": return colors.success;
+    case "qualified": return colors.statusQualified;
+    default: return colors.statusDefault;
   }
 }
 
@@ -50,8 +52,9 @@ function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
 
   return (
     <TouchableOpacity
-      style={[styles.leadRow, isOverdue && styles.overdueRow]}
+      style={[styles.leadRow, isOverdue ? styles.overdueRow : undefined]}
       onPress={onPress}
+      activeOpacity={0.7}
       testID={`lead-row-${lead.id}`}
     >
       <View style={styles.leadInfo}>
@@ -63,10 +66,12 @@ function LeadRow({ lead, onPress }: { lead: Lead; onPress: () => void }) {
         <Text style={styles.leadPhone}>{lead.contact?.primaryPhone || "No phone"}</Text>
         <View style={styles.leadMeta}>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(lead.status) }]}>
-            <Text style={styles.statusText}>{lead.status.toUpperCase()}</Text>
+            <Text style={styles.statusText}>{lead.status.replace(/_/g, " ").toUpperCase()}</Text>
           </View>
           {lead.practiceArea && (
-            <Text style={styles.practiceArea}>{lead.practiceArea.name}</Text>
+            <View style={styles.practiceAreaBadge}>
+              <Text style={styles.practiceAreaText}>{lead.practiceArea.name}</Text>
+            </View>
           )}
         </View>
         {lead.summary && (
@@ -126,7 +131,7 @@ export default function InboxScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#1764FE" style={styles.loader} />
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -151,12 +156,15 @@ export default function InboxScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchLeads(true)}
-            tintColor="#1764FE"
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
+            <Ionicons name="checkmark-circle-outline" size={48} color={colors.primary} />
+            <Text style={styles.emptyTitle}>All caught up!</Text>
             <Text style={styles.emptyText}>No leads need attention</Text>
           </View>
         }
@@ -168,7 +176,7 @@ export default function InboxScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.background,
   },
   loader: {
     flex: 1,
@@ -177,33 +185,34 @@ const styles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#0F172A",
+    color: colors.primary,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: "#475569",
+    color: colors.textSecondary,
     marginTop: 4,
   },
   listContent: {
     padding: 12,
+    flexGrow: 1,
   },
   leadRow: {
     flexDirection: "row",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
   },
   overdueRow: {
-    borderColor: "#EF4444",
+    borderColor: colors.error,
     borderWidth: 2,
   },
   leadInfo: {
@@ -217,29 +226,31 @@ const styles = StyleSheet.create({
   leadName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#0F172A",
+    color: colors.textPrimary,
   },
   hotBadge: {
-    backgroundColor: "#EF4444",
-    color: "#FFFFFF",
+    backgroundColor: colors.error,
+    color: colors.background,
     fontSize: 10,
     fontWeight: "bold",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    overflow: "hidden",
   },
   dncBadge: {
-    backgroundColor: "#6B7280",
-    color: "#FFFFFF",
+    backgroundColor: colors.statusDefault,
+    color: colors.background,
     fontSize: 10,
     fontWeight: "bold",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    overflow: "hidden",
   },
   leadPhone: {
     fontSize: 14,
-    color: "#475569",
+    color: colors.textSecondary,
     marginTop: 4,
   },
   leadMeta: {
@@ -254,16 +265,23 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    color: "#FFFFFF",
+    color: colors.background,
     fontSize: 10,
     fontWeight: "bold",
   },
-  practiceArea: {
-    color: "#475569",
-    fontSize: 12,
+  practiceAreaBadge: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  practiceAreaText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: "500",
   },
   leadSummary: {
-    color: "#94A3B8",
+    color: colors.textMuted,
     fontSize: 12,
     marginTop: 4,
   },
@@ -272,20 +290,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   leadAge: {
-    color: "#94A3B8",
+    color: colors.textMuted,
     fontSize: 12,
   },
   leadScore: {
-    color: "#1764FE",
+    color: colors.primary,
     fontSize: 18,
     fontWeight: "bold",
   },
   emptyState: {
     padding: 48,
     alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 12,
   },
   emptyText: {
-    color: "#94A3B8",
-    fontSize: 16,
+    color: colors.textMuted,
+    fontSize: 14,
+    marginTop: 4,
   },
 });
