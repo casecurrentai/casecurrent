@@ -8202,6 +8202,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /**
    * @openapi
+   * /v1/devices/debug:
+   *   get:
+   *     summary: Debug endpoint to verify registered push tokens (admin only)
+   *     tags: [Mobile, Devices, Debug]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Token summary for current user's org
+   */
+  app.get('/v1/devices/debug', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      
+      // Only allow admin/owner roles
+      if (!['admin', 'owner'].includes(user.role)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      // Get all device tokens for this org (no secrets exposed)
+      const tokens = await prisma.deviceToken.findMany({
+        where: { orgId: user.orgId, active: true },
+        select: {
+          id: true,
+          userId: true,
+          platform: true,
+          deviceId: true,
+          preferences: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: { email: true, firstName: true, lastName: true }
+          }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // Get org user count for context
+      const orgUsers = await prisma.user.count({
+        where: { orgId: user.orgId }
+      });
+
+      // Summary by user
+      const byUser: Record<string, { email: string; name: string; tokenCount: number; platforms: string[] }> = {};
+      for (const t of tokens) {
+        if (!byUser[t.userId]) {
+          byUser[t.userId] = {
+            email: t.user.email,
+            name: `${t.user.firstName || ''} ${t.user.lastName || ''}`.trim() || 'Unknown',
+            tokenCount: 0,
+            platforms: []
+          };
+        }
+        byUser[t.userId].tokenCount++;
+        if (!byUser[t.userId].platforms.includes(t.platform)) {
+          byUser[t.userId].platforms.push(t.platform);
+        }
+      }
+
+      res.json({
+        orgId: user.orgId,
+        totalActiveTokens: tokens.length,
+        totalOrgUsers: orgUsers,
+        usersWithTokens: Object.keys(byUser).length,
+        byUser,
+        tokens: tokens.map(t => ({
+          id: t.id,
+          userId: t.userId,
+          userEmail: t.user.email,
+          platform: t.platform,
+          deviceId: t.deviceId.substring(0, 8) + '...',
+          tokenPrefix: '...',  // Don't expose actual token
+          preferences: t.preferences,
+          registeredAt: t.createdAt,
+          lastUpdated: t.updatedAt
+        }))
+      });
+    } catch (error) {
+      console.error('Device debug error:', error);
+      res.status(500).json({ error: 'Failed to fetch device tokens' });
+    }
+  });
+
+  /**
+   * @openapi
    * /v1/leads/{id}/messages:
    *   post:
    *     summary: Send SMS to lead (with DNC enforcement)
