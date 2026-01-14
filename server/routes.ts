@@ -36,7 +36,7 @@ import {
 } from './telephony/status';
 import { generateStreamToken, handleTwilioMediaStream } from './telephony/twilio/streamHandler';
 import { DATABASE_URL } from './env';
-import { sendIncomingCallPush } from './notifications/push';
+import { sendIncomingCallPush, sendIncomingCallPushToUser } from './notifications/push';
 import { logAnalyticsEvent, countAnalyticsEvents, getEventCountsByType, type AnalyticsEventType } from './analytics/events';
 import {
   getExperimentAssignment,
@@ -77,6 +77,31 @@ export function emitRealtimeEvent(
       }
     }
   }
+}
+
+// Emit realtime event to a specific user only
+export function emitToUser(
+  userId: string,
+  event: {
+    type: string;
+    leadId?: string;
+    timestamp: string;
+    data: Record<string, unknown>;
+  }
+) {
+  const message = JSON.stringify(event);
+  let sentCount = 0;
+  for (const [clientId, client] of wsClients) {
+    if (client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(message);
+        sentCount++;
+      } catch (err) {
+        console.error(`[WS] Error sending to user ${userId} client ${clientId}:`, err);
+      }
+    }
+  }
+  return sentCount;
 }
 
 // GATE 5: In-memory log buffer for diagnostics
@@ -705,6 +730,198 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
   );
+
+  // ============================================
+  // ON-CALL ROUTING
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/oncall:
+   *   get:
+   *     summary: Get the current on-call user for the organization
+   *     tags: [Organization]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: On-call user details (or null if not set)
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 userId:
+   *                   type: string
+   *                   nullable: true
+   *                 name:
+   *                   type: string
+   *                   nullable: true
+   *                 email:
+   *                   type: string
+   *                   nullable: true
+   */
+  app.get('/v1/oncall', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: req.user!.orgId },
+        select: { onCallUserId: true },
+      });
+
+      if (!org) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+
+      if (!org.onCallUserId) {
+        return res.json({ userId: null, name: null, email: null });
+      }
+
+      const onCallUser = await prisma.user.findUnique({
+        where: { id: org.onCallUserId },
+        select: { id: true, name: true, email: true },
+      });
+
+      if (!onCallUser) {
+        // User was deleted but reference remains - clear it
+        return res.json({ userId: null, name: null, email: null });
+      }
+
+      res.json({
+        userId: onCallUser.id,
+        name: onCallUser.name,
+        email: onCallUser.email,
+      });
+    } catch (error) {
+      console.error('Get on-call error:', error);
+      res.status(500).json({ error: 'Failed to get on-call user' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/oncall:
+   *   post:
+   *     summary: Set the on-call user for the organization (admin only)
+   *     tags: [Organization]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - userId
+   *             properties:
+   *               userId:
+   *                 type: string
+   *                 nullable: true
+   *                 description: User ID to set as on-call, or null to clear
+   *     responses:
+   *       200:
+   *         description: On-call user updated
+   *       400:
+   *         description: Invalid user ID
+   *       403:
+   *         description: Admin access required
+   */
+  app.post(
+    '/v1/oncall',
+    authMiddleware,
+    requireMinRole('admin'),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { userId } = req.body;
+        const orgId = req.user!.orgId;
+
+        // Allow null to clear on-call
+        if (userId !== null && userId !== undefined) {
+          // Validate that user exists and belongs to this org
+          const targetUser = await prisma.user.findFirst({
+            where: { id: userId, orgId, status: 'active' },
+            select: { id: true, name: true, email: true },
+          });
+
+          if (!targetUser) {
+            return res.status(400).json({ error: 'User not found in organization' });
+          }
+        }
+
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { onCallUserId: userId || null },
+        });
+
+        await createAuditLog(orgId, req.user!.userId, 'user', 'update', 'organization', orgId, {
+          action: 'set_oncall_user',
+          newOnCallUserId: userId || null,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Fetch the updated on-call user details
+        if (!userId) {
+          return res.json({ userId: null, name: null, email: null });
+        }
+
+        const onCallUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, email: true },
+        });
+
+        res.json({
+          userId: onCallUser?.id || null,
+          name: onCallUser?.name || null,
+          email: onCallUser?.email || null,
+        });
+      } catch (error) {
+        console.error('Set on-call error:', error);
+        res.status(500).json({ error: 'Failed to set on-call user' });
+      }
+    }
+  );
+
+  /**
+   * @openapi
+   * /v1/org/users:
+   *   get:
+   *     summary: Get all users in the organization (for on-call picker)
+   *     tags: [Organization]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of org users
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: array
+   *               items:
+   *                 type: object
+   *                 properties:
+   *                   id:
+   *                     type: string
+   *                   name:
+   *                     type: string
+   *                   email:
+   *                     type: string
+   *                   role:
+   *                     type: string
+   */
+  app.get('/v1/org/users', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const users = await prisma.user.findMany({
+        where: { orgId: req.user!.orgId, status: 'active' },
+        select: { id: true, name: true, email: true, role: true },
+        orderBy: { name: 'asc' },
+      });
+
+      res.json(users);
+    } catch (error) {
+      console.error('Get org users error:', error);
+      res.status(500).json({ error: 'Failed to get organization users' });
+    }
+  });
 
   // ============================================
   // WEBHOOK SYSTEM (Checkpoint 8)
@@ -4268,9 +4485,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       });
 
-      // Emit realtime WebSocket event for incoming call
-      emitRealtimeEvent(orgId, {
-        type: 'call.incoming',
+      // === ON-CALL ROUTING ===
+      // Fetch org to check for on-call user
+      const org = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { onCallUserId: true },
+      });
+
+      const callEventPayload = {
+        type: 'call.incoming' as const,
         leadId: lead.id,
         timestamp: new Date().toISOString(),
         data: {
@@ -4279,13 +4502,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           to: To,
           callId: call.id,
           contactName: contact.name,
+          createdAt: new Date().toISOString(),
         },
-      });
+      };
 
-      // Send push notification to all org devices (fire-and-forget)
-      sendIncomingCallPush(orgId, lead.id, CallSid, From).catch((err) => {
-        console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
-      });
+      if (org?.onCallUserId) {
+        // Route to on-call user only
+        console.log(`[Twilio Voice] [${requestId}] On-call routing: notifying user ${org.onCallUserId}`);
+        
+        // Emit WS event to on-call user only
+        const wsSent = emitToUser(org.onCallUserId, callEventPayload);
+        console.log(`[Twilio Voice] [${requestId}] WS sent to ${wsSent} connections for on-call user`);
+        
+        // Send push to on-call user only (fire-and-forget)
+        sendIncomingCallPushToUser(org.onCallUserId, lead.id, CallSid, From).catch((err) => {
+          console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
+        });
+      } else {
+        // Fallback: notify all org admins and log warning
+        console.warn(`[Twilio Voice] [${requestId}] WARNING: No on-call user set for org ${orgId}. Notifying all admins.`);
+        
+        // Log warning event for missing on-call
+        logAnalyticsEvent({
+          orgId,
+          type: 'call.incoming',
+          payload: {
+            warning: 'no_oncall_user_set',
+            callSid: CallSid,
+            leadId: lead.id,
+          },
+        }).catch(() => {});
+        
+        // Emit to all org clients (fallback)
+        emitRealtimeEvent(orgId, callEventPayload);
+        
+        // Send push to all org devices (fallback)
+        sendIncomingCallPush(orgId, lead.id, CallSid, From).catch((err) => {
+          console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
+        });
+      }
 
       res.set('Content-Type', 'text/xml');
 

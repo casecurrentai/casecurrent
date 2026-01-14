@@ -25,6 +25,7 @@ model Organization {
   subscriptionStatus    String    @default("manual") @map("subscription_status") // trial, active, past_due, canceled, manual
   planTier              String?   @map("plan_tier") // core, pro, elite
   primaryPhoneNumberId  String?   @map("primary_phone_number_id")
+  onCallUserId          String?   @map("on_call_user_id") // User designated to receive incoming call notifications
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 

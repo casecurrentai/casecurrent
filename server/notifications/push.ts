@@ -134,6 +134,89 @@ async function deactivateInvalidTokens(tokens: string[]): Promise<void> {
   });
 }
 
+export async function sendPushToUser(
+  userId: string,
+  payload: PushNotificationPayload
+): Promise<{ sent: number; failed: number; invalidTokens: string[] }> {
+  const deviceTokens = await prisma.deviceToken.findMany({
+    where: {
+      userId,
+      active: true,
+    },
+    select: {
+      id: true,
+      token: true,
+      platform: true,
+    },
+  });
+
+  if (deviceTokens.length === 0) {
+    console.log(`[Push] No active device tokens for user ${userId}`);
+    return { sent: 0, failed: 0, invalidTokens: [] };
+  }
+
+  const messages: ExpoPushMessage[] = deviceTokens.map((dt) => ({
+    to: dt.token,
+    title: payload.title,
+    body: payload.body,
+    data: payload.data,
+    sound: 'default',
+    priority: payload.priority || 'high',
+    channelId: payload.channelId || 'incoming-calls',
+  }));
+
+  const results = await sendPushBatch(messages);
+  
+  const invalidTokens: string[] = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < results.length; i++) {
+    const ticket = results[i];
+    if (ticket.status === 'ok') {
+      sent++;
+    } else {
+      failed++;
+      if (ticket.details?.error === 'DeviceNotRegistered') {
+        invalidTokens.push(deviceTokens[i].token);
+      }
+    }
+  }
+
+  if (invalidTokens.length > 0) {
+    await deactivateInvalidTokens(invalidTokens);
+    console.log(`[Push] Deactivated ${invalidTokens.length} invalid tokens`);
+  }
+
+  console.log(`[Push] User ${userId}: sent=${sent}, failed=${failed}, invalidTokens=${invalidTokens.length}`);
+  return { sent, failed, invalidTokens };
+}
+
+export async function sendIncomingCallPushToUser(
+  userId: string,
+  leadId: string,
+  callSid: string,
+  from: string
+): Promise<{ sent: number; failed: number }> {
+  const maskedFrom = from.length > 6 
+    ? `${from.slice(0, 2)}***${from.slice(-4)}`
+    : from;
+
+  const result = await sendPushToUser(userId, {
+    title: 'Incoming Call',
+    body: `Call from ${maskedFrom}`,
+    data: {
+      type: 'call.incoming',
+      leadId,
+      callSid,
+    },
+    priority: 'high',
+    channelId: 'incoming-calls',
+  });
+  
+  return { sent: result.sent, failed: result.failed };
+}
+
 export async function sendIncomingCallPush(
   orgId: string,
   leadId: string,

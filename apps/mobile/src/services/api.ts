@@ -253,4 +253,23 @@ export const api = {
       return apiRequest(`/v1/analytics/captured-leads?range=${range}`);
     },
   },
+
+  oncall: {
+    async get(): Promise<{ userId: string | null; name: string | null; email: string | null }> {
+      return apiRequest("/v1/oncall");
+    },
+
+    async set(userId: string | null): Promise<{ userId: string | null; name: string | null; email: string | null }> {
+      return apiRequest("/v1/oncall", {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      });
+    },
+  },
+
+  org: {
+    async getUsers(): Promise<Array<{ id: string; name: string; email: string; role: string }>> {
+      return apiRequest("/v1/org/users");
+    },
+  },
 };
