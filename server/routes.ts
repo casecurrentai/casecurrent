@@ -224,7 +224,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         realtimeWss.emit('connection', ws, request);
       });
     } else if (pathname.startsWith('/v1/telephony/twilio/stream')) {
-      console.log(`[WebSocket] Upgrading Twilio stream: ${request.url}`);
+      const url = new URL(request.url || '', `wss://${request.headers.host}`);
+      const queryKeys = [...url.searchParams.keys()];
+      const callSidParam = url.searchParams.get('callSid');
+      
+      // HIGH-SIGNAL STRUCTURED LOG for upgrade attempt
+      console.log(JSON.stringify({
+        event: 'twilio_stream_upgrade',
+        path: pathname,
+        queryKeys,
+        callSid: callSidParam ? `****${callSidParam.slice(-8)}` : null,
+        result: 'accepted',
+      }));
+      
       twilioWss.handleUpgrade(request, socket, head, (ws) => {
         twilioWss.emit('connection', ws, request);
       });
@@ -4337,6 +4349,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    */
   app.post('/v1/telephony/twilio/voice', async (req, res) => {
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const startTime = Date.now();
 
     // IMMEDIATE TOP-OF-HANDLER LOGGING (before any branching)
     console.log('Incoming call received from: ' + (req.body?.From ?? 'UNKNOWN'));
@@ -4685,6 +4698,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     </Stream>
   </Connect>
 </Response>`;
+
+          const durationMs = Date.now() - startTime;
+          
+          // HIGH-SIGNAL STRUCTURED LOG (JSON, single line)
+          console.log(JSON.stringify({
+            event: 'twilio_voice_webhook',
+            requestId,
+            callSid: maskCallSid(CallSid),
+            rawTo: To,
+            rawFrom: maskPhone(From),
+            matchedPhoneNumberId: phoneNumber.id,
+            orgId,
+            responseType: 'twiml_stream',
+            streamUrl: streamUrlMasked,
+            durationMs,
+          }));
 
           recordEvent({
             source: 'twilio-voice-webhook',

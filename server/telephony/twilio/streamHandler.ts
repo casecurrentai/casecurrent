@@ -53,9 +53,17 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, req: IncomingMessag
   const tsParam = url.searchParams.get('ts');
   const tokenParam = url.searchParams.get('token');
   const callSidParam = url.searchParams.get('callSid');
+  const maskedCallSid = callSidParam ? `****${callSidParam.slice(-8)}` : null;
 
   console.log(`[TwilioStream] [${requestId}] New connection from ${req.socket.remoteAddress}`);
   console.log(`[TwilioStream] [${requestId}] URL: ${req.url}`);
+  
+  // HIGH-SIGNAL STRUCTURED LOG for connection start
+  console.log(JSON.stringify({
+    event: 'twilio_stream_connected',
+    requestId,
+    callSid: maskedCallSid,
+  }));
 
   const bypassAuth = process.env.BYPASS_STREAM_AUTH === 'true';
   const secret = process.env.STREAM_TOKEN_SECRET;
@@ -521,6 +529,18 @@ ${generateVoicePromptInstructions()}`,
     console.log(
       `[TwilioStream] [${requestId}] Final stats: twilioFrames=${twilioFrameCount} openAiFrames=${openAiFrameCount}`
     );
+    
+    // HIGH-SIGNAL STRUCTURED LOG for connection close
+    console.log(JSON.stringify({
+      event: 'twilio_stream_closed',
+      requestId,
+      callSid: callSid ? `****${callSid.slice(-8)}` : maskedCallSid,
+      code,
+      reason: reason?.toString() || null,
+      twilioFrameCount,
+      openAiFrameCount,
+    }));
+    
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
       openAiWs.close(1000, 'Twilio connection closed');
     }
@@ -528,5 +548,13 @@ ${generateVoicePromptInstructions()}`,
 
   twilioWs.on('error', (err) => {
     console.error(`[TwilioStream] [${requestId}] Twilio WebSocket error:`, err);
+    
+    // HIGH-SIGNAL STRUCTURED LOG for connection error
+    console.log(JSON.stringify({
+      event: 'twilio_stream_error',
+      requestId,
+      callSid: callSid ? `****${callSid.slice(-8)}` : maskedCallSid,
+      error: err?.message || String(err),
+    }));
   });
 }
