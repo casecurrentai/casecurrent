@@ -22,6 +22,16 @@
         "simulator": true
       }
     },
+    "android-internal": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "local"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://casecurrent.co"
+      }
+    },
     "production": {
       "distribution": "store",
       "env": {
