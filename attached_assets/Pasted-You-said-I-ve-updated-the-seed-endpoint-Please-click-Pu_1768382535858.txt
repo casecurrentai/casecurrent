@@ -1,0 +1,50 @@
+You said: “I’ve updated the seed endpoint… Please click Publish… Then I’ll call seed… verify diag… test Twilio webhook… add diagnostic endpoint… Republish this App.”
+
+DO THIS NOW, END-TO-END, AND PROVIDE PROOF AT EACH STEP.
+
+GOAL
+Republish the app so production has the new seed behavior (auto-create org if missing, then create phone number), then verify production is correctly configured and Twilio no longer returns “not configured”.
+
+STEPS
+
+1) Publish / Republish
+- Click “Publish” (or “Republish”) in Replit to deploy the latest code.
+PROOF:
+- Provide the deployed URL/host and a screenshot or the deployment log line(s) showing the new deployment completed successfully.
+
+2) Call production seed endpoint
+- Call the seed endpoint against the PRODUCTION base URL (not localhost).
+- Use curl from the Replit shell (or built-in HTTP client).
+PROOF:
+- Paste the exact curl command you ran and the full JSON response.
+- Confirm the response includes: org id, org slug/name, and phone number id + E.164 number.
+
+3) Verify diag shows the phone number
+- Open the diag/timeline endpoint or admin/diag view we use and confirm the seeded org + phone number are present.
+PROOF:
+- Paste the relevant diag output (JSON or screenshot) showing the phone number record and the org it belongs to.
+
+4) Test Twilio webhook behavior
+- Hit the voice webhook URL the same way Twilio would (or run a safe test route if we have one).
+- Confirm response no longer includes “not configured”.
+PROOF:
+- Paste the request you made (curl) and the full response body (TwiML or JSON).
+- If there is a Twilio test call available in console, do it and paste the result status.
+
+5) Add diagnostic endpoint (only if not already present)
+- Implement a production-safe diagnostic endpoint that returns essential org + phone number configuration (redact secrets).
+- Include: org exists, phone number exists, inbound webhook configured, public host, environment name.
+- Must be protected (at minimum: require an admin token header or only enabled in non-production unless I explicitly approve production).
+PROOF:
+- Paste the endpoint path, sample curl call, and sample response.
+
+6) Final confirmation checklist
+PROOF:
+- Provide a single final message with:
+  - Production base URL
+  - Seed endpoint called successfully (yes/no)
+  - Org created (id)
+  - Phone number created (E.164 + id)
+  - Diag confirms phone number present (yes/no)
+  - Twilio webhook no longer “not configured” (yes/no)
+  - Links/paths to any code files changed for the diagnostic endpoint
