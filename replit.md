@@ -61,9 +61,18 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
     - `OPENAI_PROJECT_ID`: OpenAI project ID for SIP routing (format: `proj_xxxxx`)
     - `OPENAI_WEBHOOK_SECRET`: Webhook signing secret from OpenAI (format: `whsec_xxxxx`)
     - `OPENAI_WEBHOOK_TOLERANCE_SECONDS` (optional): Timestamp tolerance for webhook verification (default: 300)
+    - `AVERY_LUNA_STYLE` (optional): Set to `true` to enable Luna-style human voice delivery (default: false)
   - **Webhook Configuration**: Set OpenAI webhook URL to `https://your-domain.com/v1/telephony/openai/webhook`
   - **Twilio Configuration**: Configure Twilio number webhook to `https://your-domain.com/v1/telephony/twilio/voice`
   - **Phone Number Setup**: Each inbound number must exist in `phone_numbers` table with `inboundEnabled=true`
+  - **Luna-Style Voice (Avery)**: Human-like voice delivery with empathy, short sentences, and natural rhythm. Enable with `AVERY_LUNA_STYLE=true`. Features:
+    - Warm, emotionally present voice with natural pauses
+    - Short sentences, one question per turn
+    - Empathy-first pattern for difficult situations: acknowledge → stabilize → proceed
+    - Rising intonation questions via repeat-back phrasing ("And you're at the hospital?")
+    - Phone/name confirmations with "Just to confirm..." pacing
+    - Calm transfer pacing for warm handoffs
+    - Files: `server/agent/prompt.ts` (system prompt), `server/agent/formatters/lunaStyle.ts` (speech formatter)
 - **Modularity**: The monorepo structure and clear separation of concerns (frontend, backend, shared logic) promote maintainability and scalability.
 - **Log Masking**: Sensitive data (phone numbers, SIP URIs, project IDs, call SIDs) is automatically masked in logs across ALL environments by default. To disable for debugging, set `DISABLE_LOG_MASKING=true`. Masking utilities are in `server/utils/logMasking.ts`.
 

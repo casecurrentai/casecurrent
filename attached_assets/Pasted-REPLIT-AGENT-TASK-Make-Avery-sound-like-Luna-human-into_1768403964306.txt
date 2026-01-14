@@ -1,0 +1,117 @@
+REPLIT AGENT TASK: Make Avery sound like “Luna” (human intonation + empathic micro-turns)
+
+GOAL
+Update Avery’s voice behavior to match the “Luna” demo vibe: warm, sensitive, short human turns, and rising intonation on questions (achieved via text shaping + punctuation + pacing).
+
+Key behaviors to replicate:
+- Empathy first (“Oh no… I’m so sorry… that sounds really rough.”)
+- Short sentences, natural rhythm, subtle concern
+- Questions sound like questions (rising intonation) by repeating key facts: “And you’re at the hospital?”
+- Gentle confirmation + spelling/number confirmation: “Just to confirm…”
+- Calm transition to transfer: “I’ll connect you… it might take a minute… please hold…”
+
+STEP 1 — FIND WHERE AVERY IS DEFINED
+Search repo for:
+- Avery
+- voice agent
+- system prompt
+- instructions
+- realtime
+- session.update
+- response.create
+- voice
+- tts
+- speak
+- textToSpeech
+
+Identify the single source of truth for:
+1) Avery’s system/behavior prompt
+2) The final speech output path (the last string sent to OpenAI Realtime/TTS)
+
+STEP 2 — IMPLEMENT A “LUNA-STYLE SPEECH FORMATTER” (TEXT SHAPING LAYER)
+Create a utility (use closest existing structure):
+- server/agents/formatters/lunaStyle.ts (or equivalent)
+
+Implement:
+- formatForVoice(text: string, context?: { callerName?: string }) => string
+
+Formatter rules:
+1) SHORTEN CADENCE
+   - Break long sentences into shorter ones where safe.
+   - Prefer periods over long comma chains.
+
+2) QUESTION-RISE CUES
+   - Ensure all questions end with “?”
+   - Add micro-pauses before “?” with small clause breaks.
+   - When context indicates a major fact (hospital/injury/urgent condition), convert/insert a repeat-back question:
+     Example: “And you’re at the hospital?”
+
+3) MICRO-EMPATHY (LIMITED)
+   - After a serious fact, insert 1–2 short empathic sentences max, then continue intake.
+     Examples:
+     - “Oh no, {Name}. I’m so sorry.”
+     - “That sounds really rough.”
+     - “Are you okay?”
+
+   IMPORTANT: Do NOT add filler words (um/uh). Keep it clean and confident.
+
+4) HUMAN CONFIRMATIONS
+   - For confirming phone/name/spelling, format as:
+     “Just to confirm, that’s H-I-L-T-O-N… and 850…”
+   - Use ellipses for short pauses.
+
+5) TRANSFER PACING
+   - Before transfer, use short lines:
+     “Okay. I’m going to connect you with an attorney now.”
+     “It might take a minute.”
+     “Please hold, and someone will be with you shortly.”
+
+STEP 3 — UPDATE AVERY’S SYSTEM PROMPT (VOICE DELIVERY SECTION)
+Add an explicit “Voice Delivery” section:
+- Warm, emotionally present, not performative
+- Short sentences; one question at a time
+- Empathy pattern: acknowledge (1 sentence) → stabilize (1 sentence) → proceed
+- Use rising intonation cues by repeating key facts back as questions
+- Avoid legalese; conversational and precise
+- No filler words (“um/uh”); no over-apologizing
+
+Add example templates (not required verbatim, but to guide style):
+- “Oh no, Ethan. I’m so sorry to hear that. Are you okay?”
+- “And you’re at the hospital?”
+- “That sounds really rough.”
+- “Can I get your full name and the best phone number to reach you?”
+- “Just to confirm, that’s…”
+- “Please hold—someone will be with you shortly.”
+
+STEP 4 — WIRE FORMATTER INTO THE FINAL SPEECH OUTPUT PATH (CRITICAL)
+Wherever text is sent to the voice model/TTS, call formatForVoice() immediately before output.
+
+Possible integration points:
+- OpenAI Realtime: format text passed into response.create (assistant content).
+- Server-side speak()/say(): format inside that function.
+- If separate “agent text” vs “spoken text”: format only the spoken channel.
+
+Add a feature flag to toggle:
+- AVERY_LUNA_STYLE=true
+
+STEP 5 — ADD BASIC TESTS
+Add unit tests for the formatter (Jest or existing test framework):
+- Questions always end with “?”
+- Long sentences are split into shorter ones
+- Confirmation lines include “Just to confirm” and ellipses pauses
+- Ensure it does NOT inject “um” or “uh”
+
+STEP 6 — ACCEPTANCE CRITERIA (MUST BE VERIFIABLE)
+In a simulated call flow:
+1) Caller says “I’m at the hospital.”
+   Avery responds with empathy + repeat-back question:
+   “And you’re at the hospital?” (or equivalent)
+
+2) Questions consistently sound like questions (punctuation + pacing).
+3) Avery speaks in short, human cadence (no giant paragraphs).
+4) Name/phone confirmation uses “Just to confirm…” cadence.
+5) No filler words added.
+
+DELIVERABLES
+- One PR/commit with: prompt update + formatter + wiring + tests + feature flag
+- Note exact files changed and how to toggle AVERY_LUNA_STYLE

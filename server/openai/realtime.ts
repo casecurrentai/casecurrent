@@ -1,8 +1,13 @@
 import WebSocket from "ws";
 import { executeToolCall, type ToolCallContext } from "../agent/toolRunner";
 import { prisma } from "../db";
+import { formatForVoice, type LunaStyleContext } from "../agent/formatters/lunaStyle";
 
 const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime";
+
+const isLunaStyleEnabled = (): boolean => {
+  return process.env.AVERY_LUNA_STYLE === "true";
+};
 
 interface RealtimeSession {
   ws: WebSocket;
@@ -11,6 +16,16 @@ interface RealtimeSession {
   connected: boolean;
   transcriptBuffer: string[];
   processedToolCalls: Set<string>;
+  emotionalContext?: {
+    isEmergency: boolean;
+    isSeriou: boolean;
+    keyword?: string;
+    callerName?: string;
+  };
+  pendingResponseText: string;
+  lastCallerUtterance: string;
+  awaitingEmpathyIntervention: boolean;
+  empathyDelivered: boolean;
 }
 
 const activeSessions = new Map<string, RealtimeSession>();
@@ -47,6 +62,10 @@ export async function startRealtimeSession(
     connected: false,
     transcriptBuffer: [],
     processedToolCalls: new Set(),
+    pendingResponseText: "",
+    lastCallerUtterance: "",
+    awaitingEmpathyIntervention: false,
+    empathyDelivered: false,
   };
 
   activeSessions.set(callId, session);
@@ -74,14 +93,22 @@ export async function startRealtimeSession(
 }
 
 function sendInitialGreeting(session: RealtimeSession): void {
+  let greetingInstructions = "Greet the caller warmly and introduce yourself as Avery. State the required disclaimers naturally about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.";
+  
+  if (isLunaStyleEnabled()) {
+    greetingInstructions = `Greet the caller warmly. Say something like: "Hi, this is Avery. Before we get started, I should mention I'm an AI assistant, not an attorney. This call doesn't create an attorney-client relationship and I can't give legal advice. But I can help gather your information so an attorney can review your case. How can I help you today?"
+
+Keep it natural and conversational. Short sentences. Warm tone.`;
+  }
+  
   sendMessage(session, {
     type: "response.create",
     response: {
       modalities: ["text", "audio"],
-      instructions: "Greet the caller warmly and introduce yourself as CaseCurrent AI. State the required disclaimers about not being an attorney and not creating an attorney-client relationship. Then ask how you can help them today.",
+      instructions: greetingInstructions,
     },
   });
-  console.log(`[Realtime] Initial greeting sent for call ${session.callId}`);
+  console.log(`[Realtime] Initial greeting sent for call ${session.callId} (luna_style=${isLunaStyleEnabled()})`);
 }
 
 function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
@@ -104,10 +131,6 @@ function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
       console.log(`[Realtime] Session updated for call ${session.callId}`);
       break;
 
-    case "response.created":
-      console.log(`[Realtime] Response started for call ${session.callId}`);
-      break;
-
     case "response.audio_transcript.delta":
       if (event.delta) {
         session.transcriptBuffer.push(`[AI]: ${event.delta}`);
@@ -123,8 +146,39 @@ function handleRealtimeMessage(session: RealtimeSession, data: Buffer): void {
     case "conversation.item.input_audio_transcription.completed":
       if (event.transcript) {
         session.transcriptBuffer.push(`[Caller]: ${event.transcript}`);
+        session.lastCallerUtterance = event.transcript;
         console.log(`[Realtime] Caller said: ${event.transcript}`);
+        
+        if (isLunaStyleEnabled()) {
+          const previouslyDetected = session.emotionalContext?.keyword;
+          detectEmotionalContext(session, event.transcript);
+          
+          if (session.emotionalContext?.isEmergency && 
+              session.emotionalContext.keyword !== previouslyDetected &&
+              !session.empathyDelivered) {
+            console.log(`[Realtime] [Luna] Emergency detected! Flagging for empathy intervention`);
+            session.awaitingEmpathyIntervention = true;
+          }
+        }
       }
+      break;
+
+    case "response.created":
+      console.log(`[Realtime] Response started for call ${session.callId}`);
+      if (isLunaStyleEnabled() && session.awaitingEmpathyIntervention) {
+        const responseId = event.response?.id;
+        console.log(`[Realtime] [Luna] INTERCEPTING: Canceling auto-response ${responseId} to inject empathy`);
+        injectEmpathyResponse(session, responseId);
+        session.awaitingEmpathyIntervention = false;
+        session.empathyDelivered = true;
+      }
+      break;
+
+    case "response.done":
+      if (isLunaStyleEnabled() && session.emotionalContext) {
+        console.log(`[Realtime] [Luna] Response completed with emotional context: ${session.emotionalContext.keyword}`);
+      }
+      session.pendingResponseText = "";
       break;
 
     case "response.function_call_arguments.done":
@@ -188,9 +242,26 @@ async function handleFunctionCall(session: RealtimeSession, event: any): Promise
     },
   });
 
-  sendMessage(session, {
+  const responsePayload: any = {
     type: "response.create",
-  });
+  };
+
+  if (isLunaStyleEnabled()) {
+    let instructions = "Continue the conversation naturally. Short sentences, one question at a time, warm and present tone.";
+    
+    if (session.emotionalContext?.isEmergency) {
+      instructions = `The caller mentioned something difficult (${session.emotionalContext.keyword}). Before continuing, briefly acknowledge their situation with empathy: "I'm so sorry to hear that" or "That sounds really difficult." Then gently proceed with one question. Short sentences, warm tone.`;
+    } else if (session.emotionalContext?.isSeriou) {
+      instructions = `The caller is dealing with a serious matter (${session.emotionalContext.keyword}). Be warm and understanding. Acknowledge briefly if not already done, then continue with one question at a time. Short sentences.`;
+    }
+    
+    responsePayload.response = {
+      modalities: ["text", "audio"],
+      instructions,
+    };
+  }
+
+  sendMessage(session, responsePayload);
 }
 
 function sendMessage(session: RealtimeSession, message: any): void {
@@ -199,6 +270,74 @@ function sendMessage(session: RealtimeSession, message: any): void {
   } else {
     console.warn(`[Realtime] WebSocket not open for call ${session.callId}`);
   }
+}
+
+const EMERGENCY_KEYWORDS = [
+  'hospital', 'emergency', 'hurt', 'injured', 'accident', 'pain',
+  'bleeding', 'died', 'death', 'dying', 'surgery', 'icu', 'ambulance',
+  'arrested', 'jail', 'custody', 'crisis', 'scared', 'afraid'
+];
+
+const SERIOUS_KEYWORDS = [
+  'fired', 'evicted', 'divorce', 'custody', 'foreclosure', 'bankrupt',
+  'discrimination', 'harassment', 'assault', 'abuse', 'threatening'
+];
+
+function detectEmotionalContext(session: RealtimeSession, transcript: string): void {
+  const lower = transcript.toLowerCase();
+  
+  for (const keyword of EMERGENCY_KEYWORDS) {
+    if (lower.includes(keyword)) {
+      session.emotionalContext = {
+        isEmergency: true,
+        isSeriou: true,
+        keyword
+      };
+      console.log(`[Realtime] [Luna] Detected emergency keyword: ${keyword}`);
+      return;
+    }
+  }
+  
+  for (const keyword of SERIOUS_KEYWORDS) {
+    if (lower.includes(keyword)) {
+      session.emotionalContext = {
+        isEmergency: false,
+        isSeriou: true,
+        keyword
+      };
+      console.log(`[Realtime] [Luna] Detected serious keyword: ${keyword}`);
+      return;
+    }
+  }
+}
+
+function injectEmpathyResponse(session: RealtimeSession, responseId?: string): void {
+  if (responseId) {
+    sendMessage(session, {
+      type: "response.cancel",
+      response_id: responseId,
+    });
+    console.log(`[Realtime] [Luna] Cancelled response: ${responseId}`);
+  }
+  
+  const keyword = session.emotionalContext?.keyword || "situation";
+  const empathyText = formatForVoice(
+    `Oh no. I'm so sorry to hear that. Are you okay?`,
+    { isEmergency: true }
+  );
+  
+  console.log(`[Realtime] [Luna] Injecting empathy response for keyword: ${keyword}`);
+  console.log(`[Realtime] [Luna] Empathy text to speak: "${empathyText}"`);
+  
+  sendMessage(session, {
+    type: "response.create",
+    response: {
+      modalities: ["text", "audio"],
+      instructions: `IMPORTANT: First, speak this EXACT empathy response out loud: "${empathyText}"
+
+After speaking that, pause briefly, then gently ask one question to continue gathering information about their ${keyword} situation. Keep responses short and warm.`,
+    },
+  });
 }
 
 async function saveTranscript(session: RealtimeSession): Promise<void> {
