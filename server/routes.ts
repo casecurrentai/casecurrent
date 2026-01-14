@@ -8241,10 +8241,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: Token summary for current user's org
    */
   app.get('/v1/devices/debug', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    // SECURITY: Disable entirely in production
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
     try {
       const user = req.user!;
       
-      // Only allow admin/owner roles
+      // Only allow admin/owner roles (dev only)
       if (!['admin', 'owner'].includes(user.role)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
