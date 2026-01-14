@@ -4482,9 +4482,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 </Response>`);
       }
 
-      console.log(
-        `[Twilio Voice] [${requestId}] MATCH FOUND: e164=${phoneNumber.e164} orgId=${phoneNumber.orgId}`
-      );
+      console.log(JSON.stringify({
+        event: 'inbound_call_org_resolved',
+        requestId,
+        orgId: phoneNumber.orgId,
+        phoneE164Last4: phoneNumber.e164.slice(-4),
+      }));
 
       const orgId = phoneNumber.orgId;
 
@@ -4511,6 +4514,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         orderBy: { createdAt: 'desc' },
       });
 
+      const leadCreated = !lead;
       if (!lead) {
         lead = await prisma.lead.create({
           data: {
@@ -4522,6 +4526,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           },
         });
       }
+
+      console.log(JSON.stringify({
+        event: 'inbound_call_lead_upsert',
+        requestId,
+        leadId: lead.id,
+        contactId: contact.id,
+        created: leadCreated,
+      }));
 
       const interaction = await prisma.interaction.create({
         data: {
@@ -4601,19 +4613,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (activeOnCallUser) {
         // Route to on-call user only
-        console.log(`[Twilio Voice] [${requestId}] On-call routing: notifying user ${activeOnCallUser.id}`);
+        console.log(JSON.stringify({
+          event: 'inbound_call_notify_target',
+          requestId,
+          targetType: 'oncall_user',
+          userId: activeOnCallUser.id,
+        }));
         
         // Emit WS event to on-call user only
         const wsSent = emitToUser(activeOnCallUser.id, callEventPayload);
-        console.log(`[Twilio Voice] [${requestId}] WS sent to ${wsSent} connections for on-call user`);
         
-        // Send push to on-call user only (fire-and-forget)
-        sendIncomingCallPushToUser(activeOnCallUser.id, lead.id, CallSid, From).catch((err) => {
-          console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
-        });
+        // Send push to on-call user only
+        sendIncomingCallPushToUser(activeOnCallUser.id, lead.id, CallSid, From)
+          .then((result) => {
+            console.log(JSON.stringify({
+              event: 'inbound_call_push_result',
+              requestId,
+              sent: result.sent,
+              failed: result.failed,
+              targetType: 'oncall_user',
+            }));
+          })
+          .catch((err) => {
+            console.error(JSON.stringify({
+              event: 'inbound_call_push_error',
+              requestId,
+              error: err?.message || 'unknown',
+            }));
+          });
       } else {
         // Fallback: notify all org admins and log warning
-        console.warn(`[Twilio Voice] [${requestId}] WARNING: No active on-call user for org ${orgId}. Notifying all org users.`);
+        const fallbackReason = org?.onCallUserId ? 'oncall_user_inactive' : 'oncall_not_configured';
+        console.log(JSON.stringify({
+          event: 'inbound_call_notify_target',
+          requestId,
+          targetType: 'org_fallback',
+          reason: fallbackReason,
+          orgId,
+        }));
         
         // Log distinct analytics event for missing on-call (for monitoring/alerting)
         logAnalyticsEvent({
@@ -4621,7 +4658,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           type: 'call.incoming',
           payload: {
             oncall_fallback: true,
-            reason: org?.onCallUserId ? 'oncall_user_inactive' : 'oncall_not_configured',
+            reason: fallbackReason,
             callSid: CallSid,
             leadId: lead.id,
           },
@@ -4632,7 +4669,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         
         // Send push to all org devices (fallback)
         sendIncomingCallPush(orgId, lead.id, CallSid, From).catch((err) => {
-          console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
+          console.error(JSON.stringify({
+            event: 'inbound_call_push_error',
+            requestId,
+            error: err?.message || 'unknown',
+          }));
         });
       }
 
