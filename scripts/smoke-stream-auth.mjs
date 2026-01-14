@@ -11,8 +11,9 @@ async function testTwiMLGeneration() {
   
   // Test 1: TwiML generation
   console.log('1. Testing TwiML generation...');
+  const uniqueCallSid = `CA${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
   const formData = new URLSearchParams({
-    CallSid: 'CAtest123456789',
+    CallSid: uniqueCallSid,
     To: '+18443214257',
     From: '+15551234567',
     CallStatus: 'ringing'

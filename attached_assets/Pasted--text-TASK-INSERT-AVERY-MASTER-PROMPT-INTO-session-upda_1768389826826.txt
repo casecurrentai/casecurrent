@@ -1,0 +1,64 @@
+`````text
+TASK: INSERT “AVERY MASTER PROMPT” INTO session.update INSTRUCTIONS SAFELY + VERIFY IT’S ACTIVE
+
+Goal
+Replace the existing `session.update.session.instructions` with the Avery Master Prompt we will provide, using correct JS/TS string syntax (no broken backticks, no stray quotes, no markdown code fences that might be spoken aloud). Then double-check that production call flow is using this updated prompt.
+
+Non-negotiable requirements
+1) DO NOT include triple-backtick code fences (```text) inside the `instructions` string.
+2) `instructions` MUST be a single valid template literal using backticks:
+   instructions: `...`
+3) `${generateVoicePromptInstructions()}` MUST be inside the same template literal, at the end.
+4) Replace smart quotes with straight quotes inside the prompt (optional but recommended for voice stability).
+5) Add a small server-side log line (not spoken) at runtime confirming the exact prompt being loaded.
+
+Exact implementation steps
+A) Find the real session.update location
+- Search repo for: `type: 'session.update'` and/or `type: "session.update"`
+- Identify the PRIMARY call path used for live voice calls (Twilio realtime / websocket / agent session creation).
+- Report the file path and function name.
+
+B) Replace the `instructions` value correctly
+- In that `session.update` payload, replace ONLY the `instructions:` field with this exact structure:
+
+instructions: `<<PASTE AVERY MASTER PROMPT HERE>>
+${generateVoicePromptInstructions()}
+`,
+
+IMPORTANT:
+- The prompt must be pasted directly after the first backtick.
+- The closing backtick must be on its own line after `${generateVoicePromptInstructions()}` (as shown).
+- Do not add extra quotes like '' or "" after the backtick.
+- Do not use ````text or ```text.
+- Ensure there are no mismatched delimiters.
+
+C) Add verification logging (server-side only)
+Right before sending the session.update payload (or immediately after constructing it), add:
+console.log("[PROMPT_ACTIVE] AVERY_MASTER_PROMPT injected into session.update");
+
+If the code builds instructions in a variable, also log:
+console.log("[PROMPT_LEN]", instructions.length);
+
+D) Double-check prompt is truly used at runtime
+- Confirm that the code path you edited is executed during a real inbound call.
+- If there are multiple session.update blocks (dev/test/prod), ensure the production one is updated.
+- If prompt can come from DB/env/other module, confirm your change overrides it.
+
+E) Output a proof report
+Return:
+1) The exact file path and code excerpt showing the corrected `instructions: \`...\`` block (15–30 lines).
+2) Where the log line was added.
+3) A one-step verification checklist for Mike:
+   - Make a test call
+   - Watch logs
+   - Confirm seeing: “[PROMPT_ACTIVE] AVERY_MASTER_PROMPT injected into session.update”
+   - (Optional) confirm prompt length log is non-zero and stable.
+
+Constraints
+- Do not refactor names across the codebase.
+- Do not change Twilio wiring, endpoints, or tool schemas.
+- Only touch what’s required to safely insert the prompt and verify it’s active.
+
+Awaiting prompt text
+After you confirm the correct file/location, I (Mike) will paste the full “AVERY MASTER PROMPT” text for you to insert exactly where instructed.
+`````

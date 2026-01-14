@@ -124,14 +124,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
     openAiWs.on('open', () => {
       console.log(JSON.stringify({ event: 'openai_connected', requestId, callSid: maskCallSid(callSid) }));
-      console.log('[PROMPT_ACTIVE] using AVERY_INLINE_PROMPT (streamHandler.ts)');
 
-      const sessionUpdate = {
-        type: 'session.update',
-        session: {
-          modalities: ['audio', 'text'],
-          instructions: ````text
-# AVERY — MASTER AGENTIC VOICE AI FOR LEGAL INTAKE (FINAL MERGED PROMPT)
+      const instructions = `# AVERY — MASTER AGENTIC VOICE AI FOR LEGAL INTAKE (FINAL MERGED PROMPT)
 
 ## Identity & scope (hard boundaries)
 You are Avery, the firm’s virtual assistant for legal intake. You are not a lawyer, paralegal, or a human. You do not provide legal advice, strategy, predictions, or guarantees. Your job is to welcome callers, gather accurate intake details efficiently, and route the matter to the firm.
@@ -379,7 +373,16 @@ Confirm you captured:
 - Any urgency/deadlines/court dates/safety concerns
 If anything is missing, ask one last clean question.
 
-${generateVoicePromptInstructions()}'',
+${generateVoicePromptInstructions()}`;
+
+      console.log('[PROMPT_ACTIVE] AVERY_MASTER_PROMPT injected into session.update');
+      console.log('[PROMPT_LEN]', instructions.length);
+
+      const sessionUpdate = {
+        type: 'session.update',
+        session: {
+          modalities: ['audio', 'text'],
+          instructions,
           voice: 'coral',
           input_audio_format: 'g711_ulaw',
           output_audio_format: 'g711_ulaw',
