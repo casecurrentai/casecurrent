@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:5000";
 
@@ -20,20 +21,20 @@ describe("Twilio Voice Webhook", () => {
       body: formData.toString(),
     });
 
-    expect(response.status).toBe(200);
+    assert.strictEqual(response.status, 200);
 
     const contentType = response.headers.get("content-type") || "";
-    expect(contentType).toContain("text/xml");
+    assert.ok(contentType.includes("text/xml"));
 
     const body = await response.text();
-    expect(body).toContain("<Response>");
-    expect(body).toContain("</Response>");
+    assert.ok(body.includes("<Response>"));
+    assert.ok(body.includes("</Response>"));
 
     const hasStream = body.includes("<Stream");
     const hasRecord = body.includes("<Record");
     const hasSay = body.includes("<Say");
 
-    expect(hasStream || hasRecord || hasSay).toBe(true);
+    assert.ok(hasStream || hasRecord || hasSay);
 
     console.log("TwiML Response:", body);
   });
@@ -49,34 +50,34 @@ describe("Twilio Voice Webhook", () => {
       body: formData.toString(),
     });
 
-    expect(response.status).toBe(200);
+    assert.strictEqual(response.status, 200);
 
     const contentType = response.headers.get("content-type") || "";
-    expect(contentType).toContain("text/xml");
+    assert.ok(contentType.includes("text/xml"));
 
     const body = await response.text();
-    expect(body).toContain("<Response>");
-    expect(body).toContain("</Response>");
+    assert.ok(body.includes("<Response>"));
+    assert.ok(body.includes("</Response>"));
   });
 
   it("diag endpoint returns ok status", async () => {
     const response = await fetch(`${BASE_URL}/v1/telephony/twilio/voice/diag`);
 
-    expect(response.status).toBe(200);
+    assert.strictEqual(response.status, 200);
 
     const json = await response.json();
-    expect(json.ok).toBe(true);
-    expect(json.now).toBeDefined();
+    assert.strictEqual(json.ok, true);
+    assert.ok(json.now !== undefined);
   });
 
   it("stream diag endpoint returns ok status", async () => {
     const response = await fetch(`${BASE_URL}/v1/telephony/twilio/stream/diag`);
 
-    expect(response.status).toBe(200);
+    assert.strictEqual(response.status, 200);
 
     const json = await response.json();
-    expect(json.ok).toBe(true);
-    expect(json.now).toBeDefined();
-    expect(json.envHasOpenAIKey).toBeDefined();
+    assert.strictEqual(json.ok, true);
+    assert.ok(json.now !== undefined);
+    assert.ok(json.envHasOpenAIKey !== undefined);
   });
 });

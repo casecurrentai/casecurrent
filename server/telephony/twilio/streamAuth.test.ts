@@ -1,3 +1,5 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
 import { generateStreamToken, verifyStreamToken } from './streamHandler';
 
 describe('Stream Authentication', () => {
@@ -8,20 +10,20 @@ describe('Stream Authentication', () => {
       const ts = 1700000000;
       const token1 = generateStreamToken(testSecret, ts);
       const token2 = generateStreamToken(testSecret, ts);
-      expect(token1).toBe(token2);
-      expect(token1).toHaveLength(64);
+      assert.strictEqual(token1, token2);
+      assert.strictEqual(token1.length, 64);
     });
 
     it('generates different tokens for different timestamps', () => {
       const token1 = generateStreamToken(testSecret, 1700000000);
       const token2 = generateStreamToken(testSecret, 1700000001);
-      expect(token1).not.toBe(token2);
+      assert.notStrictEqual(token1, token2);
     });
 
     it('generates different tokens for different secrets', () => {
       const token1 = generateStreamToken('secret-a', 1700000000);
       const token2 = generateStreamToken('secret-b', 1700000000);
-      expect(token1).not.toBe(token2);
+      assert.notStrictEqual(token1, token2);
     });
   });
 
@@ -29,24 +31,24 @@ describe('Stream Authentication', () => {
     it('returns true for valid token', () => {
       const ts = 1700000000;
       const token = generateStreamToken(testSecret, ts);
-      expect(verifyStreamToken(testSecret, ts, token)).toBe(true);
+      assert.strictEqual(verifyStreamToken(testSecret, ts, token), true);
     });
 
     it('returns false for invalid token', () => {
       const ts = 1700000000;
-      expect(verifyStreamToken(testSecret, ts, 'invalid-token')).toBe(false);
+      assert.strictEqual(verifyStreamToken(testSecret, ts, 'invalid-token'), false);
     });
 
     it('returns false for token with wrong timestamp', () => {
       const ts = 1700000000;
       const token = generateStreamToken(testSecret, ts);
-      expect(verifyStreamToken(testSecret, ts + 1, token)).toBe(false);
+      assert.strictEqual(verifyStreamToken(testSecret, ts + 1, token), false);
     });
 
     it('returns false for token with wrong secret', () => {
       const ts = 1700000000;
       const token = generateStreamToken(testSecret, ts);
-      expect(verifyStreamToken('wrong-secret', ts, token)).toBe(false);
+      assert.strictEqual(verifyStreamToken('wrong-secret', ts, token), false);
     });
   });
 });
@@ -68,10 +70,10 @@ describe('TwiML Parameter Authentication', () => {
   </Connect>
 </Response>`;
 
-    expect(twiml).toContain('<Parameter name="auth_token"');
-    expect(twiml).toContain('<Parameter name="ts"');
-    expect(twiml).toContain('<Parameter name="callSid"');
-    expect(twiml).not.toContain('?token=');
-    expect(twiml).not.toContain('&amp;token=');
+    assert.ok(twiml.includes('<Parameter name="auth_token"'));
+    assert.ok(twiml.includes('<Parameter name="ts"'));
+    assert.ok(twiml.includes('<Parameter name="callSid"'));
+    assert.ok(!twiml.includes('?token='));
+    assert.ok(!twiml.includes('&amp;token='));
   });
 });
