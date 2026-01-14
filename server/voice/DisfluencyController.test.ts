@@ -3,6 +3,7 @@ import {
   getConfig,
   DisfluencyConfig,
   generateVoicePromptInstructions,
+  DisfluencyTracker,
 } from './DisfluencyController';
 
 describe('DisfluencyController', () => {
@@ -358,6 +359,84 @@ describe('DisfluencyController', () => {
       }
 
       expect(violationCount).toBe(0);
+    });
+  });
+
+  describe('DisfluencyTracker', () => {
+    it('should block insertions when max per turn is reached', () => {
+      const tracker = new DisfluencyTracker();
+      const config: DisfluencyConfig = {
+        enabled: true,
+        probability: 1.0,
+        maxPerTurn: 1,
+        style: 'light',
+      };
+
+      expect(tracker.canInsert(config)).toBe(true);
+      tracker.recordInsertion();
+      expect(tracker.canInsert(config)).toBe(false);
+    });
+
+    it('should allow insertions after reset', () => {
+      const tracker = new DisfluencyTracker();
+      const config: DisfluencyConfig = {
+        enabled: true,
+        probability: 1.0,
+        maxPerTurn: 1,
+        style: 'light',
+      };
+
+      tracker.recordInsertion();
+      expect(tracker.canInsert(config)).toBe(false);
+      
+      tracker.reset();
+      expect(tracker.canInsert(config)).toBe(true);
+    });
+
+    it('should integrate with applyDisfluency to enforce rate limiting', () => {
+      const tracker = new DisfluencyTracker();
+      const config: DisfluencyConfig = {
+        enabled: true,
+        probability: 1.0,
+        maxPerTurn: 1,
+        style: 'light',
+      };
+
+      const result1 = applyDisfluency(
+        'This is a normal conversational response.',
+        undefined,
+        config,
+        tracker
+      );
+      expect(result1.insertedToken).not.toBeNull();
+
+      const result2 = applyDisfluency(
+        'This is another response in the same turn.',
+        undefined,
+        config,
+        tracker
+      );
+      expect(result2.insertedToken).toBeNull();
+      expect(result2.reason).toBe('rate_limited');
+    });
+
+    it('should enforce max per turn of 0', () => {
+      const tracker = new DisfluencyTracker();
+      const config: DisfluencyConfig = {
+        enabled: true,
+        probability: 1.0,
+        maxPerTurn: 0,
+        style: 'light',
+      };
+
+      const result = applyDisfluency(
+        'This is a normal conversational response.',
+        undefined,
+        config,
+        tracker
+      );
+      expect(result.insertedToken).toBeNull();
+      expect(result.reason).toBe('max_per_turn_zero');
     });
   });
 });

@@ -125,7 +125,8 @@ function insertFillerAtBoundary(text: string, filler: string): string {
 export function applyDisfluency(
   text: string,
   userMessage?: string,
-  config?: DisfluencyConfig
+  config?: DisfluencyConfig,
+  tracker?: DisfluencyTracker
 ): DisfluencyResult {
   const cfg = config || getConfig();
 
@@ -147,6 +148,18 @@ export function applyDisfluency(
       insertedToken: null,
       probabilityUsed: cfg.probability,
     };
+  }
+
+  if (tracker && !tracker.canInsert(cfg)) {
+    const result: DisfluencyResult = {
+      text,
+      eligible: false,
+      reason: 'rate_limited',
+      insertedToken: null,
+      probabilityUsed: cfg.probability,
+    };
+    logDebug(result);
+    return result;
   }
 
   const blockedCheck = hasBlockedContent(text);
@@ -201,6 +214,10 @@ export function applyDisfluency(
 
   const filler = selectFiller(cfg.style);
   const modifiedText = insertFillerAtBoundary(text, filler);
+
+  if (tracker) {
+    tracker.recordInsertion();
+  }
 
   const result: DisfluencyResult = {
     text: modifiedText,
@@ -258,10 +275,16 @@ export class DisfluencyTracker {
 
   canInsert(config: DisfluencyConfig): boolean {
     if (!config.enabled) return false;
-    if (this.fillerCountThisTurn >= config.maxPerTurn) return false;
 
     const now = Date.now();
-    if (now - this.lastFillerTime < this.minIntervalMs) return false;
+    const timeSinceLastFiller = now - this.lastFillerTime;
+
+    if (timeSinceLastFiller >= this.minIntervalMs) {
+      this.fillerCountThisTurn = 0;
+    }
+
+    if (this.fillerCountThisTurn >= config.maxPerTurn) return false;
+    if (this.lastFillerTime > 0 && timeSinceLastFiller < this.minIntervalMs) return false;
 
     return true;
   }
@@ -270,4 +293,10 @@ export class DisfluencyTracker {
     this.lastFillerTime = Date.now();
     this.fillerCountThisTurn++;
   }
+}
+
+const globalTracker = new DisfluencyTracker();
+
+export function getGlobalTracker(): DisfluencyTracker {
+  return globalTracker;
 }
