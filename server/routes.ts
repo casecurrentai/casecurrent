@@ -111,6 +111,8 @@ const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const startTime = Date.now();
 const BUILD_VERSION = 'v4-' + new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+const GIT_SHA = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || 'local';
+const BOOT_TIME = new Date().toISOString();
 
 // Intercept console.log/error to buffer logs
 console.log = (...args: any[]) => {
@@ -367,6 +369,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       count: events.length,
       totalRecorded: getEventCount(),
       events,
+    });
+  });
+
+  // Public build info endpoint (no secrets, no auth required)
+  app.get('/v1/diag/build', async (_req, res) => {
+    // Extract sanitized DB info from DATABASE_URL
+    let dbHost = 'unknown';
+    let dbName = 'unknown';
+    try {
+      const dbUrl = process.env.DATABASE_URL || '';
+      const match = dbUrl.match(/@([^:\/]+)[:\d]*\/([^?]+)/);
+      if (match) {
+        dbHost = match[1];
+        dbName = match[2];
+      }
+    } catch {}
+
+    res.json({
+      ok: true,
+      sha: GIT_SHA,
+      env: process.env.NODE_ENV || 'undefined',
+      bootTime: BOOT_TIME,
+      now: new Date().toISOString(),
+      buildVersion: BUILD_VERSION,
+      dbHost,
+      dbName,
     });
   });
 
