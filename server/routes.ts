@@ -776,13 +776,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ userId: null, name: null, email: null });
       }
 
-      const onCallUser = await prisma.user.findUnique({
-        where: { id: org.onCallUserId },
+      // Check if user exists AND is active
+      const onCallUser = await prisma.user.findFirst({
+        where: { id: org.onCallUserId, status: 'active' },
         select: { id: true, name: true, email: true },
       });
 
       if (!onCallUser) {
-        // User was deleted but reference remains - clear it
+        // User was deleted/deactivated but reference remains - auto-clear it
+        await prisma.organization.update({
+          where: { id: req.user!.orgId },
+          data: { onCallUserId: null },
+        });
+        console.log(`[On-Call] Auto-cleared stale on-call reference for org ${req.user!.orgId}`);
         return res.json({ userId: null, name: null, email: null });
       }
 
@@ -4506,28 +4512,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       };
 
+      // Verify on-call user exists and is active
+      let activeOnCallUser: { id: string } | null = null;
       if (org?.onCallUserId) {
+        activeOnCallUser = await prisma.user.findFirst({
+          where: { id: org.onCallUserId, status: 'active' },
+          select: { id: true },
+        });
+        
+        if (!activeOnCallUser) {
+          // On-call user is inactive/deleted - clear the reference
+          console.warn(`[Twilio Voice] [${requestId}] On-call user ${org.onCallUserId} is inactive/deleted. Clearing reference.`);
+          await prisma.organization.update({
+            where: { id: orgId },
+            data: { onCallUserId: null },
+          });
+        }
+      }
+
+      if (activeOnCallUser) {
         // Route to on-call user only
-        console.log(`[Twilio Voice] [${requestId}] On-call routing: notifying user ${org.onCallUserId}`);
+        console.log(`[Twilio Voice] [${requestId}] On-call routing: notifying user ${activeOnCallUser.id}`);
         
         // Emit WS event to on-call user only
-        const wsSent = emitToUser(org.onCallUserId, callEventPayload);
+        const wsSent = emitToUser(activeOnCallUser.id, callEventPayload);
         console.log(`[Twilio Voice] [${requestId}] WS sent to ${wsSent} connections for on-call user`);
         
         // Send push to on-call user only (fire-and-forget)
-        sendIncomingCallPushToUser(org.onCallUserId, lead.id, CallSid, From).catch((err) => {
+        sendIncomingCallPushToUser(activeOnCallUser.id, lead.id, CallSid, From).catch((err) => {
           console.error(`[Twilio Voice] [${requestId}] Push notification error:`, err);
         });
       } else {
         // Fallback: notify all org admins and log warning
-        console.warn(`[Twilio Voice] [${requestId}] WARNING: No on-call user set for org ${orgId}. Notifying all admins.`);
+        console.warn(`[Twilio Voice] [${requestId}] WARNING: No active on-call user for org ${orgId}. Notifying all org users.`);
         
-        // Log warning event for missing on-call
+        // Log distinct analytics event for missing on-call (for monitoring/alerting)
         logAnalyticsEvent({
           orgId,
           type: 'call.incoming',
           payload: {
-            warning: 'no_oncall_user_set',
+            oncall_fallback: true,
+            reason: org?.onCallUserId ? 'oncall_user_inactive' : 'oncall_not_configured',
             callSid: CallSid,
             leadId: lead.id,
           },
