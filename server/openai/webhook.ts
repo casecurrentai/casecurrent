@@ -643,6 +643,7 @@ async function acceptCallWithRetry(callId: string, requestId: string): Promise<A
     return { success: false, attempts: 0, error: "no_api_key" };
   }
 
+  console.log('[PROMPT_ACTIVE] using COUNSELTECH_INTAKE_PROMPT (webhook.ts)');
   const acceptConfig = {
     type: "realtime",
     model: "gpt-realtime",

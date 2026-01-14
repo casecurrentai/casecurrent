@@ -1,0 +1,55 @@
+TASK: CONFIRM WHETHER COUNSELTECH_INTAKE_PROMPT IS AVERY’S ACTIVE PRIMARY CONVERSATION RULES (PROD + DEV)
+
+Goal:
+Determine if `COUNSELTECH_INTAKE_PROMPT` (and the exported `VOICE_SETTINGS`) is the prompt/settings actually used when Avery answers calls in the deployed environment.
+
+Requirements:
+1) Locate the source file that exports:
+   - `COUNSELTECH_INTAKE_PROMPT`
+   - `VOICE_SETTINGS`
+   Report the full file path.
+
+2) Find every import/reference to `COUNSELTECH_INTAKE_PROMPT` across the repo.
+   - List each file path and the exact line(s) where it is imported/used.
+   - If it is not referenced anywhere, state that clearly.
+
+3) Identify the exact runtime entrypoint that handles live calls (Twilio webhook / realtime session / websocket handler).
+   - Find where the OpenAI Realtime session is created or updated (e.g., `session.update`, `instructions`, `system prompt`, etc.).
+   - Report the file path and show the exact code block where the prompt/instructions are set.
+
+4) Determine whether prompt selection is dynamic.
+   Check for any logic that chooses a prompt based on:
+   - env vars (e.g., PROMPT_VERSION, BRAND, MODE)
+   - database/org settings
+   - per-number config
+   - per-firm config
+   If found, explain what chooses what, and which branch runs in production.
+
+5) Add an explicit verification mechanism (do NOT break anything):
+   - Insert a unique non-user-facing marker into the active prompt path ONLY (preferred: logs; acceptable: prompt marker if logs are not feasible).
+   Options:
+     A) Log marker: When setting `instructions`, log:
+        `[PROMPT_ACTIVE] using COUNSELTECH_INTAKE_PROMPT`
+        or
+        `[PROMPT_ACTIVE] using <other prompt>`
+     B) Prompt marker: Add a line near the top of the prompt:
+        `[PROMPT_MARK: 2026-01-14-A]`
+        (Only if it will not be read aloud; if it might be spoken, DO NOT do this. Use logging instead.)
+
+6) Provide a short “How to verify” checklist for Mike:
+   - Exactly which endpoint/log line to check
+   - Exactly what he should see to confirm the active prompt
+
+Output format:
+- Section 1: Export location (path)
+- Section 2: All references/usages (paths + code lines)
+- Section 3: Live call entrypoint (path + code snippet)
+- Section 4: Prompt selection logic (if any)
+- Section 5: Verification change made (what/where)
+- Section 6: How Mike confirms in one test call
+
+Constraints:
+- Do not refactor or rename prompts yet.
+- Do not change branding identifiers.
+- Do not change core call flow behavior.
+- Only add minimal logging/marker necessary to confirm which prompt is active.

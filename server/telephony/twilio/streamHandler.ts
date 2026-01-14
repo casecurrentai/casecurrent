@@ -124,6 +124,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
     openAiWs.on('open', () => {
       console.log(JSON.stringify({ event: 'openai_connected', requestId, callSid: maskCallSid(callSid) }));
+      console.log('[PROMPT_ACTIVE] using AVERY_INLINE_PROMPT (streamHandler.ts)');
 
       const sessionUpdate = {
         type: 'session.update',
