@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { createHmac } from 'crypto';
+import { generateVoicePromptInstructions } from '../../voice/DisfluencyController';
 
 const OPENAI_REALTIME_URL =
   'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
@@ -293,7 +294,8 @@ If humor lands poorly:
 - Immediately return to neutral tone and proceed.
 
 CLOSING (verbatim)
-- “Thank you. I’m sending this to the team now.”`,
+- “Thank you. I’m sending this to the team now.”
+${generateVoicePromptInstructions()}`,
         voice: 'marin',
         input_audio_format: 'g711_ulaw',
         output_audio_format: 'g711_ulaw',

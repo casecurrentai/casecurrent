@@ -1,0 +1,48 @@
+TASK: Add controlled “natural speech” disfluencies (um/uh/so/like) to the voice assistant, with strict safeguards.
+
+CONTEXT:
+We want the assistant to sound slightly more casual/human by occasionally using light fillers (“um”, “uh”, “so”, “like”, short pauses), but we must avoid sounding incompetent, avoid overuse, and never use fillers in high-stakes/legal disclaimers, numbers, dates, addresses, money, or instructions.
+
+REQUIREMENTS:
+1) Implement a “DisfluencyController” that inserts optional fillers ONLY at safe boundaries:
+   - Before answering when the user asks a complex question (a “thinking” moment)
+   - When transitioning topics (“So, …”)
+   - When acknowledging + pivoting (“Yeah—so, …”)
+   - NEVER mid-number, mid-date, mid-name, mid-URL, mid-email, mid-phone number.
+2) Strict frequency caps:
+   - Max 1 filler per assistant turn by default.
+   - Max 1 filler per 12 seconds of speech (approx).
+   - Probability defaults: 12% chance per eligible turn (configurable by env var).
+3) Safety filters (hard block):
+   - If the response contains any of: phone numbers, addresses, dates, dollar amounts, percentages, legal disclaimers, or action steps (“click”, “go to”, “type”), then DISABLE fillers for that turn.
+   - If user tone is upset/urgent, reduce probability to near 0.
+4) Provide config:
+   - DISFLUENCY_ENABLED=true/false
+   - DISFLUENCY_PROB=0.12
+   - DISFLUENCY_MAX_PER_TURN=1
+   - DISFLUENCY_STYLE=“light” | “none” | “casual”
+5) Work for BOTH:
+   - Voice (Twilio media stream -> realtime model) by injecting into the text the model speaks.
+   - Text chat responses (optional) using the same controller.
+6) Proof:
+   - Add a debug log line for each assistant turn: eligible=true/false, reason, inserted_token, probability used.
+   - Provide a small test script or unit tests that show: (a) fillers sometimes appear, (b) never appear in blocked contexts.
+
+IMPLEMENTATION GUIDANCE (choose best fit):
+A) If we control the system prompt for the voice model:
+   - Add an instruction block: “Use rare, light disfluencies… follow caps… never in blocked contexts…”
+   - AND still keep server-side DisfluencyController as a final post-processor for safety.
+B) If we stream model output in chunks:
+   - Insert disfluency ONLY at the beginning of a turn or after a sentence boundary (period/newline), never mid-token.
+
+DELIVERABLES:
+- New module: packages/server/src/voice/DisfluencyController.ts (or closest path in repo)
+- Integration point: wherever we generate final assistant text before sending to the voice output / realtime session.
+- Env var wiring and defaults.
+- Unit tests (jest) or a simple node script that runs 200 turns and reports insertion rate + violations (should be 0 violations).
+- Commit with message: “Add controlled disfluencies for natural speech”
+
+DO NOT:
+- Do not change core telephony/websocket logic.
+- Do not add fillers inside legal/compliance disclosures or numeric content.
+- Do not add more than one filler per response.
