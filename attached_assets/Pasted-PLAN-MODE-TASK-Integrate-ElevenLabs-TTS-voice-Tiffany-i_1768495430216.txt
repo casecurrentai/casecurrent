@@ -1,0 +1,91 @@
+PLAN MODE TASK: Integrate ElevenLabs TTS voice “Tiffany” into CaseCurrent’s Twilio + OpenAI Realtime call flow (callers must hear Tiffany), and produce a complete codebase-oriented implementation plan + questions + repo map.
+
+High-level goal (non-negotiable)
+- CaseCurrent inbound phone calls (Twilio) must route to our server via Media Streams.
+- OpenAI Realtime remains the “brain” (transcription + reasoning) but MUST output TEXT (not audio).
+- ElevenLabs TTS (Tiffany voice_id=6aDn1KB0hjpdcocrUkmq) becomes the “mouth”.
+- Server streams ElevenLabs audio back to Twilio as base64 μ-law 8kHz frames (ulaw_8000).
+- Barge-in must work: caller speech interrupts Avery (send Twilio “clear” and abort TTS).
+
+Important constraints (you must incorporate)
+- You (Replit) do NOT have access to the user’s OpenAI platform account or Twilio dashboard.
+- You must therefore:
+  (a) identify exactly what secrets/values the user must provide in Replit Secrets,
+  (b) identify exactly what Twilio Console settings the user must change,
+  (c) implement all code changes on your side, but do not assume you can create external resources.
+
+Deliverable format (Plan Mode output)
+1) REPO MAP (codebase summary)
+   - Provide a concise but precise map of all relevant modules/files:
+     - Twilio inbound webhook/TwiML generator
+     - Twilio Media Streams websocket handler
+     - OpenAI Realtime session creation / stream bridge
+     - Any current TTS/audio output path (OpenAI audio) that must be removed/disabled
+     - Any config layers (env, per-firm config, phone-number mapping)
+   - For each file: explain its purpose and the key functions/entrypoints.
+
+2) CURRENT STATE (what the code does today)
+   - Step-by-step call flow: Twilio → our server → OpenAI Realtime → back to Twilio
+   - Explicitly answer:
+     - Does OpenAI currently generate audio output that is sent to Twilio?
+     - Where is the “event:'media'” outbound frame sent back to Twilio?
+     - How is barge-in currently handled (if at all)?
+     - What audio codec/sample rate is currently used for outbound?
+
+3) TARGET STATE (what we need after changes)
+   - Step-by-step desired call flow and data formats.
+   - Explicitly state how/where OpenAI switches to text-only.
+   - Explicitly state how ElevenLabs generates ulaw_8000 and is streamed to Twilio.
+
+4) IMPLEMENTATION PLAN (minimal refactor, exact steps)
+   - List the code changes in strict sequence, with clear boundaries.
+   - Include:
+     - New module(s) to add for ElevenLabs TTS (path + function signatures).
+     - What to remove/disable regarding OpenAI audio output.
+     - Where to buffer “text deltas” and speak only final text.
+     - Barge-in implementation: when to send Twilio “clear” and how to cancel in-flight TTS.
+     - Turn/response ID guarding to prevent double-speaking.
+   - Include the dependencies you will add (SDK vs direct HTTP), and justify choice briefly.
+
+5) USER ACTIONS REQUIRED (external setup checklist)
+   A) Replit Secrets (exact names, no guessing)
+      - OPENAI_* variables required by this repo for Realtime
+      - ELEVENLABS_API_KEY
+      - ELEVENLABS_VOICE_ID_AVERY=6aDn1KB0hjpdcocrUkmq
+      - ELEVENLABS_MODEL_ID (tell the user how you will validate it)
+      - ELEVENLABS_OUTPUT_FORMAT=ulaw_8000
+      - Any Twilio secrets already used
+   B) Twilio Console changes (exactly what to click and where)
+      - The phone number’s “A Call Comes In” webhook URL (voice) must point to our inbound route.
+      - Confirm the TwiML response includes <Stream> pointing to our WS endpoint.
+      - Any required Twilio configuration details already assumed by repo (regions, etc.).
+   C) Verification steps
+      - Exactly what logs to look for.
+      - How to confirm Tiffany is used and OpenAI audio is not.
+      - How to confirm ulaw_8000 is actually being sent.
+
+6) QUESTIONS YOU MUST ASK (to de-risk)
+   - Ask the user only for information you truly need and cannot infer from code.
+   - Examples (use your own based on inspection):
+     - Which deployed environment does Twilio call (domain)?
+     - Where are secrets set for deployment vs dev?
+     - Which OpenAI Realtime model ID should be used?
+     - Which ElevenLabs model_id is available on their account?
+   - Keep questions short and answerable.
+
+7) “WHAT I NEED TO KNOW ABOUT THE CODEBASE” SUMMARY
+   - Provide a single consolidated summary of anything important, surprising, or risky you found:
+     - Any environment split risk
+     - Any duplicate call handlers
+     - Any codec mismatch risk
+     - Any concurrency/stream cancellation concerns
+     - Any places where Twilio expects strict message structure
+
+Hard requirements
+- Do NOT implement code yet. This is Plan Mode only.
+- You MUST locate and name the exact files and lines/sections involved.
+- You MUST identify any existing OpenAI audio output code path and state how it will be eliminated.
+- You MUST identify the exact Twilio WebSocket “media” send function(s).
+- You MUST propose the smallest safe change set.
+
+After you output the plan, wait for the user to provide the external values (keys, model IDs, Twilio URL confirmation) if needed, then proceed to implementation.

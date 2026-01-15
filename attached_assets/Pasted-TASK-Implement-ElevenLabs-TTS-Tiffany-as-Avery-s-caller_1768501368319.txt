@@ -1,0 +1,127 @@
+TASK: Implement ElevenLabs TTS (Tiffany) as Avery’s caller-heard voice for Twilio calls. OpenAI Realtime remains the “brain” (transcription + reasoning) but MUST output TEXT ONLY. ElevenLabs generates μ-law 8k (“ulaw_8000”) audio that we stream back to Twilio Media Streams.
+
+Voice details
+- ElevenLabs voice name: Tiffany
+- voice_id: 6aDn1KB0hjpdcocrUkmq
+
+Hard acceptance criteria (do not mark complete unless all pass)
+1) Callers to our Twilio test number hear Tiffany (not OpenAI voice).
+2) No OpenAI audio is forwarded to Twilio anywhere.
+3) Audio is clean (no static) → implies correct ulaw_8000 frames.
+4) Barge-in works: caller speech interrupts Avery quickly (Twilio “clear” + abort TTS).
+5) No double-speaking: only speak once per assistant response (speak only on response.done / final).
+
+Repo targets (likely)
+- server/routes.ts (Twilio voice webhook; returns TwiML with <Connect><Stream>)
+- server/telephony/twilio/streamHandler.ts (Twilio WS; current OpenAI audio bridge)
+- Create a new module: server/tts/elevenlabs.ts (or server/voice/elevenlabs.ts)
+
+A) Add ElevenLabs TTS module (new file)
+Create: server/tts/elevenlabs.ts
+
+Requirements:
+- Read env vars (no hardcoding):
+  - ELEVENLABS_API_KEY
+  - ELEVENLABS_VOICE_ID_AVERY (preferred) OR ELEVENLABS_VOICE_ID (fallback)
+  - ELEVENLABS_MODEL_ID (we will set to eleven_turbo_v2_5)
+  - ELEVENLABS_OUTPUT_FORMAT (must be ulaw_8000)
+- Provide a streaming API that yields raw ulaw bytes and supports abort:
+  - export async function streamTTS(text: string, opts?: { voiceId?: string; modelId?: string; outputFormat?: string; signal?: AbortSignal }, onChunk: (chunk: Uint8Array)=>void): Promise<void>
+- MUST request output_format="ulaw_8000" from ElevenLabs.
+- Use either:
+  (1) ElevenLabs streaming websocket endpoint (/stream-input), OR
+  (2) HTTP streaming response if available in your implementation.
+- Log (server-side only):
+  - [TTS] voice_id=... model_id=... format=...
+  - [TTS] start response_id=...
+  - [TTS] chunk bytes=...
+  - [TTS] complete response_id=...
+  - [TTS] aborted response_id=...
+
+B) Modify OpenAI Realtime session config in streamHandler.ts to TEXT ONLY
+In server/telephony/twilio/streamHandler.ts:
+
+1) Locate the OpenAI Realtime session.update / session config.
+2) Change the output to TEXT only:
+   - modalities must exclude audio output. Use: modalities: ['text']
+   - Keep input_audio_format: 'g711_ulaw' (Twilio inbound audio)
+   - REMOVE output_audio_format / voice setting (marin, etc.) and any audio output configuration.
+
+C) Remove/disable the OpenAI audio forwarding block
+In streamHandler.ts, find any handler for:
+- response.audio.delta
+- response.output_audio.delta
+- any “audio delta” event from OpenAI
+
+Delete that logic entirely (or gate behind feature flag disabled).
+This is the block that currently sends OpenAI audio directly to Twilio via:
+twilioWs.send({ event:'media', ...payload: audioBase64 })
+
+There must be ZERO remaining paths where OpenAI audio is forwarded to Twilio.
+
+D) Add text buffering and speak only on final
+Implement buffering for assistant text:
+- Accumulate deltas from the correct OpenAI Realtime events for text output
+  (e.g., response.text.delta / response.output_text.delta / response.content_part.delta — use the events your Realtime client actually emits).
+- Only trigger TTS on the final event for that response:
+  - On response.done (or equivalent) call ElevenLabs TTS with the full buffered text.
+
+Pseudo-structure:
+- let pendingText = '';
+- let currentResponseId: string | null = null;
+- let lastSpokenResponseId: string | null = null;
+
+On text delta:
+- pendingText += delta;
+- currentResponseId = response_id (if present)
+
+On response done:
+- if currentResponseId && currentResponseId !== lastSpokenResponseId:
+    lastSpokenResponseId = currentResponseId
+    await speakElevenLabs(pendingText)
+- pendingText = ''
+
+E) Stream ElevenLabs audio back to Twilio as media frames
+In streamHandler.ts, implement speakElevenLabs(text):
+- Create/refresh an AbortController for the TTS stream.
+- For each ulaw chunk returned:
+  - base64 encode raw bytes
+  - send: twilioWs.send(JSON.stringify({ event:'media', streamSid, media:{ payload } }))
+- After finish, send an optional Twilio “mark” event.
+
+F) Implement barge-in: clear Twilio + cancel OpenAI + abort ElevenLabs
+In the existing barge-in handler (where you already handle input_audio_buffer.speech_started):
+- Immediately send to Twilio:
+  { event: 'clear', streamSid }
+- Send to OpenAI:
+  { type: 'response.cancel' }
+- NEW: Abort ElevenLabs:
+  - if (ttsAbortController) ttsAbortController.abort()
+- Clear any buffered assistant text:
+  - pendingText = ''
+  - currentResponseId = null
+
+Also: ensure that if a new assistant response starts, any old TTS stream is aborted and Twilio is cleared before speaking again.
+
+G) Ensure Twilio voice webhook remains correct
+In server/routes.ts, /v1/telephony/twilio/voice should still return TwiML with <Connect><Stream> to the correct WSS endpoint.
+No changes needed unless it currently points to the wrong WS path.
+
+H) Add a minimal diagnostic log to prove we’re using Tiffany
+On call start (Twilio WS “start”):
+- Log: [TTS] configured voice_id=... model_id=... format=...
+This lets us verify secrets are loaded in the deployed environment Twilio calls.
+
+I) Provide “What I changed” summary
+After implementing, output:
+- Files changed list
+- Exact env var names the code expects (ELEVENLABS_*)
+- How to test:
+  1) set secrets
+  2) redeploy/restart
+  3) call number
+  4) confirm logs show Tiffany voice_id + turbo model + ulaw_8000
+
+IMPORTANT: Do not implement the OpenAI SIP webhook path (server/openai/webhook.ts) unless you confirm Twilio calls go through it. The test number uses /v1/telephony/twilio/voice and Media Streams; focus on that.
+
+Now implement the code changes with minimal refactor and keep existing auth/routing intact.
