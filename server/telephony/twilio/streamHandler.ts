@@ -3,6 +3,15 @@ import { IncomingMessage } from 'http';
 import { createHmac } from 'crypto';
 import { generateVoicePromptInstructions } from '../../voice/DisfluencyController';
 import { streamTTS, logTTSConfig, isTTSAvailable } from '../../tts/elevenlabs';
+import { prisma } from '../../db';
+
+// Phone number masking for logs
+function maskPhone(phone: string | null | undefined): string {
+  if (!phone) return '(none)';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '****';
+  return '****' + digits.slice(-4);
+}
 
 const OPENAI_REALTIME_URL =
   'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
@@ -627,10 +636,20 @@ ${generateVoicePromptInstructions()}`;
         callSid = message.start?.callSid || null;
         
         const customParams = message.start?.customParameters;
+        const paramFrom = customParams?.from || null;
+        const paramTo = customParams?.to || null;
+        const paramOrgId = customParams?.orgId || null;
+        const paramPhoneNumberId = customParams?.phoneNumberId || null;
+        
+        // [INBOUND_STREAM_START] - Log immediately on stream start
         console.log(JSON.stringify({ 
-          event: 'twilio_start', 
+          tag: '[INBOUND_STREAM_START]',
           requestId, 
           callSid: maskCallSid(callSid),
+          from: maskPhone(paramFrom),
+          to: maskPhone(paramTo),
+          orgId: paramOrgId,
+          phoneNumberId: paramPhoneNumberId,
           paramKeys: Object.keys(customParams || {}),
         }));
 
@@ -642,6 +661,173 @@ ${generateVoicePromptInstructions()}`;
 
         authenticated = true;
         console.log(JSON.stringify({ event: 'stream_authenticated', requestId, callSid: maskCallSid(callSid) }));
+        
+        // === Lead creation in stream handler ===
+        // This ensures leads are created even if the initial webhook failed or was skipped
+        (async () => {
+          try {
+            // Resolve orgId and phoneNumberId from customParameters or lookup by phone number
+            let orgId = paramOrgId;
+            let phoneNumberId = paramPhoneNumberId;
+            
+            if (!orgId && paramTo) {
+              // Normalize to E.164 and lookup
+              const digitsOnly = paramTo.replace(/\D/g, '');
+              const candidates: string[] = [paramTo];
+              if (digitsOnly) candidates.push('+' + digitsOnly);
+              if (digitsOnly.length === 10) candidates.push('+1' + digitsOnly);
+              
+              const phoneNumber = await prisma.phoneNumber.findFirst({
+                where: { e164: { in: candidates }, inboundEnabled: true },
+              });
+              
+              if (phoneNumber) {
+                orgId = phoneNumber.orgId;
+                phoneNumberId = phoneNumber.id; // Capture phoneNumberId from lookup
+                console.log(JSON.stringify({ 
+                  tag: '[TENANT_HIT]', 
+                  requestId, 
+                  orgId, 
+                  phoneNumberId: phoneNumber.id,
+                  to: maskPhone(paramTo),
+                }));
+              } else {
+                console.log(JSON.stringify({ 
+                  tag: '[TENANT_MISS]', 
+                  requestId, 
+                  to: maskPhone(paramTo),
+                  candidates: candidates.length,
+                }));
+              }
+            } else if (orgId) {
+              console.log(JSON.stringify({ 
+                tag: '[TENANT_HIT]', 
+                requestId, 
+                orgId,
+                phoneNumberId,
+                source: 'customParameters',
+              }));
+            }
+            
+            if (!orgId || !callSid) {
+              console.log(JSON.stringify({ 
+                event: 'lead_creation_skipped', 
+                requestId, 
+                reason: !orgId ? 'no_org_id' : 'no_call_sid',
+              }));
+              return;
+            }
+            
+            // Check if lead already exists for this callSid (idempotency)
+            const existingCall = await prisma.call.findUnique({
+              where: { twilioCallSid: callSid },
+              include: { lead: true },
+            });
+            
+            if (existingCall?.lead) {
+              console.log(JSON.stringify({ 
+                tag: '[LEAD_EXISTS]', 
+                requestId, 
+                leadId: existingCall.lead.id,
+                orgId: existingCall.lead.orgId,
+                callSid: maskCallSid(callSid),
+              }));
+              return;
+            }
+            
+            // Normalize phone numbers to E.164
+            const normalizedFrom = paramFrom?.replace(/\D/g, '') || '';
+            const fromE164 = normalizedFrom.length === 10 ? '+1' + normalizedFrom : 
+                            normalizedFrom.length === 11 && normalizedFrom.startsWith('1') ? '+' + normalizedFrom :
+                            normalizedFrom ? '+' + normalizedFrom : null;
+            
+            const normalizedTo = paramTo?.replace(/\D/g, '') || '';
+            const toE164 = normalizedTo.length === 10 ? '+1' + normalizedTo : 
+                          normalizedTo.length === 11 && normalizedTo.startsWith('1') ? '+' + normalizedTo :
+                          normalizedTo ? '+' + normalizedTo : paramTo;
+            
+            // Find or create contact for the caller
+            let contact = null;
+            if (fromE164) {
+              contact = await prisma.contact.findFirst({
+                where: { orgId, primaryPhone: fromE164 },
+              });
+              
+              if (!contact) {
+                contact = await prisma.contact.create({
+                  data: {
+                    orgId,
+                    primaryPhone: fromE164,
+                    name: 'Unknown Caller',
+                  },
+                });
+              }
+            } else {
+              // Create a placeholder contact if no phone
+              contact = await prisma.contact.create({
+                data: {
+                  orgId,
+                  name: 'Unknown Caller',
+                },
+              });
+            }
+            
+            // Create lead with status in_progress
+            const lead = await prisma.lead.create({
+              data: {
+                orgId,
+                contactId: contact.id,
+                status: 'in_progress',
+                source: 'phone',
+                summary: `Inbound call from ${maskPhone(paramFrom)}`,
+              },
+            });
+            
+            // Create interaction for the call
+            const interaction = await prisma.interaction.create({
+              data: {
+                orgId,
+                leadId: lead.id,
+                channel: 'call',
+                status: 'active',
+                startedAt: new Date(),
+              },
+            });
+            
+            // Create call record if we have phoneNumberId
+            if (phoneNumberId && toE164) {
+              await prisma.call.create({
+                data: {
+                  orgId,
+                  leadId: lead.id,
+                  interactionId: interaction.id,
+                  phoneNumberId,
+                  direction: 'inbound',
+                  provider: 'twilio',
+                  twilioCallSid: callSid,
+                  fromE164: fromE164 || 'unknown',
+                  toE164: toE164,
+                  startedAt: new Date(),
+                },
+              });
+            }
+            
+            console.log(JSON.stringify({ 
+              tag: '[LEAD_CREATED]', 
+              requestId, 
+              leadId: lead.id,
+              orgId,
+              contactId: contact?.id || null,
+              callSid: maskCallSid(callSid),
+            }));
+          } catch (err: any) {
+            console.error(JSON.stringify({ 
+              event: 'lead_creation_error', 
+              requestId, 
+              error: err?.message || String(err),
+            }));
+          }
+        })();
         
         // Log TTS configuration for diagnostics
         logTTSConfig();
