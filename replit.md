@@ -80,6 +80,19 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
     - Files: `server/agent/prompt.ts` (system prompt), `server/agent/formatters/lunaStyle.ts` (speech formatter)
 - **Modularity**: The monorepo structure and clear separation of concerns (frontend, backend, shared logic) promote maintainability and scalability.
 - **Log Masking**: Sensitive data (phone numbers, SIP URIs, project IDs, call SIDs) is automatically masked in logs across ALL environments by default. To disable for debugging, set `DISABLE_LOG_MASKING=true`. Masking utilities are in `server/utils/logMasking.ts`.
+- **Inbound Call Diagnostic Logging**: Structured logging tags for end-to-end call debugging:
+  - `[INBOUND]` - Immediate call receipt with callSid, from, to, direction, timestamp
+  - `[ENV]` - NODE_ENV, REPL_SLUG, RAILWAY_SHA, baseUrl
+  - `[DB]` - Database host, name, schema (no password)
+  - `[NORMALIZED]` - E.164 normalized from/to numbers
+  - `[TENANT_HIT]` - Phone number found, org resolved
+  - `[TENANT_MISS]` - Phone number not found, with DB debug info
+  - `[LEAD_CREATED]` - New lead created with leadId, orgId, contactId, callSid
+  - `[LEAD_EXISTS]` - Existing lead reused
+  - `[LEADS_QUERY]` - Dashboard leads fetch with orgId, limit, offset, returnedCount
+- **Diagnostic Endpoint**: `GET /v1/diag/telephony-status?to=+1XXXXXXXXXX&token=DIAG_TOKEN` (requires DIAG_TOKEN env var)
+  - Returns: env identifiers, db host/name, phone number record, orgId, leads count in last 24h, most recent lead
+- **Demo Phone Seeding**: On startup, server idempotently seeds demo phone number +18443214257 for org e552396a-e129-4a16-aa24-a016f9dcaba3
 
 ## External Dependencies
 

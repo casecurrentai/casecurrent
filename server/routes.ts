@@ -467,6 +467,129 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Protected diagnostic endpoint for telephony status
+  // GET /v1/diag/telephony-status?to=+1XXXXXXXXXX&token=DIAG_TOKEN
+  app.get('/v1/diag/telephony-status', async (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    
+    // Return 404 in production if DIAG_TOKEN not set (security)
+    if (!diagToken) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    
+    const token = req.query.token as string;
+    if (token !== diagToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const toNumber = (req.query.to as string) || '';
+      
+      // === ENV identifiers ===
+      const nodeEnv = process.env.NODE_ENV || 'undefined';
+      const replSlug = process.env.REPL_SLUG || process.env.REPL_ID || null;
+      const railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+      
+      // === DB identity (no password) ===
+      let dbHost = 'unknown';
+      let dbName = 'unknown';
+      const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
+      if (urlMatch) {
+        dbHost = urlMatch[1];
+        dbName = urlMatch[3];
+      }
+      
+      // === Phone number lookup ===
+      let phoneNumberRecord = null;
+      let orgId: string | null = null;
+      
+      if (toNumber) {
+        // Normalize and search
+        const digitsOnly = toNumber.replace(/\D/g, '');
+        const candidates: string[] = [toNumber];
+        if (digitsOnly) candidates.push('+' + digitsOnly);
+        if (digitsOnly.length === 10) candidates.push('+1' + digitsOnly);
+        
+        const phoneNumber = await prisma.phoneNumber.findFirst({
+          where: { e164: { in: candidates } },
+          include: { organization: { select: { id: true, name: true, slug: true } } },
+        });
+        
+        if (phoneNumber) {
+          // Mask e164 in response for security (show only last 4 digits)
+          const maskedE164 = '****' + phoneNumber.e164.slice(-4);
+          phoneNumberRecord = {
+            id: phoneNumber.id,
+            e164Masked: maskedE164,
+            inboundEnabled: phoneNumber.inboundEnabled,
+            orgId: phoneNumber.orgId,
+            orgName: phoneNumber.organization?.name,
+            orgSlug: phoneNumber.organization?.slug,
+          };
+          orgId = phoneNumber.orgId;
+        }
+      }
+      
+      // === Leads count for org in last 24h ===
+      let leadsCount24h = 0;
+      let mostRecentLead = null;
+      
+      if (orgId) {
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        
+        leadsCount24h = await prisma.lead.count({
+          where: { orgId, createdAt: { gte: since24h } },
+        });
+        
+        const recentLead = await prisma.lead.findFirst({
+          where: { orgId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            contact: { select: { name: true } },
+          },
+        });
+        
+        if (recentLead) {
+          // Check if there's a call associated with this lead
+          const leadCall = await prisma.call.findFirst({
+            where: { leadId: recentLead.id },
+            orderBy: { createdAt: 'desc' },
+          });
+          
+          mostRecentLead = {
+            id: recentLead.id,
+            callSid: leadCall?.twilioCallSid || null,
+            createdAt: recentLead.createdAt.toISOString(),
+            status: recentLead.status,
+            contactName: recentLead.contact?.name,
+          };
+        }
+      }
+      
+      res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        env: {
+          nodeEnv,
+          replSlug,
+          railwaySha: railwaySha ? railwaySha.slice(0, 7) : null,
+        },
+        db: {
+          host: dbHost,
+          name: dbName,
+        },
+        phoneNumberQuery: toNumber || null,
+        phoneNumberFound: !!phoneNumberRecord,
+        phoneNumber: phoneNumberRecord,
+        leadsCount24h: orgId ? leadsCount24h : null,
+        mostRecentLead,
+      });
+    } catch (error: any) {
+      console.error('[DIAG] telephony-status error:', error);
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
   /**
    * @openapi
    * /v1/auth/register:
@@ -1886,7 +2009,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get('/v1/leads', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
-      const { status, priority, practice_area_id, q, from, to } = req.query;
+      const { status, priority, practice_area_id, q, from, to, limit, offset } = req.query;
+      const take = Math.min(parseInt(limit as string) || 100, 100);
+      const skip = parseInt(offset as string) || 0;
 
       const where: Record<string, unknown> = { orgId };
 
@@ -1913,10 +2038,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           where,
           include: { contact: true, practiceArea: true },
           orderBy: { createdAt: 'desc' },
-          take: 100,
+          take,
+          skip,
         }),
         prisma.lead.count({ where }),
       ]);
+
+      // === [LEADS_QUERY] - Dashboard leads fetch logging ===
+      console.log(`[LEADS_QUERY] orgId=${orgId} limit=${take} offset=${skip} returnedCount=${leads.length} total=${total}`);
 
       res.json({ leads, total });
     } catch (error) {
@@ -4485,13 +4614,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
     const startTime = Date.now();
 
-    // IMMEDIATE TOP-OF-HANDLER LOGGING (before any branching)
-    console.log('Incoming call received from: ' + (req.body?.From ?? 'UNKNOWN'));
-    console.log('CallSid: ' + (req.body?.CallSid ?? 'UNKNOWN'));
-
     try {
       const payload = req.body;
       const { CallSid, From, To, CallStatus, Direction, CallerName } = payload;
+
+      // === [INBOUND] - Immediate top-of-handler logging ===
+      console.log(`[INBOUND] callSid=${CallSid || 'UNKNOWN'} from=${maskPhone(From || '')} to=${To || ''} direction=${Direction || 'inbound'} timestamp=${new Date().toISOString()}`);
 
       recordEvent({
         source: 'twilio-voice-webhook',
@@ -4511,26 +4639,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       });
 
-      // === STRUCTURED DIAGNOSTIC BLOCK ===
-      // Get DB fingerprint
-      let dbFingerprint = 'unknown';
+      // === [ENV] - Environment identifiers ===
+      const nodeEnv = process.env.NODE_ENV || 'undefined';
+      const replSlug = process.env.REPL_SLUG || process.env.REPL_ID || null;
+      const railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+      const appBaseUrl = process.env.APP_BASE_URL || process.env.REPLIT_DEV_DOMAIN || 'unknown';
+      console.log(`[ENV] NODE_ENV=${nodeEnv} REPL=${replSlug || 'N/A'} RAILWAY=${railwaySha ? railwaySha.slice(0, 7) : 'N/A'} baseUrl=${appBaseUrl}`);
+
+      // === [DB] - Database identity (NO password) ===
+      let dbHost = 'unknown';
+      let dbName = 'unknown';
+      let dbSchema = 'public';
       const urlMatch = DATABASE_URL.match(/@([^:/]+)(?::(\d+))?\/([^?]+)/);
       if (urlMatch) {
-        const host = urlMatch[1];
-        const dbName = urlMatch[3];
-        dbFingerprint = `${host}/...${dbName.length > 6 ? dbName.slice(-6) : dbName}`;
+        dbHost = urlMatch[1];
+        dbName = urlMatch[3];
       }
-
+      const schemaMatch = DATABASE_URL.match(/[?&]schema=([^&]+)/);
+      if (schemaMatch) {
+        dbSchema = schemaMatch[1];
+      }
       // Get phone_numbers count at request time
       const phoneCount = await prisma.phoneNumber.count();
-
-      console.log(`[Twilio Voice] ========== REQUEST ${requestId} ==========`);
-      console.log(`[Twilio Voice] [${requestId}] Raw To: "${To || ''}"`);
-      console.log(`[Twilio Voice] [${requestId}] Raw From: "${maskPhone(From || '')}"`);
-      console.log(`[Twilio Voice] [${requestId}] CallSid: "${CallSid || ''}"`);
-      console.log(`[Twilio Voice] [${requestId}] Content-Type: ${req.headers['content-type']}`);
-      console.log(`[Twilio Voice] [${requestId}] DB: ${dbFingerprint}`);
-      console.log(`[Twilio Voice] [${requestId}] phone_numbers count: ${phoneCount}`);
+      console.log(`[DB] host=${dbHost} db=${dbName} schema=${dbSchema} phoneNumbersCount=${phoneCount}`);
 
       if (!CallSid || !From || !To) {
         console.log(`[Twilio Voice] [${requestId}] ERROR: Missing required params`);
@@ -4557,8 +4688,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 </Response>`);
       }
 
-      // === NORMALIZE To VALUE ===
+      // === [NORMALIZED] - Normalize To and From values to E.164 ===
       const rawTo = To || '';
+      const rawFrom = From || '';
       let normalizedTo = rawTo.trim();
 
       // Handle sip: URI format (e.g., sip:+18443214257@...)
@@ -4569,26 +4701,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      const digitsOnly = normalizedTo.replace(/\D/g, '');
+      const digitsOnlyTo = normalizedTo.replace(/\D/g, '');
 
-      // Build candidate list
+      // Normalize From to E.164
+      let normalizedFrom = rawFrom.trim();
+      const digitsOnlyFrom = normalizedFrom.replace(/\D/g, '');
+      if (digitsOnlyFrom.length === 10) {
+        normalizedFrom = '+1' + digitsOnlyFrom;
+      } else if (digitsOnlyFrom.length === 11 && digitsOnlyFrom.startsWith('1')) {
+        normalizedFrom = '+' + digitsOnlyFrom;
+      } else if (!normalizedFrom.startsWith('+') && digitsOnlyFrom.length > 0) {
+        normalizedFrom = '+' + digitsOnlyFrom;
+      }
+
+      // Build candidate list for To
       const candidates: string[] = [];
 
       // a) exact trimmed (after sip extraction)
       if (normalizedTo) candidates.push(normalizedTo);
 
       // b) "+" + digitsOnly
-      if (digitsOnly) candidates.push('+' + digitsOnly);
+      if (digitsOnlyTo) candidates.push('+' + digitsOnlyTo);
 
       // c) "+1" + digitsOnly (if 10 digits - US number without country code)
-      if (digitsOnly.length === 10) candidates.push('+1' + digitsOnly);
+      if (digitsOnlyTo.length === 10) candidates.push('+1' + digitsOnlyTo);
 
       // De-dupe candidates
       const uniqueCandidates = [...new Set(candidates.filter((c) => c && c.length > 0))];
 
-      console.log(
-        `[Twilio Voice] [${requestId}] Candidates: ${uniqueCandidates.map((c) => `"${c}"`).join(', ')}`
-      );
+      // Best normalized E.164 for To
+      const normalizedToE164 = uniqueCandidates.find(c => c.startsWith('+')) || uniqueCandidates[0] || rawTo;
+      
+      console.log(`[NORMALIZED] from=${maskPhone(normalizedFrom)} to=${normalizedToE164} candidates=${uniqueCandidates.length}`);
 
       // === SINGLE LOOKUP WITH ALL CANDIDATES ===
       const phoneNumber = await prisma.phoneNumber.findFirst({
@@ -4600,26 +4744,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       if (!phoneNumber) {
-        // Log the failure with candidates
-        console.log(`[Twilio Voice] [${requestId}] NO MATCH FOUND`);
-        console.log(
-          `[Twilio Voice] [${requestId}] Searched candidates: ${uniqueCandidates.join(', ')}`
-        );
+        // === [TENANT_MISS] - Phone number not found ===
+        console.log(`[TENANT_MISS] to=${normalizedToE164} candidates=${uniqueCandidates.join(',')}`);
 
-        // Log top 5 phone_numbers rows (masked)
+        // Log top 5 phone_numbers rows (masked) for debugging
         const topPhones = await prisma.phoneNumber.findMany({
           take: 5,
           select: { e164: true, orgId: true, inboundEnabled: true },
         });
-        console.log(`[Twilio Voice] [${requestId}] Top 5 DB rows:`);
-        for (const pn of topPhones) {
-          const last4 = pn.e164.slice(-4);
-          console.log(
-            `[Twilio Voice] [${requestId}]   e164=****${last4} orgId=${pn.orgId} enabled=${pn.inboundEnabled}`
-          );
-        }
-
-        console.log(`[Twilio Voice] ========== END ${requestId} (NOT CONFIGURED) ==========`);
+        console.log(`[TENANT_MISS] Top 5 DB rows: ${topPhones.map(pn => `****${pn.e164.slice(-4)}(org=${pn.orgId.slice(0,8)},enabled=${pn.inboundEnabled})`).join(', ')}`);
 
         res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
@@ -4629,12 +4762,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 </Response>`);
       }
 
-      console.log(JSON.stringify({
-        event: 'inbound_call_org_resolved',
-        requestId,
-        orgId: phoneNumber.orgId,
-        phoneE164Last4: phoneNumber.e164.slice(-4),
-      }));
+      // === [TENANT_HIT] - Phone number found, org resolved ===
+      console.log(`[TENANT_HIT] phoneNumberId=${phoneNumber.id} orgId=${phoneNumber.orgId} e164=****${phoneNumber.e164.slice(-4)}`);
 
       const orgId = phoneNumber.orgId;
 
@@ -4661,8 +4790,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         orderBy: { createdAt: 'desc' },
       });
 
-      const leadCreated = !lead;
-      if (!lead) {
+      if (lead) {
+        // === [LEAD_EXISTS] - Existing lead found for this contact ===
+        console.log(`[LEAD_EXISTS] leadId=${lead.id} orgId=${orgId} contactId=${contact.id} callSid=${CallSid}`);
+      } else {
+        // Create new lead
         lead = await prisma.lead.create({
           data: {
             orgId,
@@ -4672,15 +4804,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             priority: 'medium',
           },
         });
+        // === [LEAD_CREATED] - New lead created ===
+        console.log(`[LEAD_CREATED] leadId=${lead.id} orgId=${orgId} contactId=${contact.id} callSid=${CallSid}`);
       }
-
-      console.log(JSON.stringify({
-        event: 'inbound_call_lead_upsert',
-        requestId,
-        leadId: lead.id,
-        contactId: contact.id,
-        created: leadCreated,
-      }));
 
       const interaction = await prisma.interaction.create({
         data: {

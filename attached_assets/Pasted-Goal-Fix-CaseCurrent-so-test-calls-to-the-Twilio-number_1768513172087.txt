@@ -1,0 +1,43 @@
+Goal: Fix CaseCurrent so test calls to the Twilio number create Leads that appear on /login dashboard for the Demo account.
+
+1) Add end-to-end diagnostic logging for inbound calls:
+   - On the Twilio inbound webhook handler (the route that receives incoming calls / starts the voice flow), log:
+     [INBOUND] callSid, from, to, direction, timestamp
+   - Normalize phone numbers to E.164 consistently (strip punctuation, handle leading 1, ensure +country).
+     Log: [NORMALIZED] from=..., to=...
+   - Log environment + DB identity:
+     [ENV] NODE_ENV, VERCEL/REPL/RUNTIME identifiers, app base URL
+     [DB] parsed DATABASE_URL host, db name, and schema (do NOT log password)
+
+2) Make tenant resolution explicit and safe:
+   - Resolve tenant strictly from normalized "to" number (the Twilio number being called).
+   - Query PhoneNumber (or equivalent) by normalized number.
+   - If not found, log: [TENANT_MISS] to=... and return a controlled response (and ensure the call flow tells user "number not configured" only when truly missing).
+   - If found, log: [TENANT_HIT] phoneNumberId, firmId/orgId.
+
+3) Ensure lead creation always attaches firm/org:
+   - When creating Lead, store firmId/orgId and callSid.
+   - Log: [LEAD_CREATED] leadId, firmId/orgId, callSid.
+   - If lead already exists for callSid, log [LEAD_EXISTS] and reuse.
+
+4) Add a protected diag endpoint (behind DIAG_TOKEN) to eliminate env/db confusion:
+   GET /v1/diag/telephony-status?to=+1XXXXXXXXXX
+   Returns JSON:
+     - env identifiers
+     - db host/db name
+     - phoneNumber record found? firmId/orgId?
+     - leads count for that firm/org in last 24h
+     - most recent lead (id, callSid, createdAt)
+
+5) Verify frontend dashboard query:
+   - Confirm the dashboard is fetching leads for the logged-in user’s firm/org.
+   - Add temporary log in the leads API: [LEADS_QUERY] orgId/firmId, limit/offset, returnedCount.
+
+6) Fix number seeding so the Demo account always has the Twilio test number in the deployed DB:
+   - Ensure the existing seed-phone-number endpoint inserts into THE SAME DATABASE used by the deployed server.
+   - Add log: [SEED] db host/db name + inserted phoneNumberId + firmId/orgId.
+
+Deliverables:
+- PR with these changes
+- Exact route(s) and file(s) changed listed
+- A 5-step “how to test” checklist using one inbound call and the diag endpoint
