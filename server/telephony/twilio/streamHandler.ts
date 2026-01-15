@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { createHmac } from 'crypto';
 import { generateVoicePromptInstructions } from '../../voice/DisfluencyController';
+import { streamTTS, logTTSConfig, isTTSAvailable } from '../../tts/elevenlabs';
 
 const OPENAI_REALTIME_URL =
   'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
@@ -60,10 +61,17 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let openAiReady = false;
   const pendingTwilioAudio: string[] = [];
   let twilioFrameCount = 0;
-  let openAiFrameCount = 0;
+  let ttsFrameCount = 0;
   let callSid: string | null = null;
   let responseInProgress = false;
   let speechStartTime: number | null = null;
+
+  // ElevenLabs TTS state
+  let pendingText = '';
+  let currentResponseId: string | null = null;
+  let lastSpokenResponseId: string | null = null;
+  let ttsAbortController: AbortController | null = null;
+  let ttsSpeaking = false;
 
   const secret = process.env.STREAM_TOKEN_SECRET;
 
@@ -75,6 +83,101 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   }, START_TIMEOUT_MS);
 
   const maskCallSid = (sid: string | null) => sid ? `****${sid.slice(-8)}` : null;
+
+  /**
+   * Speak text via ElevenLabs TTS and stream audio to Twilio
+   * 
+   * IMPORTANT: Twilio Media Streams expects exactly 160-byte μ-law frames (20ms at 8kHz).
+   * We buffer incoming TTS audio and emit properly-sized chunks.
+   */
+  const TWILIO_FRAME_SIZE = 160; // 20ms at 8kHz, 1 byte per sample in μ-law
+  const TTS_TIMEOUT_MS = 30000; // 30 second timeout for TTS
+  
+  async function speakElevenLabs(text: string, responseId: string): Promise<void> {
+    if (!isTTSAvailable()) {
+      console.error(JSON.stringify({ event: 'tts_unavailable', requestId, responseId }));
+      return;
+    }
+
+    // Abort any existing TTS stream
+    if (ttsAbortController) {
+      ttsAbortController.abort();
+    }
+    ttsAbortController = new AbortController();
+    ttsSpeaking = true;
+
+    // Audio buffer for framing
+    let audioBuffer = Buffer.alloc(0);
+
+    // Timeout to prevent hanging calls if ElevenLabs stalls
+    const timeoutId = setTimeout(() => {
+      if (ttsAbortController) {
+        console.warn(JSON.stringify({ event: 'tts_timeout', requestId, responseId, timeout_ms: TTS_TIMEOUT_MS }));
+        ttsAbortController.abort();
+      }
+    }, TTS_TIMEOUT_MS);
+
+    try {
+      await streamTTS(
+        text,
+        { signal: ttsAbortController.signal, responseId },
+        (chunk: Uint8Array) => {
+          // Append incoming chunk to buffer
+          audioBuffer = Buffer.concat([audioBuffer, Buffer.from(chunk)]);
+          
+          // Emit complete 160-byte frames to Twilio
+          while (audioBuffer.length >= TWILIO_FRAME_SIZE) {
+            const frame = audioBuffer.subarray(0, TWILIO_FRAME_SIZE);
+            audioBuffer = audioBuffer.subarray(TWILIO_FRAME_SIZE);
+            
+            const audioBase64 = frame.toString('base64');
+            if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+              twilioWs.send(JSON.stringify({ 
+                event: 'media', 
+                streamSid, 
+                media: { payload: audioBase64 } 
+              }));
+              ttsFrameCount++;
+              if (ttsFrameCount % LOG_FRAME_INTERVAL === 0) {
+                console.log(JSON.stringify({ event: 'tts_audio_to_twilio', requestId, frames: ttsFrameCount }));
+              }
+            }
+          }
+        }
+      );
+
+      // Flush any remaining bytes (pad with silence if needed)
+      if (audioBuffer.length > 0 && streamSid && twilioWs.readyState === WebSocket.OPEN) {
+        // Pad to 160 bytes with μ-law silence (0xFF)
+        const finalFrame = Buffer.alloc(TWILIO_FRAME_SIZE, 0xFF);
+        audioBuffer.copy(finalFrame);
+        const audioBase64 = finalFrame.toString('base64');
+        twilioWs.send(JSON.stringify({ 
+          event: 'media', 
+          streamSid, 
+          media: { payload: audioBase64 } 
+        }));
+        ttsFrameCount++;
+      }
+
+      // Send mark event after TTS completes
+      if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+        twilioWs.send(JSON.stringify({ 
+          event: 'mark', 
+          streamSid, 
+          mark: { name: `tts_done_${responseId}` } 
+        }));
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error(JSON.stringify({ event: 'tts_stream_error', requestId, responseId, error: err.message }));
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      ttsSpeaking = false;
+      ttsAbortController = null;
+    }
+  }
 
   function validateAuth(customParams: Record<string, string> | undefined): boolean {
     if (!secret) {
@@ -378,14 +481,13 @@ ${generateVoicePromptInstructions()}`;
       console.log('[PROMPT_ACTIVE] AVERY_MASTER_PROMPT injected into session.update');
       console.log('[PROMPT_LEN]', instructions.length);
 
+      // Use TEXT-ONLY output: ElevenLabs TTS will handle audio generation
       const sessionUpdate = {
         type: 'session.update',
         session: {
-          modalities: ['audio', 'text'],
+          modalities: ['text'],  // TEXT ONLY - ElevenLabs generates audio
           instructions,
-          voice: 'marin',
-          input_audio_format: 'g711_ulaw',
-          output_audio_format: 'g711_ulaw',
+          input_audio_format: 'g711_ulaw',  // Still receive audio from Twilio
           input_audio_transcription: { model: 'whisper-1' },
           turn_detection: {
             type: 'server_vad',
@@ -419,37 +521,75 @@ ${generateVoicePromptInstructions()}`;
             openAiWs.send(JSON.stringify({
               type: 'response.create',
               response: {
-                modalities: ['audio', 'text'],
+                modalities: ['text'],  // TEXT ONLY - ElevenLabs generates audio
                 instructions: 'Greet the caller warmly and ask how you can help them today with their legal matter.',
               },
             }));
           }
         } else if (message.type === 'response.created') {
           responseInProgress = true;
+          // Track response ID for text buffering
+          currentResponseId = message.response?.id || null;
+          pendingText = '';  // Reset text buffer for new response
+          console.log(JSON.stringify({ event: 'response_started', requestId, responseId: currentResponseId }));
+        } else if (message.type === 'response.text.delta' || message.type === 'response.output_text.delta' || message.type === 'response.content_part.delta') {
+          // Accumulate text deltas for TTS
+          const textDelta = message.delta?.text || message.delta || '';
+          if (textDelta) {
+            pendingText += textDelta;
+          }
         } else if (message.type === 'response.done') {
           responseInProgress = false;
+          const responseId = message.response?.id || currentResponseId;
+          
+          // Speak the accumulated text via ElevenLabs TTS
+          if (pendingText && pendingText.trim() && responseId !== lastSpokenResponseId) {
+            lastSpokenResponseId = responseId;
+            const textToSpeak = pendingText.trim();
+            pendingText = '';
+            
+            console.log(JSON.stringify({ 
+              event: 'tts_trigger', 
+              requestId, 
+              responseId,
+              text_length: textToSpeak.length,
+              text_preview: textToSpeak.substring(0, 80),
+            }));
+            
+            // Speak via ElevenLabs TTS (async, don't await)
+            speakElevenLabs(textToSpeak, responseId).catch((err) => {
+              console.error(JSON.stringify({ event: 'tts_speak_error', requestId, error: err.message }));
+            });
+          } else {
+            pendingText = '';
+          }
         } else if (message.type === 'input_audio_buffer.speech_stopped') {
           speechStartTime = null;
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
             openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
           }
-        } else if (message.type === 'response.audio.delta' || message.type === 'response.output_audio.delta') {
-          const audioBase64 = message.delta;
-          if (audioBase64 && streamSid && twilioWs.readyState === WebSocket.OPEN) {
-            twilioWs.send(JSON.stringify({ event: 'media', streamSid, media: { payload: audioBase64 } }));
-            openAiFrameCount++;
-            if (openAiFrameCount % LOG_FRAME_INTERVAL === 0) {
-              console.log(JSON.stringify({ event: 'audio_to_twilio', requestId, frames: openAiFrameCount }));
-            }
-          }
         } else if (message.type === 'input_audio_buffer.speech_started') {
+          // BARGE-IN: Caller started speaking - interrupt everything
           speechStartTime = Date.now();
+          console.log(JSON.stringify({ event: 'barge_in', requestId, ttsSpeaking }));
+          
+          // 1. Clear Twilio audio buffer
           if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
             twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
           }
+          // 2. Cancel OpenAI response
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
             openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
           }
+          // 3. Abort ElevenLabs TTS
+          if (ttsAbortController) {
+            ttsAbortController.abort();
+            ttsAbortController = null;
+          }
+          // 4. Clear pending text buffer
+          pendingText = '';
+          currentResponseId = null;
+          ttsSpeaking = false;
         } else if (message.type === 'response.audio_transcript.done') {
           console.log(JSON.stringify({ event: 'ai_transcript', requestId, text: message.transcript?.substring(0, 80) }));
         } else if (message.type === 'conversation.item.input_audio_transcription.completed') {
@@ -503,6 +643,9 @@ ${generateVoicePromptInstructions()}`;
         authenticated = true;
         console.log(JSON.stringify({ event: 'stream_authenticated', requestId, callSid: maskCallSid(callSid) }));
         
+        // Log TTS configuration for diagnostics
+        logTTSConfig();
+        
         initOpenAI();
       } else if (message.event === 'media') {
         if (!authenticated) return;
@@ -543,7 +686,7 @@ ${generateVoicePromptInstructions()}`;
       code,
       reason: reason?.toString() || null,
       twilioFrameCount,
-      openAiFrameCount,
+      ttsFrameCount,
     }));
     
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
