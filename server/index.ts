@@ -121,15 +121,21 @@ app.use((req, res, next) => {
     const { PrismaPg } = await import("@prisma/adapter-pg");
     const startupPrisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: DATABASE_URL }) });
     
-    const DEMO_ORG_ID = 'e552396a-e129-4a16-aa24-a016f9dcaba3';
+    // Use the demo dashboard org (matches what users see when logging in)
+    const DEMO_ORG_ID = '4a906d8e-952a-4ee0-8eae-57f293362987';
     const DEMO_PHONE_E164 = '+18443214257';
     
-    // Ensure org exists first (idempotent)
-    const demoOrg = await startupPrisma.organization.upsert({
+    // Check if org exists; if not, create it
+    let demoOrg = await startupPrisma.organization.findUnique({
       where: { id: DEMO_ORG_ID },
-      create: { id: DEMO_ORG_ID, name: 'Demo Law Firm', slug: 'demo-law-firm' },
-      update: {},
     });
+    
+    if (!demoOrg) {
+      // Create with unique slug (append timestamp to avoid conflicts)
+      demoOrg = await startupPrisma.organization.create({
+        data: { id: DEMO_ORG_ID, name: 'Demo Law Firm', slug: `demo-law-firm-${Date.now()}` },
+      });
+    }
     
     // Upsert the demo phone number (idempotent)
     const phoneRecord = await startupPrisma.phoneNumber.upsert({
@@ -147,7 +153,7 @@ app.use((req, res, next) => {
       },
     });
     
-    console.log(`[DB STARTUP] Demo phone ${DEMO_PHONE_E164} -> org ${phoneRecord.orgId} (inbound=${phoneRecord.inboundEnabled})`);
+    console.log(`[DB STARTUP] Demo phone ${DEMO_PHONE_E164} -> org ${phoneRecord.orgId} phoneNumberId=${phoneRecord.id} (inbound=${phoneRecord.inboundEnabled})`);
     
     const totalPhones = await startupPrisma.phoneNumber.count();
     console.log(`[DB STARTUP] Total phone_numbers in database: ${totalPhones}`);

@@ -92,7 +92,7 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
   - `[LEADS_QUERY]` - Dashboard leads fetch with orgId, limit, offset, returnedCount
 - **Diagnostic Endpoint**: `GET /v1/diag/telephony-status?to=+1XXXXXXXXXX&token=DIAG_TOKEN` (requires DIAG_TOKEN env var)
   - Returns: env identifiers, db host/name, phone number record, orgId, leads count in last 24h, most recent lead
-- **Demo Phone Seeding**: On startup, server idempotently seeds demo phone number +18443214257 for org e552396a-e129-4a16-aa24-a016f9dcaba3
+- **Demo Phone Seeding**: On startup, server idempotently seeds demo phone number +18443214257 for org 4a906d8e-952a-4ee0-8eae-57f293362987 (matches dashboard demo login)
 - **Media Stream Lead Creation**: The WebSocket stream handler (`server/telephony/twilio/streamHandler.ts`) now creates leads on the "start" event to ensure lead persistence even if the initial voice webhook fails. Uses customParameters (orgId, phoneNumberId, callSid, from, to) passed from TwiML. Logs: `[INBOUND_STREAM_START]`, `[TENANT_HIT]`/`[TENANT_MISS]`, `[LEAD_CREATED]`/`[LEAD_EXISTS]`
 
 ## External Dependencies
