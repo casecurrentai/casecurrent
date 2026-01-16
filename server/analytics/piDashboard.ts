@@ -456,6 +456,28 @@ function getIntakeFieldValue(data: Record<string, unknown>, field: string): unkn
     }
   }
   
+  // Special handling for medicalTreatment and insuranceInfo from legacy keyFacts array
+  const keyFacts = data.keyFacts as string[] | undefined;
+  if (Array.isArray(keyFacts) && keyFacts.length > 0) {
+    if (field === 'medicalTreatment') {
+      const medicalFact = keyFacts.find((f: string) => 
+        f.toLowerCase().includes('medical') || 
+        f.toLowerCase().includes('treatment') ||
+        f.toLowerCase().includes('hospital') ||
+        f.toLowerCase().includes('doctor') ||
+        f.toLowerCase().includes('surgery')
+      );
+      if (medicalFact) return medicalFact;
+    }
+    if (field === 'insuranceInfo') {
+      const insuranceFact = keyFacts.find((f: string) => 
+        f.toLowerCase().includes('insurance') ||
+        f.toLowerCase().includes('claim')
+      );
+      if (insuranceFact) return insuranceFact;
+    }
+  }
+  
   return null;
 }
 

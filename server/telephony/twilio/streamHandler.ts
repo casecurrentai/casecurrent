@@ -132,7 +132,9 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     
     // Step 6: Update Lead with extraction data
     // Store intakeData with flat field names for dashboard compatibility
+    // Spread extraction first, then override with flat field names
     const flatIntakeData = {
+      ...extraction,
       callerName: extraction.caller.fullName,
       phone: extraction.caller.phone || fromE164,
       incidentDate: extraction.incidentDate,
@@ -141,10 +143,6 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       atFault: extraction.conflicts?.opposingParty,
       medicalTreatment: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('medical') || f.toLowerCase().includes('treatment')) || null,
       insuranceInfo: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('insurance')) || null,
-      practiceArea: extraction.practiceArea,
-      urgency: extraction.urgency,
-      keyFacts: extraction.keyFacts,
-      ...extraction, // Keep original nested structure as well
     };
     
     await prisma.lead.update({
