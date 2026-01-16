@@ -36,6 +36,11 @@ import {
   Info,
   Target,
   Send,
+  Flag,
+  XCircle,
+  CalendarCheck,
+  FileSignature,
+  UserCheck,
 } from "lucide-react";
 
 interface Contact {
@@ -66,6 +71,12 @@ interface Lead {
   updatedAt: string;
   contact: Contact;
   practiceArea: { id: string; name: string } | null;
+  firstContactAt: string | null;
+  consultScheduledAt: string | null;
+  consultCompletedAt: string | null;
+  retainerSentAt: string | null;
+  retainerSignedAt: string | null;
+  rejectedAt: string | null;
 }
 
 interface Call {
@@ -810,6 +821,139 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
   );
 }
 
+// Funnel milestone steps
+const MILESTONE_STEPS = [
+  { key: "firstContactAt", label: "First Contact", icon: Phone },
+  { key: "consultScheduledAt", label: "Consult Scheduled", icon: CalendarCheck },
+  { key: "consultCompletedAt", label: "Consult Completed", icon: UserCheck },
+  { key: "retainerSentAt", label: "Retainer Sent", icon: FileSignature },
+  { key: "retainerSignedAt", label: "Signed", icon: CheckCircle },
+] as const;
+
+function FunnelMilestonesPanel({ lead, leadId, token }: { lead: Lead; leadId: string; token: string }) {
+  const { toast } = useToast();
+  
+  const milestoneMutation = useMutation({
+    mutationFn: async ({ milestone, value }: { milestone: string; value: string | null }) => {
+      const res = await fetch(`/v1/leads/${leadId}/milestones`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ [milestone]: value }),
+      });
+      if (!res.ok) throw new Error("Failed to update milestone");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId] });
+      toast({ title: "Milestone updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update milestone", variant: "destructive" });
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/v1/leads/${leadId}/milestones`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rejectedAt: new Date().toISOString() }),
+      });
+      if (!res.ok) throw new Error("Failed to reject lead");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads", leadId] });
+      toast({ title: "Lead marked as rejected" });
+    },
+    onError: () => {
+      toast({ title: "Failed to reject lead", variant: "destructive" });
+    },
+  });
+
+  const isRejected = !!lead.rejectedAt;
+  const isPending = milestoneMutation.isPending || rejectMutation.isPending;
+
+  const handleMilestoneClick = (milestone: string, currentValue: string | null) => {
+    if (isPending || isRejected) return;
+    if (currentValue) {
+      milestoneMutation.mutate({ milestone, value: null });
+    } else {
+      milestoneMutation.mutate({ milestone, value: new Date().toISOString() });
+    }
+  };
+
+  return (
+    <Card data-testid="card-funnel-milestones">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Flag className="h-4 w-4" />
+          Case Progress
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {isRejected && (
+          <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm mb-3">
+            <XCircle className="h-4 w-4" />
+            <span>Rejected {new Date(lead.rejectedAt!).toLocaleDateString()}</span>
+          </div>
+        )}
+        {MILESTONE_STEPS.map((step) => {
+          const value = lead[step.key as keyof Lead] as string | null;
+          const isComplete = !!value;
+          const Icon = step.icon;
+          return (
+            <button
+              key={step.key}
+              onClick={() => handleMilestoneClick(step.key, value)}
+              disabled={isPending || isRejected}
+              className={`flex items-center gap-3 w-full p-2 rounded-md text-left text-sm transition-colors ${
+                isComplete 
+                  ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400" 
+                  : "bg-muted/50 text-muted-foreground hover-elevate"
+              } ${isPending || isRejected ? "opacity-50 cursor-not-allowed" : ""}`}
+              data-testid={`milestone-${step.key}`}
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                isComplete ? "bg-green-500 text-white" : "bg-muted"
+              }`}>
+                {isComplete ? <CheckCircle className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">{step.label}</p>
+                {isComplete && (
+                  <p className="text-xs opacity-70">
+                    {new Date(value!).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </button>
+          );
+        })}
+        <div className="pt-2 border-t">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={() => rejectMutation.mutate()}
+            disabled={isPending || isRejected}
+            data-testid="button-reject-lead"
+          >
+            <XCircle className="h-4 w-4 mr-2" />
+            {isRejected ? "Rejected" : "Reject Lead"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // Mobile quick actions bar
 function MobileQuickActions({ lead }: { lead: Lead }) {
   return (
@@ -1140,6 +1284,8 @@ export default function LeadDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <FunnelMilestonesPanel lead={lead} leadId={leadId!} token={token!} />
 
           <Card>
             <CardHeader>

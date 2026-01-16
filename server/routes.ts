@@ -9529,7 +9529,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const user = req.user!;
       const { id } = req.params;
-      const { consultScheduledAt, consultCompletedAt, retainerSentAt, retainerSignedAt } = req.body;
+      const { firstContactAt, consultScheduledAt, consultCompletedAt, retainerSentAt, retainerSignedAt, rejectedAt } = req.body;
 
       const lead = await prisma.lead.findFirst({ where: { id, orgId: user.orgId } });
       if (!lead) {
@@ -9537,6 +9537,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       const updateData: Record<string, Date | null> = {};
+      if (firstContactAt !== undefined) {
+        updateData.firstContactAt = firstContactAt ? new Date(firstContactAt) : null;
+      }
       if (consultScheduledAt !== undefined) {
         updateData.consultScheduledAt = consultScheduledAt ? new Date(consultScheduledAt) : null;
       }
@@ -9548,6 +9551,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       if (retainerSignedAt !== undefined) {
         updateData.retainerSignedAt = retainerSignedAt ? new Date(retainerSignedAt) : null;
+      }
+      if (rejectedAt !== undefined) {
+        updateData.rejectedAt = rejectedAt ? new Date(rejectedAt) : null;
       }
 
       const updated = await prisma.lead.update({
