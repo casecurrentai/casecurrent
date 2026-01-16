@@ -4991,6 +4991,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           const durationMs = Date.now() - startTime;
           
+          // [TWIML_STREAM_PARAMS] - Log parameters being passed to stream for debugging
+          console.log(JSON.stringify({
+            tag: '[TWIML_STREAM_PARAMS]',
+            callSid: maskCallSid(CallSid),
+            to: maskPhone(To),
+            orgId,
+            phoneNumberId: phoneNumber.id,
+          }));
+          
           console.log(JSON.stringify({
             event: 'twilio_voice_webhook',
             requestId,

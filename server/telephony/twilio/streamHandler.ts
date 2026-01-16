@@ -664,14 +664,15 @@ ${generateVoicePromptInstructions()}`;
         
         // === Lead creation in stream handler ===
         // This ensures leads are created even if the initial webhook failed or was skipped
+        // HARDENING: Always verify customParameters.orgId against DB - DB is authoritative
         (async () => {
           try {
-            // Resolve orgId and phoneNumberId from customParameters or lookup by phone number
-            let orgId = paramOrgId;
+            let finalOrgId: string | null = null;
             let phoneNumberId = paramPhoneNumberId;
+            let source = 'unknown';
             
-            if (!orgId && paramTo) {
-              // Normalize to E.164 and lookup
+            // ALWAYS lookup by phone number to verify - DB is authoritative
+            if (paramTo) {
               const digitsOnly = paramTo.replace(/\D/g, '');
               const candidates: string[] = [paramTo];
               if (digitsOnly) candidates.push('+' + digitsOnly);
@@ -682,14 +683,38 @@ ${generateVoicePromptInstructions()}`;
               });
               
               if (phoneNumber) {
-                orgId = phoneNumber.orgId;
-                phoneNumberId = phoneNumber.id; // Capture phoneNumberId from lookup
+                const dbOrgId = phoneNumber.orgId;
+                phoneNumberId = phoneNumber.id;
+                
+                // Check for conflict between customParameters and DB
+                if (paramOrgId && paramOrgId !== dbOrgId) {
+                  // CONFLICT: customParameters has wrong orgId - DB wins
+                  console.log(JSON.stringify({ 
+                    tag: '[TENANT_CONFLICT]', 
+                    requestId,
+                    claimed: paramOrgId,
+                    db: dbOrgId,
+                    to: maskPhone(paramTo),
+                  }));
+                  finalOrgId = dbOrgId;
+                  source = 'DB_OVERRIDE';
+                } else if (paramOrgId) {
+                  // No conflict - customParameters matches DB
+                  finalOrgId = dbOrgId;
+                  source = 'TwiML';
+                } else {
+                  // No customParameters orgId - use DB
+                  finalOrgId = dbOrgId;
+                  source = 'DB_ONLY';
+                }
+                
                 console.log(JSON.stringify({ 
                   tag: '[TENANT_HIT]', 
                   requestId, 
-                  orgId, 
-                  phoneNumberId: phoneNumber.id,
+                  orgId: finalOrgId, 
+                  phoneNumberId,
                   to: maskPhone(paramTo),
+                  source,
                 }));
               } else {
                 console.log(JSON.stringify({ 
@@ -698,16 +723,31 @@ ${generateVoicePromptInstructions()}`;
                   to: maskPhone(paramTo),
                   candidates: candidates.length,
                 }));
+                // Fall back to customParameters orgId only if DB lookup fails
+                if (paramOrgId) {
+                  finalOrgId = paramOrgId;
+                  source = 'customParameters_fallback';
+                  console.log(JSON.stringify({ 
+                    tag: '[TENANT_FALLBACK]', 
+                    requestId, 
+                    orgId: finalOrgId,
+                    warning: 'phone_not_in_db_using_custom_params',
+                  }));
+                }
               }
-            } else if (orgId) {
+            } else if (paramOrgId) {
+              // No toNumber to lookup - use customParameters (unusual)
+              finalOrgId = paramOrgId;
+              source = 'customParameters_no_to';
               console.log(JSON.stringify({ 
                 tag: '[TENANT_HIT]', 
                 requestId, 
-                orgId,
-                phoneNumberId,
-                source: 'customParameters',
+                orgId: finalOrgId,
+                source,
               }));
             }
+            
+            const orgId = finalOrgId;
             
             if (!orgId || !callSid) {
               console.log(JSON.stringify({ 
@@ -746,80 +786,99 @@ ${generateVoicePromptInstructions()}`;
                           normalizedTo.length === 11 && normalizedTo.startsWith('1') ? '+' + normalizedTo :
                           normalizedTo ? '+' + normalizedTo : paramTo;
             
-            // Find or create contact for the caller
-            let contact = null;
-            if (fromE164) {
-              contact = await prisma.contact.findFirst({
-                where: { orgId, primaryPhone: fromE164 },
-              });
-              
-              if (!contact) {
-                contact = await prisma.contact.create({
+            // Use transaction for atomic lead creation with step-level error logging
+            let currentStep = 'contact';
+            try {
+              const result = await prisma.$transaction(async (tx) => {
+                // Step 1: Find or create contact
+                currentStep = 'contact';
+                let contact = null;
+                if (fromE164) {
+                  contact = await tx.contact.findFirst({
+                    where: { orgId, primaryPhone: fromE164 },
+                  });
+                  
+                  if (!contact) {
+                    contact = await tx.contact.create({
+                      data: {
+                        orgId,
+                        primaryPhone: fromE164,
+                        name: 'Unknown Caller',
+                      },
+                    });
+                  }
+                } else {
+                  contact = await tx.contact.create({
+                    data: {
+                      orgId,
+                      name: 'Unknown Caller',
+                    },
+                  });
+                }
+                
+                // Step 2: Create lead
+                currentStep = 'lead';
+                const lead = await tx.lead.create({
                   data: {
                     orgId,
-                    primaryPhone: fromE164,
-                    name: 'Unknown Caller',
+                    contactId: contact.id,
+                    status: 'in_progress',
+                    source: 'phone',
+                    summary: `Inbound call from ${maskPhone(paramFrom)}`,
                   },
                 });
-              }
-            } else {
-              // Create a placeholder contact if no phone
-              contact = await prisma.contact.create({
-                data: {
-                  orgId,
-                  name: 'Unknown Caller',
-                },
+                
+                // Step 3: Create interaction
+                currentStep = 'interaction';
+                const interaction = await tx.interaction.create({
+                  data: {
+                    orgId,
+                    leadId: lead.id,
+                    channel: 'call',
+                    status: 'active',
+                    startedAt: new Date(),
+                  },
+                });
+                
+                // Step 4: Create call record
+                currentStep = 'call';
+                if (phoneNumberId && toE164) {
+                  await tx.call.create({
+                    data: {
+                      orgId,
+                      leadId: lead.id,
+                      interactionId: interaction.id,
+                      phoneNumberId,
+                      direction: 'inbound',
+                      provider: 'twilio',
+                      twilioCallSid: callSid,
+                      fromE164: fromE164 || 'unknown',
+                      toE164: toE164,
+                      startedAt: new Date(),
+                    },
+                  });
+                }
+                
+                return { contact, lead, interaction };
               });
-            }
-            
-            // Create lead with status in_progress
-            const lead = await prisma.lead.create({
-              data: {
+              
+              console.log(JSON.stringify({ 
+                tag: '[LEAD_CREATED]', 
+                requestId, 
+                leadId: result.lead.id,
                 orgId,
-                contactId: contact.id,
-                status: 'in_progress',
-                source: 'phone',
-                summary: `Inbound call from ${maskPhone(paramFrom)}`,
-              },
-            });
-            
-            // Create interaction for the call
-            const interaction = await prisma.interaction.create({
-              data: {
-                orgId,
-                leadId: lead.id,
-                channel: 'call',
-                status: 'active',
-                startedAt: new Date(),
-              },
-            });
-            
-            // Create call record if we have phoneNumberId
-            if (phoneNumberId && toE164) {
-              await prisma.call.create({
-                data: {
-                  orgId,
-                  leadId: lead.id,
-                  interactionId: interaction.id,
-                  phoneNumberId,
-                  direction: 'inbound',
-                  provider: 'twilio',
-                  twilioCallSid: callSid,
-                  fromE164: fromE164 || 'unknown',
-                  toE164: toE164,
-                  startedAt: new Date(),
-                },
-              });
+                contactId: result.contact?.id || null,
+                callSid: maskCallSid(callSid),
+              }));
+            } catch (txErr: any) {
+              console.error(JSON.stringify({ 
+                tag: '[LEAD_CREATE_ERROR]', 
+                requestId, 
+                step: currentStep,
+                error: txErr?.message || String(txErr),
+              }));
+              throw txErr;
             }
-            
-            console.log(JSON.stringify({ 
-              tag: '[LEAD_CREATED]', 
-              requestId, 
-              leadId: lead.id,
-              orgId,
-              contactId: contact?.id || null,
-              callSid: maskCallSid(callSid),
-            }));
           } catch (err: any) {
             console.error(JSON.stringify({ 
               event: 'lead_creation_error', 

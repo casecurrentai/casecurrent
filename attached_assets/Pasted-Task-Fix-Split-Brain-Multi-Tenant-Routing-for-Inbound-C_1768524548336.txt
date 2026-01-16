@@ -1,0 +1,65 @@
+Task: Fix Split-Brain Multi-Tenant Routing for Inbound Calls (TwiML + Stream Handler + Seed)
+
+Problem
+Inbound calls to +18443214257 stream audio fine, but dashboard shows 0 leads.
+Evidence:
+- Dashboard queries: [LEADS_QUERY] orgId=4a906d8e-952a-4ee0-8eae-57f293362987 returnedCount=0
+- Stream resolves: [TENANT_HIT] orgId=e552396a-e129-4a16-aa24-a016f9dcaba3 source=customParameters
+So calls are being routed to the wrong org via TwiML customParameters.
+
+Objectives (must all be done)
+1) TwiML must NOT pass stale orgId. It must resolve orgId from the called number (To) via PhoneNumber table.
+2) Stream handler must “trust but verify”: if customParameters.orgId disagrees with DB mapping for toNumber, DB wins (log TENANT_CONFLICT).
+3) Seed/migration must upsert phone number mapping so +18443214257 belongs to orgId=4a906d8e-952a-4ee0-8eae-57f293362987 in the deployed DB.
+4) Lead persistence must be provable via logs and must use the FINAL resolved orgId.
+
+Step 1: TwiML webhook fix (find the inbound voice route returning <Connect><Stream>)
+- Locate the inbound voice webhook route (e.g., /voice/incoming or similar) in server/routes.ts or telephony router.
+- Normalize req.body.To to E.164 (same normalization used when storing phone_numbers).
+- Query PhoneNumber by normalized To.
+- If NOT found: log [TWIML_TENANT_MISS] to=... and return 404/“Number not provisioned”. Do NOT fall back to a static demo orgId.
+- If found: generate TwiML <Connect><Stream> and include Parameters:
+  - orgId = phoneRecord.orgId
+  - phoneNumberId = phoneRecord.id (if available)
+  - toNumber = normalized To   (REQUIRED so stream handler can verify)
+  - fromNumber = normalized From (optional but useful)
+- Add a log at TwiML generation: [TWIML_STREAM_PARAMS] callSid=<CallSid> to=<To> orgId=<orgId> phoneNumberId=<id>
+
+Step 2: Stream handler hardening (server/telephony/twilio/streamHandler.ts)
+- On Twilio "start" event:
+  - Extract customParameters.orgId and customParameters.toNumber.
+  - Normalize toNumber to E.164.
+  - Lookup PhoneNumber by toNumber in DB.
+  - If dbOrgId exists AND differs from customParameters.orgId:
+    - log [TENANT_CONFLICT] claimed=<customOrgId> db=<dbOrgId> to=<toNumber> and set finalOrgId=dbOrgId
+  - Else finalOrgId = customOrgId (or dbOrgId if custom missing)
+  - If finalOrgId missing: log [TENANT_MISSING] and abort (do not create orphan leads)
+  - Log: [INBOUND_STREAM_START] callSid=<...> finalOrgId=<...> source=<TwiML|DB_OVERRIDE|DB_ONLY>
+
+Step 3: Ensure phone number mapping is actually corrected (seed/migration)
+- In prisma/seed.ts (or wherever seeding happens), change demo number insert to an UPSERT keyed by normalized number:
+  - number = +18443214257
+  - orgId = 4a906d8e-952a-4ee0-8eae-57f293362987
+  - inbound=true
+- Must overwrite orgId if record already exists.
+- Startup log must print: [DB STARTUP] Demo phone +18443214257 -> org 4a906d8e-... phoneNumberId=...
+
+Step 4: Lead persistence proof + error visibility
+- Ensure the stream-start lead creation uses finalOrgId.
+- If lead creation includes multiple inserts (Contact → Lead → Interaction → Call), wrap in a Prisma transaction.
+- If any step fails, log [LEAD_CREATE_ERROR step=<contact|lead|interaction|call>] with the error.
+- On success, log: [LEAD_CREATED] leadId=<...> orgId=<finalOrgId> callSid=<...>.
+
+Acceptance test (required evidence in logs after deploy)
+After one inbound call to +18443214257:
+1) [TWIML_STREAM_PARAMS] ... orgId=4a906d8e-...
+2) [INBOUND_STREAM_START] ... finalOrgId=4a906d8e-...
+3) [TENANT_HIT] ... orgId=4a906d8e-... (or DB_OVERRIDE)
+4) [LEAD_CREATED] ... orgId=4a906d8e-...
+Then load dashboard:
+5) [LEADS_QUERY] orgId=4a906d8e-... returnedCount>=1
+
+Deliverables
+- File paths changed
+- Summary of exact logic changes
+- Proof logs from one real call showing the acceptance test lines
