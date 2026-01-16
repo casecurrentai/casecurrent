@@ -74,6 +74,13 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let callSid: string | null = null;
   let responseInProgress = false;
   let speechStartTime: number | null = null;
+  
+  // OpenAI response state tracking for safe cancellation
+  let openaiResponseActive = false;
+  
+  // Audio buffer tracking for commit guard (100ms = 5 frames at 20ms/frame)
+  let bufferedAudioFrameCount = 0;
+  const MIN_FRAMES_TO_COMMIT = 5; // 100ms minimum
 
   // ElevenLabs TTS state
   let pendingText = '';
@@ -514,6 +521,7 @@ ${generateVoicePromptInstructions()}`;
         console.log(JSON.stringify({ event: 'flush_buffered_audio', requestId, count: pendingTwilioAudio.length }));
         for (const audio of pendingTwilioAudio) {
           openAiWs!.send(JSON.stringify({ type: 'input_audio_buffer.append', audio }));
+          bufferedAudioFrameCount++;
         }
         pendingTwilioAudio.length = 0;
       }
@@ -537,6 +545,7 @@ ${generateVoicePromptInstructions()}`;
           }
         } else if (message.type === 'response.created') {
           responseInProgress = true;
+          openaiResponseActive = true;
           // Track response ID for text buffering
           currentResponseId = message.response?.id || null;
           pendingText = '';  // Reset text buffer for new response
@@ -547,8 +556,9 @@ ${generateVoicePromptInstructions()}`;
           if (textDelta) {
             pendingText += textDelta;
           }
-        } else if (message.type === 'response.done') {
+        } else if (message.type === 'response.done' || message.type === 'response.cancelled') {
           responseInProgress = false;
+          openaiResponseActive = false;
           const responseId = message.response?.id || currentResponseId;
           
           // Speak the accumulated text via ElevenLabs TTS
@@ -574,21 +584,34 @@ ${generateVoicePromptInstructions()}`;
           }
         } else if (message.type === 'input_audio_buffer.speech_stopped') {
           speechStartTime = null;
+          // Only commit if we have buffered enough audio (>= 100ms)
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-            openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+            if (bufferedAudioFrameCount >= MIN_FRAMES_TO_COMMIT) {
+              openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+              bufferedAudioFrameCount = 0;
+            } else {
+              console.log(JSON.stringify({ event: 'commit_skipped', requestId, bufferedFrames: bufferedAudioFrameCount, minRequired: MIN_FRAMES_TO_COMMIT }));
+            }
           }
         } else if (message.type === 'input_audio_buffer.speech_started') {
           // BARGE-IN: Caller started speaking - interrupt everything
           speechStartTime = Date.now();
-          console.log(JSON.stringify({ event: 'barge_in', requestId, ttsSpeaking }));
+          console.log(JSON.stringify({ event: 'barge_in', requestId, ttsSpeaking, openaiResponseActive }));
+          
+          // Reset audio frame counter since we're starting fresh
+          bufferedAudioFrameCount = 0;
           
           // 1. Clear Twilio audio buffer
           if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
             twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
           }
-          // 2. Cancel OpenAI response
+          // 2. Cancel OpenAI response (only if one is active)
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-            openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+            if (openaiResponseActive) {
+              openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+            } else {
+              console.log(JSON.stringify({ event: 'cancel_skipped', requestId, reason: 'no_active_response' }));
+            }
           }
           // 3. Abort ElevenLabs TTS
           if (ttsAbortController) {
@@ -614,6 +637,8 @@ ${generateVoicePromptInstructions()}`;
     openAiWs.on('close', (code, reason) => {
       console.log(JSON.stringify({ event: 'openai_close', requestId, code, reason: reason?.toString() }));
       openAiReady = false;
+      openaiResponseActive = false;
+      bufferedAudioFrameCount = 0;
       if (twilioWs.readyState === WebSocket.OPEN) {
         twilioWs.close(1000, 'OpenAI connection closed');
       }
@@ -904,6 +929,7 @@ ${generateVoicePromptInstructions()}`;
 
           if (openAiReady && openAiWs && openAiWs.readyState === WebSocket.OPEN) {
             openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: audioPayload }));
+            bufferedAudioFrameCount++;
           } else {
             pendingTwilioAudio.push(audioPayload);
           }
@@ -933,6 +959,10 @@ ${generateVoicePromptInstructions()}`;
       twilioFrameCount,
       ttsFrameCount,
     }));
+    
+    // Reset state on connection close
+    openaiResponseActive = false;
+    bufferedAudioFrameCount = 0;
     
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
       openAiWs.close(1000, 'Twilio connection closed');
