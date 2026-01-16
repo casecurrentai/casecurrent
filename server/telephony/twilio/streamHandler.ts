@@ -4,6 +4,7 @@ import { createHmac } from 'crypto';
 import { generateVoicePromptInstructions } from '../../voice/DisfluencyController';
 import { streamTTS, logTTSConfig, isTTSAvailable } from '../../tts/elevenlabs';
 import { prisma } from '../../db';
+import { extractIntakeWithOpenAI, type IntakeExtraction } from '../../intake/extractIntake';
 
 // Phone number masking for logs
 function maskPhone(phone: string | null | undefined): string {
@@ -18,6 +19,192 @@ const OPENAI_REALTIME_URL =
 const TOKEN_MAX_AGE_SECONDS = 600;
 const LOG_FRAME_INTERVAL = 100;
 const START_TIMEOUT_MS = 5000;
+
+interface PostCallContext {
+  requestId: string;
+  callSid: string | null;
+  leadId: string | null;
+  contactId: string | null;
+  orgId: string | null;
+  callStartTime: Date | null;
+  fromE164: string | null;
+  toE164: string | null;
+  transcriptBuffer: { role: 'ai' | 'user'; text: string; timestamp: Date }[];
+}
+
+async function processCallEnd(ctx: PostCallContext): Promise<void> {
+  const { requestId, callSid, leadId, contactId, orgId, callStartTime, fromE164, toE164, transcriptBuffer } = ctx;
+  
+  if (!leadId || !orgId) {
+    console.log(JSON.stringify({ event: 'post_call_skipped', requestId, reason: 'no_lead_id' }));
+    return;
+  }
+  
+  const callEndTime = new Date();
+  const durationSeconds = callStartTime 
+    ? Math.round((callEndTime.getTime() - callStartTime.getTime()) / 1000)
+    : null;
+  
+  try {
+    // Step 1: Update Call status to completed
+    if (callSid) {
+      const updatedCall = await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: {
+          endedAt: callEndTime,
+          durationSeconds: durationSeconds,
+          callOutcome: 'connected',
+        },
+      });
+      
+      console.log(JSON.stringify({ 
+        tag: '[CALL_ENDED]', 
+        requestId, 
+        callSid: callSid ? `****${callSid.slice(-8)}` : null,
+        durationSeconds,
+        updatedCount: updatedCall.count,
+      }));
+    }
+    
+    // Step 2: Update Interaction status to completed
+    await prisma.interaction.updateMany({
+      where: { 
+        leadId,
+        channel: 'call',
+        status: 'active',
+      },
+      data: {
+        status: 'completed',
+        endedAt: callEndTime,
+      },
+    });
+    
+    // Step 3: Build full transcript text
+    const fullTranscript = transcriptBuffer
+      .map(t => `${t.role === 'ai' ? 'Avery' : 'Caller'}: ${t.text}`)
+      .join('\n');
+    
+    if (!fullTranscript || fullTranscript.length < 20) {
+      console.log(JSON.stringify({ event: 'intake_skipped', requestId, reason: 'transcript_too_short', length: fullTranscript.length }));
+      return;
+    }
+    
+    // Step 4: Extract intake data
+    console.log(JSON.stringify({ event: 'intake_extraction_start', requestId, transcriptLength: fullTranscript.length }));
+    
+    const extraction: IntakeExtraction = await extractIntakeWithOpenAI(
+      fullTranscript,
+      fromE164,
+      toE164,
+      callSid,
+      orgId
+    );
+    
+    console.log(JSON.stringify({ 
+      tag: '[INTAKE_EXTRACTED]', 
+      requestId,
+      leadId,
+      practiceArea: extraction.practiceArea,
+      score: extraction.score.value,
+      scoreLabel: extraction.score.label,
+      callerName: extraction.caller.fullName,
+    }));
+    
+    // Step 5: Update Contact with name if detected
+    if (contactId && extraction.caller.fullName && extraction.caller.fullName !== 'Unknown') {
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: {
+          name: extraction.caller.fullName,
+          firstName: extraction.caller.firstName,
+          lastName: extraction.caller.lastName,
+          primaryEmail: extraction.caller.email || undefined,
+        },
+      });
+      
+      console.log(JSON.stringify({ 
+        tag: '[NAME_CAPTURED]', 
+        requestId,
+        contactId,
+        name: extraction.caller.fullName,
+      }));
+    }
+    
+    // Step 6: Update Lead with extraction data
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        displayName: extraction.caller.fullName || undefined,
+        summary: extraction.summary,
+        score: extraction.score.value,
+        scoreLabel: extraction.score.label,
+        scoreReasons: extraction.score.reasons,
+        urgency: extraction.urgency,
+        incidentDate: extraction.incidentDate ? new Date(extraction.incidentDate) : undefined,
+        incidentLocation: extraction.location,
+        intakeData: extraction as any,
+        status: 'new',
+      },
+    });
+    
+    // Step 7: Store transcript in Call record
+    if (callSid) {
+      await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: {
+          transcriptText: fullTranscript,
+          aiSummary: extraction.summary,
+        },
+      });
+    }
+    
+    // Step 8: Create or update Intake record
+    await prisma.intake.upsert({
+      where: { leadId },
+      create: {
+        orgId,
+        leadId,
+        answers: extraction as any,
+        completionStatus: 'complete',
+        completedAt: callEndTime,
+      },
+      update: {
+        answers: extraction as any,
+        completionStatus: 'complete',
+        completedAt: callEndTime,
+      },
+    });
+    
+    // Step 9: Create or update Qualification record
+    await prisma.qualification.upsert({
+      where: { leadId },
+      create: {
+        orgId,
+        leadId,
+        score: extraction.score.value,
+        disposition: extraction.score.label === 'high' ? 'accept' : extraction.score.label === 'medium' ? 'review' : 'decline',
+        reasons: extraction.score.reasons,
+        confidence: 80,
+      },
+      update: {
+        score: extraction.score.value,
+        disposition: extraction.score.label === 'high' ? 'accept' : extraction.score.label === 'medium' ? 'review' : 'decline',
+        reasons: extraction.score.reasons,
+        confidence: 80,
+      },
+    });
+    
+    console.log(JSON.stringify({ event: 'post_call_complete', requestId, leadId }));
+    
+  } catch (err: any) {
+    console.error(JSON.stringify({ 
+      event: 'post_call_error', 
+      requestId,
+      leadId,
+      error: err?.message || String(err),
+    }));
+  }
+}
 
 interface TwilioMessage {
   event: string;
@@ -88,6 +275,16 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let lastSpokenResponseId: string | null = null;
   let ttsAbortController: AbortController | null = null;
   let ttsSpeaking = false;
+  
+  // Transcript and lead tracking for post-call processing
+  const transcriptBuffer: { role: 'ai' | 'user'; text: string; timestamp: Date }[] = [];
+  let createdLeadId: string | null = null;
+  let createdContactId: string | null = null;
+  let createdCallId: string | null = null;
+  let createdOrgId: string | null = null;
+  let callStartTime: Date | null = null;
+  let callerFromE164: string | null = null;
+  let callerToE164: string | null = null;
 
   const secret = process.env.STREAM_TOKEN_SECRET;
 
@@ -623,9 +820,17 @@ ${generateVoicePromptInstructions()}`;
           currentResponseId = null;
           ttsSpeaking = false;
         } else if (message.type === 'response.audio_transcript.done') {
-          console.log(JSON.stringify({ event: 'ai_transcript', requestId, text: message.transcript?.substring(0, 80) }));
+          const text = message.transcript || '';
+          if (text) {
+            transcriptBuffer.push({ role: 'ai', text, timestamp: new Date() });
+          }
+          console.log(JSON.stringify({ event: 'ai_transcript', requestId, text: text.substring(0, 80) }));
         } else if (message.type === 'conversation.item.input_audio_transcription.completed') {
-          console.log(JSON.stringify({ event: 'user_transcript', requestId, text: message.transcript?.substring(0, 80) }));
+          const text = message.transcript || '';
+          if (text) {
+            transcriptBuffer.push({ role: 'user', text, timestamp: new Date() });
+          }
+          console.log(JSON.stringify({ event: 'user_transcript', requestId, text: text.substring(0, 80) }));
         } else if (message.type === 'error') {
           console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
         }
@@ -887,6 +1092,14 @@ ${generateVoicePromptInstructions()}`;
                 return { contact, lead, interaction };
               });
               
+              // Store IDs for post-call processing
+              createdLeadId = result.lead.id;
+              createdContactId = result.contact?.id || null;
+              createdOrgId = orgId;
+              callStartTime = new Date();
+              callerFromE164 = fromE164;
+              callerToE164 = toE164;
+              
               console.log(JSON.stringify({ 
                 tag: '[LEAD_CREATED]', 
                 requestId, 
@@ -938,6 +1151,22 @@ ${generateVoicePromptInstructions()}`;
         // Mark event - no action needed
       } else if (message.event === 'stop') {
         console.log(JSON.stringify({ event: 'twilio_stop', requestId, callSid: maskCallSid(callSid) }));
+        
+        // Run post-call processing (async, don't block)
+        processCallEnd({
+          requestId,
+          callSid,
+          leadId: createdLeadId,
+          contactId: createdContactId,
+          orgId: createdOrgId,
+          callStartTime,
+          fromE164: callerFromE164,
+          toE164: callerToE164,
+          transcriptBuffer: [...transcriptBuffer],
+        }).catch(err => {
+          console.error(JSON.stringify({ event: 'post_call_error', requestId, error: err?.message }));
+        });
+        
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
           openAiWs.close(1000, 'Twilio stream ended');
         }

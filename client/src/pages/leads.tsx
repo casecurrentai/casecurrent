@@ -36,8 +36,14 @@ interface Lead {
   source: string;
   status: string;
   priority: string;
+  displayName: string | null;
   practiceAreaId: string | null;
   summary: string | null;
+  score: number | null;
+  scoreLabel: string | null;
+  scoreReasons: string[] | null;
+  urgency: string | null;
+  intakeData: any | null;
   createdAt: string;
   contact: Contact;
   practiceArea: { id: string; name: string } | null;
@@ -334,7 +340,7 @@ export default function LeadsPage() {
                   <div className="flex items-start gap-3">
                     {/* Avatar */}
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
-                      {lead.contact.name.charAt(0).toUpperCase()}
+                      {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
                     </div>
                     
                     {/* Content */}
@@ -342,9 +348,24 @@ export default function LeadsPage() {
                       {/* Name and badges */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <span className="font-semibold truncate block" data-testid={`text-lead-name-${lead.id}`}>
-                            {lead.contact.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold truncate" data-testid={`text-lead-name-${lead.id}`}>
+                              {lead.displayName || lead.contact.name}
+                            </span>
+                            {lead.score !== null && lead.score > 0 && (
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${
+                                  lead.scoreLabel === 'high' ? 'border-green-500 text-green-600 dark:text-green-400' :
+                                  lead.scoreLabel === 'medium' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' :
+                                  'border-muted-foreground text-muted-foreground'
+                                }`}
+                                data-testid={`badge-score-${lead.id}`}
+                              >
+                                {lead.score}
+                              </Badge>
+                            )}
+                          </div>
                           {/* Mobile: Stacked contact info */}
                           <div className="flex flex-col gap-1 text-sm text-muted-foreground mt-1 sm:hidden">
                             {lead.contact.primaryPhone && (

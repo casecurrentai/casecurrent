@@ -2027,6 +2027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (q) {
         where.OR = [
+          { displayName: { contains: q, mode: 'insensitive' } },
           { summary: { contains: q, mode: 'insensitive' } },
           { incidentLocation: { contains: q, mode: 'insensitive' } },
           { contact: { is: { name: { contains: q, mode: 'insensitive' } } } },

@@ -52,10 +52,16 @@ interface Lead {
   source: string;
   status: string;
   priority: string;
+  displayName: string | null;
   practiceAreaId: string | null;
   incidentDate: string | null;
   incidentLocation: string | null;
   summary: string | null;
+  score: number | null;
+  scoreLabel: string | null;
+  scoreReasons: string[] | null;
+  urgency: string | null;
+  intakeData: any | null;
   createdAt: string;
   updatedAt: string;
   contact: Contact;
@@ -907,7 +913,7 @@ export default function LeadDetailPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg sm:text-2xl font-bold truncate" data-testid="text-lead-name">
-              {lead.contact.name}
+              {lead.displayName || lead.contact.name}
             </h1>
             <Badge className={`text-xs ${STATUS_COLORS[lead.status]}`} data-testid="badge-status">
               {lead.status}
@@ -915,6 +921,19 @@ export default function LeadDetailPage() {
             <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[lead.priority]}`} data-testid="badge-priority">
               {lead.priority}
             </Badge>
+            {lead.score !== null && lead.score > 0 && (
+              <Badge 
+                variant="outline"
+                className={`text-xs ${
+                  lead.scoreLabel === 'high' ? 'border-green-500 text-green-600 dark:text-green-400' :
+                  lead.scoreLabel === 'medium' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' :
+                  'border-muted-foreground text-muted-foreground'
+                }`}
+                data-testid="badge-score"
+              >
+                Score: {lead.score}
+              </Badge>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Created {new Date(lead.createdAt).toLocaleDateString()}
@@ -930,10 +949,10 @@ export default function LeadDetailPage() {
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
-                  {lead.contact.name.charAt(0).toUpperCase()}
+                  {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{lead.contact.name}</p>
+                  <p className="font-semibold truncate">{lead.displayName || lead.contact.name}</p>
                   <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                     {lead.contact.primaryPhone && (
                       <a href={`tel:${lead.contact.primaryPhone}`} className="hover:underline flex items-center gap-1">
@@ -998,6 +1017,22 @@ export default function LeadDetailPage() {
                 <div className="space-y-1 pt-2 border-t">
                   <p className="text-[10px] sm:text-sm text-muted-foreground">Summary</p>
                   <p className="text-xs sm:text-base" data-testid="text-summary">{lead.summary}</p>
+                </div>
+              )}
+              {lead.scoreReasons && lead.scoreReasons.length > 0 && (
+                <div className="space-y-1 pt-2 border-t">
+                  <p className="text-[10px] sm:text-sm text-muted-foreground flex items-center gap-1">
+                    <Target className="h-3 w-3" />
+                    Score Factors
+                  </p>
+                  <ul className="text-xs sm:text-sm space-y-0.5" data-testid="list-score-reasons">
+                    {lead.scoreReasons.map((reason, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5">
+                        <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                        <span>{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </CardContent>
@@ -1070,10 +1105,10 @@ export default function LeadDetailPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
-                  {lead.contact.name.charAt(0).toUpperCase()}
+                  {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <p className="font-semibold" data-testid="text-contact-name">{lead.contact.name}</p>
+                  <p className="font-semibold" data-testid="text-contact-name">{lead.displayName || lead.contact.name}</p>
                   <p className="text-sm text-muted-foreground">
                     Contact since {new Date(lead.contact.createdAt).toLocaleDateString()}
                   </p>
