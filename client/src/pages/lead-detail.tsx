@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -178,6 +178,213 @@ const PRIORITY_COLORS: Record<string, string> = {
   medium: "bg-yellow-500 text-white dark:bg-yellow-600",
   low: "bg-muted text-muted-foreground",
 };
+
+// PART 2: Best available display name/practice area resolution
+function getBestDisplayName(lead: Lead): string {
+  // 1) lead.displayName
+  if (lead.displayName && lead.displayName.trim()) {
+    return lead.displayName;
+  }
+  // 2) contact.name
+  if (lead.contact?.name && lead.contact.name.trim() && lead.contact.name !== "Unknown Caller") {
+    return lead.contact.name;
+  }
+  // 3) intakeData.callerName (flat field from extraction)
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.callerName && typeof intakeData.callerName === "string" && intakeData.callerName.trim()) {
+    return intakeData.callerName;
+  }
+  // 4) intakeData.caller?.fullName (nested legacy)
+  if (intakeData?.caller?.fullName && typeof intakeData.caller.fullName === "string" && intakeData.caller.fullName.trim()) {
+    return intakeData.caller.fullName;
+  }
+  // 5) Fallback
+  return "Unknown Caller";
+}
+
+function getBestPracticeArea(lead: Lead): string {
+  // 1) lead.practiceArea (relation)
+  if (lead.practiceArea?.name && lead.practiceArea.name.trim()) {
+    return lead.practiceArea.name;
+  }
+  // 2) intakeData.practiceAreaGuess
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.practiceAreaGuess && typeof intakeData.practiceAreaGuess === "string" && intakeData.practiceAreaGuess.trim()) {
+    return intakeData.practiceAreaGuess;
+  }
+  // 3) intakeData.practiceArea (legacy/nested)
+  if (intakeData?.practiceArea && typeof intakeData.practiceArea === "string" && intakeData.practiceArea.trim()) {
+    return intakeData.practiceArea;
+  }
+  // 4) Fallback
+  return "Not assigned";
+}
+
+function getBestPhone(lead: Lead): string | null {
+  // From contact
+  if (lead.contact?.primaryPhone) {
+    return lead.contact.primaryPhone;
+  }
+  // From intakeData
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.phoneNumber) {
+    return intakeData.phoneNumber;
+  }
+  if (intakeData?.callerPhone) {
+    return intakeData.callerPhone;
+  }
+  if (intakeData?.caller?.phone) {
+    return intakeData.caller.phone;
+  }
+  return null;
+}
+
+// Section definitions for mobile swipe cards
+const SECTIONS = [
+  { id: "activity", label: "Activity", icon: MessageSquare },
+  { id: "calls", label: "Calls", icon: PhoneCall },
+  { id: "messages", label: "Messages", icon: MessageSquare },
+  { id: "intake", label: "Intake", icon: ClipboardList },
+  { id: "score", label: "Score", icon: CheckCircle },
+  { id: "tasks", label: "Tasks", icon: FileText },
+] as const;
+
+type SectionId = typeof SECTIONS[number]["id"];
+
+// Mobile swipeable cards component using CSS scroll-snap
+interface MobileSwipeCardsProps {
+  activeSection: SectionId;
+  onSectionChange: (section: SectionId) => void;
+  interactions: Interaction[];
+  leadId: string;
+  token: string;
+}
+
+function MobileSwipeCards({ activeSection, onSectionChange, interactions, leadId, token }: MobileSwipeCardsProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useRef(false);
+
+  // Scroll to active section when pills are clicked
+  const scrollToSection = useCallback((sectionId: SectionId) => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const index = SECTIONS.findIndex(s => s.id === sectionId);
+    const cardWidth = container.offsetWidth;
+    
+    isScrolling.current = true;
+    container.scrollTo({ left: index * cardWidth, behavior: "smooth" });
+    
+    // Reset scrolling flag after animation
+    setTimeout(() => {
+      isScrolling.current = false;
+    }, 300);
+  }, []);
+
+  // Use IntersectionObserver to detect active card
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const cards = container.querySelectorAll("[data-section-id]");
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrolling.current) return;
+        
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            const sectionId = entry.target.getAttribute("data-section-id") as SectionId;
+            if (sectionId && sectionId !== activeSection) {
+              onSectionChange(sectionId);
+            }
+          }
+        });
+      },
+      { root: container, threshold: 0.5 }
+    );
+
+    cards.forEach((card) => observer.observe(card));
+
+    return () => observer.disconnect();
+  }, [activeSection, onSectionChange]);
+
+  // Scroll to initial section on mount
+  useEffect(() => {
+    scrollToSection(activeSection);
+  }, []);
+
+  const renderSectionContent = (sectionId: SectionId) => {
+    switch (sectionId) {
+      case "activity":
+        return <InteractionTimeline interactions={interactions} />;
+      case "calls":
+        return <CallsPanel interactions={interactions} />;
+      case "messages":
+        return <MessagesPanel interactions={interactions} />;
+      case "intake":
+        return <IntakePanel leadId={leadId} token={token} />;
+      case "score":
+        return <QualificationPanel leadId={leadId} token={token} />;
+      case "tasks":
+        return <PlaceholderPanel icon={FileText} title="Tasks and follow-ups will appear here" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Section pills */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" data-testid="mobile-section-pills">
+        {SECTIONS.map((section) => {
+          const Icon = section.icon;
+          const isActive = activeSection === section.id;
+          return (
+            <button
+              key={section.id}
+              onClick={() => {
+                onSectionChange(section.id);
+                scrollToSection(section.id);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+              data-testid={`pill-${section.id}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {section.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Swipeable cards container */}
+      <div
+        ref={containerRef}
+        className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth touch-pan-x"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+        data-testid="mobile-swipe-container"
+      >
+        {SECTIONS.map((section) => (
+          <div
+            key={section.id}
+            data-section-id={section.id}
+            className="w-full flex-shrink-0 snap-start snap-always"
+            style={{ minWidth: "100%" }}
+            data-testid={`card-${section.id}`}
+          >
+            <div className="pr-4">
+              {renderSectionContent(section.id)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return "N/A";
