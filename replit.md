@@ -90,8 +90,21 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
   - `[LEAD_CREATED]` - New lead created with leadId, orgId, contactId, callSid
   - `[LEAD_EXISTS]` - Existing lead reused
   - `[LEADS_QUERY]` - Dashboard leads fetch with orgId, limit, offset, returnedCount
-- **Diagnostic Endpoint**: `GET /v1/diag/telephony-status?to=+1XXXXXXXXXX&token=DIAG_TOKEN` (requires DIAG_TOKEN env var)
-  - Returns: env identifiers, db host/name, phone number record, orgId, leads count in last 24h, most recent lead
+- **Enrichment Pipeline Logging**: Structured logging tags for call finalization debugging:
+  - `[FINALIZE_BEGIN]` - Enrichment pipeline starting for callSid
+  - `[TX_APPEND]` - Transcript message added (role, text length)
+  - `[EXTRACT_BEGIN]` - AI extraction starting
+  - `[EXTRACT_OK]` - Extraction completed with field list
+  - `[TRANSCRIPT_UPSERT_OK]` - Transcript saved to call record
+  - `[INTAKE_UPSERT_OK]` - Intake record created/updated
+  - `[LEAD_UPDATE_OK]` - Lead updated with displayName/score/practiceArea
+  - `[CONTACT_UPDATE_OK]` - Contact updated with name/phone
+  - `[FINALIZE_DONE]` - Enrichment pipeline completed successfully
+  - `[FINALIZE_ERROR]` - Enrichment failed with step tracking
+  - `[FINALIZE_SKIP]` - Duplicate finalization prevented by guard
+- **Diagnostic Endpoints** (require DIAG_TOKEN env var):
+  - `GET /v1/diag/telephony-status?to=+1XXXXXXXXXX&token=DIAG_TOKEN` - Returns env identifiers, db host/name, phone number record, orgId, leads count in last 24h, most recent lead
+  - `GET /v1/diag/enrichment?callSid=...&token=DIAG_TOKEN` - Returns transcript/extraction/intake status for a specific call (displayName, practiceArea, transcriptExists, msgCount, extractedKeys, intakeExists, score, tier, scoreReasons)
 - **Demo Phone Seeding**: On startup, server idempotently seeds demo phone number +18443214257 for org 4a906d8e-952a-4ee0-8eae-57f293362987 (matches dashboard demo login)
 - **Media Stream Lead Creation**: The WebSocket stream handler (`server/telephony/twilio/streamHandler.ts`) now creates leads on the "start" event to ensure lead persistence even if the initial voice webhook fails. Uses customParameters (orgId, phoneNumberId, callSid, from, to) passed from TwiML. Logs: `[INBOUND_STREAM_START]`, `[TENANT_HIT]`/`[TENANT_MISS]`, `[LEAD_CREATED]`/`[LEAD_EXISTS]`
 - **Intake Extraction Display**: Frontend pages display auto-extracted caller data from voice calls:
