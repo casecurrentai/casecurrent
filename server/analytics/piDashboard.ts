@@ -420,22 +420,64 @@ async function getSourceROI(
     .sort((a, b) => b.calls - a.calls);
 }
 
+// Helper to extract a field value from potentially nested intake data
+function getIntakeFieldValue(data: Record<string, unknown>, field: string): unknown {
+  // Direct flat field access
+  if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
+    return data[field];
+  }
+  
+  // Nested structure fallback mappings
+  const nestedMappings: Record<string, string[]> = {
+    callerName: ['caller.fullName', 'caller.name'],
+    phone: ['caller.phone'],
+    incidentDate: ['incidentDate'],
+    incidentLocation: ['location', 'incidentLocation'],
+    injuryDescription: ['summary', 'injuryDescription'],
+    atFault: ['conflicts.opposingParty', 'atFault'],
+    medicalTreatment: ['medicalTreatment'],
+    insuranceInfo: ['insuranceInfo'],
+  };
+  
+  const paths = nestedMappings[field] || [];
+  for (const path of paths) {
+    const parts = path.split('.');
+    let value: unknown = data;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in (value as object)) {
+        value = (value as Record<string, unknown>)[part];
+      } else {
+        value = undefined;
+        break;
+      }
+    }
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  
+  return null;
+}
+
 async function getIntakeCompleteness(
   prisma: PrismaClient,
   orgId: string,
   periodStart: Date,
   periodEnd: Date
 ): Promise<IntakeCompleteness> {
+  // Include ALL leads for intake completeness, not just PI (to show data for any calls)
   const leads = await prisma.lead.findMany({
     where: {
       orgId,
       createdAt: { gte: periodStart, lte: periodEnd },
-      practiceArea: { name: { contains: 'Personal Injury', mode: 'insensitive' } },
     },
     select: {
       intakeData: true,
       intake: {
         select: { answers: true, completionStatus: true },
+      },
+      contact: {
+        select: { primaryPhone: true, name: true },
       },
     },
   });
@@ -450,9 +492,17 @@ async function getIntakeCompleteness(
     const intakeData = (lead.intakeData as Record<string, unknown>) || {};
     const intakeAnswers = (lead.intake?.answers as Record<string, unknown>) || {};
     const combined = { ...intakeAnswers, ...intakeData };
+    
+    // Also check contact for phone/name
+    if (!combined.phone && !combined['caller'] && lead.contact?.primaryPhone) {
+      combined.phone = lead.contact.primaryPhone;
+    }
+    if (!combined.callerName && !combined['caller'] && lead.contact?.name && lead.contact.name !== 'Unknown Caller') {
+      combined.callerName = lead.contact.name;
+    }
 
     for (const field of PI_REQUIRED_FIELDS) {
-      const value = combined[field];
+      const value = getIntakeFieldValue(combined, field);
       if (value !== undefined && value !== null && value !== '') {
         fieldCounts[field]++;
       }

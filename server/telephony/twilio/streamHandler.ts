@@ -131,6 +131,22 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     }
     
     // Step 6: Update Lead with extraction data
+    // Store intakeData with flat field names for dashboard compatibility
+    const flatIntakeData = {
+      callerName: extraction.caller.fullName,
+      phone: extraction.caller.phone || fromE164,
+      incidentDate: extraction.incidentDate,
+      incidentLocation: extraction.location,
+      injuryDescription: extraction.summary,
+      atFault: extraction.conflicts?.opposingParty,
+      medicalTreatment: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('medical') || f.toLowerCase().includes('treatment')) || null,
+      insuranceInfo: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('insurance')) || null,
+      practiceArea: extraction.practiceArea,
+      urgency: extraction.urgency,
+      keyFacts: extraction.keyFacts,
+      ...extraction, // Keep original nested structure as well
+    };
+    
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -142,10 +158,18 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
         urgency: extraction.urgency,
         incidentDate: extraction.incidentDate ? new Date(extraction.incidentDate) : undefined,
         incidentLocation: extraction.location,
-        intakeData: extraction as any,
+        intakeData: flatIntakeData as any,
         status: 'new',
       },
     });
+    
+    console.log(JSON.stringify({ 
+      tag: '[TRANSCRIPT_FLUSHED]', 
+      requestId,
+      callSid: callSid ? `****${callSid.slice(-8)}` : null,
+      leadId,
+      messageCount: transcriptBuffer.length,
+    }));
     
     // Step 7: Store transcript in Call record
     if (callSid) {
@@ -153,10 +177,19 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
         where: { twilioCallSid: callSid },
         data: {
           transcriptText: fullTranscript,
+          transcriptJson: transcriptBuffer as any,
           aiSummary: extraction.summary,
         },
       });
     }
+    
+    console.log(JSON.stringify({ 
+      tag: '[EXTRACTION_SAVED]', 
+      requestId,
+      callSid: callSid ? `****${callSid.slice(-8)}` : null,
+      leadId,
+      hasName: !!(extraction.caller.fullName && extraction.caller.fullName !== 'Unknown'),
+    }));
     
     // Step 8: Create or update Intake record
     await prisma.intake.upsert({
@@ -164,16 +197,22 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       create: {
         orgId,
         leadId,
-        answers: extraction as any,
+        answers: flatIntakeData as any,
         completionStatus: 'complete',
         completedAt: callEndTime,
       },
       update: {
-        answers: extraction as any,
+        answers: flatIntakeData as any,
         completionStatus: 'complete',
         completedAt: callEndTime,
       },
     });
+    
+    console.log(JSON.stringify({ 
+      tag: '[INTAKE_UPSERTED]', 
+      requestId,
+      leadId,
+    }));
     
     // Step 9: Create or update Qualification record
     await prisma.qualification.upsert({

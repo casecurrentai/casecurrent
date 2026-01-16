@@ -1,0 +1,156 @@
+TASK: Make CaseCurrent PI Dashboard + Lead Profiles “Real” by Persisting Transcripts, Extracting Intake, Fixing Answered Metrics, Adding Milestones, and Implementing Scoring
+
+NON-NEGOTIABLE
+- Do NOT rely on server logs as storage. Persist transcripts in the database and link them to leadId/callId/callSid.
+- Implement in the exact order below and do not mark complete until ALL acceptance tests pass.
+
+BACKGROUND / CURRENT STATE
+- Inbound calls and leads are being created, but lead profiles show “Unknown Caller,” Intake tab is empty (“No intake started”), and PI Analytics Dashboard shows mostly zeros (intake completeness 0%, scoring missing, “Answered” misleading).
+- We already see “user_transcript” events during calls in server logs, meaning transcripts exist in runtime but are not being persisted.
+
+IMPLEMENTATION ORDER (do in this order)
+1) Transcript persistence (buffer -> flush on call end -> DB upsert by callSid)
+2) Extraction pass (structured JSON) and update Lead/Contact displayName
+3) Intake record population + Intake tab no longer empty
+4) Dashboard metrics wired to persisted fields (completeness, qualified, etc.)
+5) Scoring (0-100 + tier + reasons)
+
+-------------------------------------------------------------------------------
+1) TRANSCRIPT PERSISTENCE (DB, LINKED TO LEAD/CALL)
+Goal: Create durable call transcripts per callSid, linked to orgId + leadId + callId.
+
+A) Data model (create/confirm)
+- Add a CallTranscript model/table if it doesn’t exist yet:
+  Fields (minimum):
+  - id (uuid)
+  - orgId
+  - leadId
+  - callId (nullable if not available yet, but try to link)
+  - callSid (unique)
+  - messagesJson (JSON array of {role:"user"|"assistant", text:string, ts:string})
+  - fullText (string)
+  - extractedJson (JSON, nullable)
+  - createdAt / updatedAt
+- Ensure migrations apply to production.
+
+B) Runtime buffering (server/telephony/twilio/streamHandler.ts)
+- Create a per-call transcript buffer keyed by callSid (Map or in-memory object).
+- On event "user_transcript": append { role:"user", text, ts }.
+- On assistant text output BEFORE sending to ElevenLabs TTS (wherever you trigger TTS): append { role:"assistant", text, ts }.
+  NOTE: If assistant text is produced in chunks, append as a single consolidated “assistant message” per response where possible.
+
+C) Flush on call end
+- On "twilio_stop" and/or final "ws_close":
+  - Build fullText from messages.
+  - Upsert CallTranscript by callSid with orgId, leadId, callId (if known), messagesJson, fullText.
+  - Ensure idempotency: repeated close events must not create duplicates.
+
+-------------------------------------------------------------------------------
+2) EXTRACTION PASS + NAME UPDATE (POST-CALL)
+Goal: After transcript is saved, extract structured intake fields and update lead/contact display name.
+
+A) Single extraction call after transcript save
+- Run ONE structured extraction pass after the transcript is flushed.
+- Output MUST be deterministic JSON with these keys:
+  - callerName (string|null)
+  - incidentDate (string|null)  // allow “unknown”
+  - incidentLocation (string|null)
+  - injuryDescription (string|null)
+  - atFaultParty (string|null)
+  - medicalTreatment (string|null)
+  - insuranceInfo (string|null)
+  - practiceAreaGuess (string|null) // “PI” vs “other” or short label
+  - qualifiedPi (boolean|null) // optional, can be inferred later
+- Save this JSON into CallTranscript.extractedJson.
+
+B) Update Lead/Contact displayName
+- If callerName is extracted (non-empty):
+  - Update Contact name and Lead display name so lead list does NOT show “Unknown Caller.”
+- If no name extracted:
+  - Keep “Unknown Caller” but do not break anything.
+
+-------------------------------------------------------------------------------
+3) INTAKE RECORD POPULATION + INTAKE TAB
+Goal: Lead detail “Intake” tab must show data automatically after a call (no longer empty).
+
+A) Upsert Intake record
+- Create or upsert an Intake row (if Intake table exists) by leadId/orgId.
+- Populate fields from extractedJson:
+  callerName, phoneNumber (from call/contact), incidentDate, incidentLocation, injuryDescription, atFaultParty, medicalTreatment, insuranceInfo, practiceAreaGuess.
+
+B) Update Intake UI
+- Intake tab should:
+  - Display extracted fields immediately after call.
+  - Never show “No intake started” after a transcript + extraction has occurred.
+  - Show a clear empty-state only if truly no transcript/intake exists.
+
+-------------------------------------------------------------------------------
+4) DASHBOARD METRICS (PI ANALYTICS) WIRED TO REAL DATA
+Goal: PI Analytics Dashboard must reflect real persisted data, not placeholders.
+
+A) Fix/Clarify “Answered” metric
+- Rename current “Answered” to “Human Answered” OR add a separate “AI Answered”.
+- Implement definitions:
+  - AI Answered = Twilio call connected + Avery stream started (e.g., stream start event received)
+  - Human Answered = staff call completed OR lead.first_contact_at set (manual for now is OK)
+- Ensure dashboard displays the correct metric(s) and they’re not misleading.
+
+B) Intake completeness
+- Intake completeness should be calculated from persisted Intake record fields, not from UI state.
+- Caller Name and Phone Number should show >0% after test call (when caller states name).
+
+C) Source ROI
+- Ensure “Phone” source shows leads count accurately from orgId-scoped leads.
+
+-------------------------------------------------------------------------------
+5) FUNNEL MILESTONES + SCORING
+Goal: Enable real funnel movement + scoring, even if initial milestones are manual.
+
+A) Add milestone actions on Lead detail UI
+Add buttons:
+- “Mark Consult Scheduled”
+- “Mark Consult Completed”
+- “Mark Retainer Sent”
+- “Mark Retainer Signed”
+
+Persist timestamps on Lead:
+- consult_scheduled_at
+- consult_completed_at
+- retainer_sent_at
+- retainer_signed_at
+- first_contact_at (for Human Answered metric / response speed)
+
+B) Update analytics endpoint counts
+- Funnel tiles must reflect these lead timestamp fields.
+- Must be orgId-scoped.
+
+C) Scoring (0-100 + tier + reasons)
+- Implement a simple scoring function using extracted intake + call metadata.
+- Output:
+  - score (0-100)
+  - tier (“high” | “medium” | “low”)
+  - reasons (array of short strings explaining score)
+- Store on Lead (or related table) and display in Lead detail + dashboard.
+
+-------------------------------------------------------------------------------
+LOGGING (TEMPORARY, FOR VERIFICATION)
+Add minimal logs to confirm flow:
+- [TRANSCRIPT_FLUSHED] (callSid, leadId, messageCount)
+- [EXTRACTION_SAVED] (callSid, leadId, hasName=true/false)
+- [INTAKE_UPSERTED] (leadId)
+- [PI_DASHBOARD_HIT] (orgId, returned ok)
+
+-------------------------------------------------------------------------------
+ACCEPTANCE TESTS (MUST ALL PASS)
+A) Make a test call and say: “My name is John Smith.”
+   -> Leads list shows “John Smith” (NOT Unknown Caller)
+B) Lead detail -> Intake tab shows at least caller name + phone and does NOT say “No intake started”
+C) Lead detail -> Calls tab shows a transcript (user + assistant messages)
+D) PI Dashboard -> Intake completeness shows >0% for Caller Name and Phone Number
+E) PI Dashboard -> Inbound Calls increments AND “AI Answered” (or renamed metric) is not 0
+F) Milestone buttons update funnel counts immediately after clicking
+
+DELIVERABLES
+- List exact files changed
+- Prisma migration(s) applied
+- Confirmation screenshots or logs showing acceptance tests passing
