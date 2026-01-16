@@ -163,10 +163,21 @@ function getBuildFingerprint(): { sha: string; source: string; deploymentId: str
   }
   
   // No env var found - check if we're in production
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isLocalDev = ['localhost', '127.0.0.1', '0.0.0.0'].some(h => 
-    (process.env.HOSTNAME || '').includes(h) || (process.env.HOST || '').includes(h)
+  // On Replit:
+  //   - REPLIT_ENVIRONMENT=production is set in BOTH dev workflow and published deployments
+  //   - REPLIT_MODE=workflow indicates running in the development workflow (not published)
+  //   - Published deployments do NOT have REPLIT_MODE=workflow
+  const isReplitWorkflow = process.env.REPLIT_MODE === 'workflow';
+  const isReplitProduction = process.env.REPLIT_ENVIRONMENT === 'production' && !isReplitWorkflow;
+  const isNodeProduction = process.env.NODE_ENV === 'production';
+  
+  // Local dev: running in workflow mode OR NODE_ENV=development with no Replit production flag
+  const isLocalDev = isReplitWorkflow || (
+    process.env.NODE_ENV === 'development' &&
+    !process.env.REPLIT_ENVIRONMENT
   );
+  
+  const isProduction = isReplitProduction || isNodeProduction;
   
   if (isProduction && !isLocalDev) {
     // Generate a stable runtime fingerprint for this deployment
