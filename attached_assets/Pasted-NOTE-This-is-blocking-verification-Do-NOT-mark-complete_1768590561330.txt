@@ -1,0 +1,82 @@
+NOTE: This is blocking verification. Do NOT mark complete until /api/version returns a real deployment identifier (not "local") on casecurrent.co from a mobile browser.
+
+TASK: Fix /api/version and add reliable production build fingerprinting + no-cache
+
+Problem
+On https://casecurrent.co/api/version the response is still:
+  {"sha":"local"}
+This makes it impossible to verify that production picked up the latest build. We need a reliable build fingerprint on Replit Deployments.
+
+Requirements (must all be implemented)
+1) /api/version MUST return a real fingerprint in production:
+   - sha: best available commit/deploy identifier (NOT "local")
+   - buildTime: ISO timestamp set at server boot
+   - nodeEnv
+   - deploymentId (if available)
+   - host
+2) /api/version MUST be public (no auth) and MUST send Cache-Control headers to prevent stale caching.
+3) On server startup, log exactly which env vars are available for commit/deploy so we can pick the right one on Replit.
+4) Add a footer build badge (admin-only is fine) showing: sha + buildTime so UI also confirms.
+5) If no commit/deploy env exists in production, generate a stable “DEPLOY_FINGERPRINT” at build/deploy time and expose it.
+
+Implementation details
+A) Server boot env discovery (do this once at startup; safe)
+- In server/index.ts (or wherever app boots), add:
+  - buildTime = new Date().toISOString()
+  - Collect env keys matching /(COMMIT|SHA|GIT|DEPLOY|REPL)/i and log:
+    [BUILD_ENV] key=value (mask long secrets; but these should be safe IDs)
+  - Log:
+    [BUILD_INFO] nodeEnv=... buildTime=... selectedSha=... deploymentId=...
+
+B) Robust sha selection function
+- Create helper getBuildFingerprint():
+  Try in order (first non-empty wins):
+    process.env.REPL_DEPLOYMENT_ID
+    process.env.REPLIT_DEPLOYMENT_ID
+    process.env.REPL_SLUG_COMMIT
+    process.env.RAILWAY_GIT_COMMIT_SHA
+    process.env.VERCEL_GIT_COMMIT_SHA
+    process.env.GITHUB_SHA
+    process.env.COMMIT_SHA
+    process.env.BUILD_SHA
+  If none exist:
+    - Use process.env.DEPLOY_FINGERPRINT if present
+    - Else return "unknown" (NOT "local") in production
+  Keep "local" ONLY when NODE_ENV !== "production" and hostname indicates local dev.
+
+C) /api/version route
+- Ensure route is mounted on the backend (Express), not a frontend/static handler.
+- Response JSON:
+  {
+    sha,
+    buildTime,
+    nodeEnv,
+    deploymentId,
+    host
+  }
+- Add headers:
+  Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+D) Ensure fingerprint exists even if Replit doesn’t provide commit SHA
+- Add build/deploy step (or runtime one-time generation on boot) to set DEPLOY_FINGERPRINT:
+  - If DEPLOY_FINGERPRINT not set, generate: crypto.randomUUID() + "-" + Date.now()
+  - Store it in memory for the lifetime of the process (that’s fine for verifying a deployment)
+  - Return it as sha when no commit vars exist.
+This gives us a guaranteed “this exact server instance” identifier.
+
+E) UI footer badge
+- Add a small footer string for admin users:
+  Build: <sha> @ <buildTime>
+- This must reflect the same data as /api/version.
+
+Acceptance tests (must pass on casecurrent.co from mobile Safari)
+1) Open https://casecurrent.co/api/version
+   - sha is NOT "local"
+   - buildTime is present and recent
+2) Refresh twice: response must not be cached (buildTime stays same for the same instance, but headers show no-store)
+3) Footer badge shows the same sha/buildTime values as /api/version
+4) Provide the startup log lines [BUILD_ENV] and [BUILD_INFO] in the Replit output so we can confirm which env vars exist.
+
+Do not mark complete until you can prove the above in production.

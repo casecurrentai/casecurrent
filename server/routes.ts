@@ -115,8 +115,98 @@ const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const startTime = Date.now();
 const BUILD_VERSION = 'v4-' + new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-const GIT_SHA = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || 'local';
 const BOOT_TIME = new Date().toISOString();
+
+// ============================================
+// BUILD FINGERPRINTING (robust deployment verification)
+// ============================================
+
+// Discover and log all build-related env vars at startup
+function discoverBuildEnvVars(): Record<string, string> {
+  const buildEnvPatterns = /(COMMIT|SHA|GIT|DEPLOY|REPL|RAILWAY|VERCEL|BUILD)/i;
+  const discovered: Record<string, string> = {};
+  
+  for (const [key, value] of Object.entries(process.env)) {
+    if (buildEnvPatterns.test(key) && value) {
+      // Mask long values (potential secrets), keep short IDs visible
+      const safeValue = value.length > 64 ? value.slice(0, 8) + '...' + value.slice(-4) : value;
+      discovered[key] = safeValue;
+    }
+  }
+  
+  return discovered;
+}
+
+// Try env vars in priority order, then generate fallback fingerprint
+function getBuildFingerprint(): { sha: string; source: string; deploymentId: string | null } {
+  const envPriority = [
+    'REPL_DEPLOYMENT_ID',
+    'REPLIT_DEPLOYMENT_ID', 
+    'REPL_SLUG_COMMIT',
+    'RAILWAY_GIT_COMMIT_SHA',
+    'VERCEL_GIT_COMMIT_SHA',
+    'GITHUB_SHA',
+    'COMMIT_SHA',
+    'BUILD_SHA',
+    'DEPLOY_FINGERPRINT',
+  ];
+  
+  for (const envKey of envPriority) {
+    const value = process.env[envKey];
+    if (value && value.trim()) {
+      return {
+        sha: value.trim().slice(0, 12), // Truncate for display
+        source: envKey,
+        deploymentId: process.env.REPL_DEPLOYMENT_ID || process.env.REPLIT_DEPLOYMENT_ID || null,
+      };
+    }
+  }
+  
+  // No env var found - check if we're in production
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalDev = ['localhost', '127.0.0.1', '0.0.0.0'].some(h => 
+    (process.env.HOSTNAME || '').includes(h) || (process.env.HOST || '').includes(h)
+  );
+  
+  if (isProduction && !isLocalDev) {
+    // Generate a stable runtime fingerprint for this deployment
+    const runtimeFingerprint = `RT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    return {
+      sha: runtimeFingerprint,
+      source: 'runtime-generated',
+      deploymentId: null,
+    };
+  }
+  
+  return {
+    sha: 'local',
+    source: 'default',
+    deploymentId: null,
+  };
+}
+
+// Log build environment discovery
+const discoveredEnvVars = discoverBuildEnvVars();
+console.log(`[BUILD_ENV] Discovered ${Object.keys(discoveredEnvVars).length} build-related env vars:`);
+for (const [key, value] of Object.entries(discoveredEnvVars)) {
+  console.log(`[BUILD_ENV]   ${key}=${value}`);
+}
+
+// Get build fingerprint
+const BUILD_FINGERPRINT = getBuildFingerprint();
+const GIT_SHA = BUILD_FINGERPRINT.sha;
+
+console.log(`[BUILD_INFO] nodeEnv=${process.env.NODE_ENV || 'undefined'} buildTime=${BOOT_TIME} selectedSha=${BUILD_FINGERPRINT.sha} source=${BUILD_FINGERPRINT.source} deploymentId=${BUILD_FINGERPRINT.deploymentId || 'N/A'}`);
+
+// Export for use in UI footer
+export const buildInfo = {
+  sha: BUILD_FINGERPRINT.sha,
+  buildTime: BOOT_TIME,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  deploymentId: BUILD_FINGERPRINT.deploymentId,
+  source: BUILD_FINGERPRINT.source,
+  host: process.env.HOSTNAME || process.env.HOST || 'unknown',
+};
 
 // Intercept console.log/error to buffer logs
 console.log = (...args: any[]) => {
@@ -406,8 +496,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Simple version endpoint (requested for deployment verification)
+  // Must be public, no auth, with cache-busting headers
   app.get('/api/version', (_req, res) => {
-    res.json({ sha: GIT_SHA });
+    // Prevent any caching
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    
+    res.json({
+      sha: buildInfo.sha,
+      buildTime: buildInfo.buildTime,
+      nodeEnv: buildInfo.nodeEnv,
+      deploymentId: buildInfo.deploymentId,
+      host: buildInfo.host,
+      source: buildInfo.source,
+    });
   });
 
   // Token-gated production phone number seeding endpoint

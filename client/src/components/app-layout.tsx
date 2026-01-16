@@ -34,15 +34,27 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-function useVersion() {
-  const [sha, setSha] = useState<string | null>(null);
+interface BuildInfo {
+  sha: string;
+  buildTime: string;
+  nodeEnv: string;
+  source: string;
+}
+
+function useVersion(): BuildInfo | null {
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
   useEffect(() => {
-    fetch("/api/version")
+    fetch("/api/version", { cache: 'no-store' })
       .then((res) => res.json())
-      .then((data) => setSha(data.sha))
-      .catch(() => setSha(null));
+      .then((data) => setBuildInfo({
+        sha: data.sha || 'unknown',
+        buildTime: data.buildTime || '',
+        nodeEnv: data.nodeEnv || '',
+        source: data.source || '',
+      }))
+      .catch(() => setBuildInfo(null));
   }, []);
-  return sha;
+  return buildInfo;
 }
 
 // Primary navigation - shown in bottom nav on mobile
@@ -286,8 +298,25 @@ function UserMenu() {
 
 function AppLayoutInner({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const sha = useVersion();
+  const buildInfo = useVersion();
   const isAdmin = user?.role === "owner" || user?.role === "admin";
+  
+  // Format buildTime for display
+  const formatBuildTime = (isoTime: string) => {
+    if (!isoTime) return '';
+    try {
+      const date = new Date(isoTime);
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return isoTime.slice(0, 16);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -323,11 +352,11 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
 
-      {/* Footer with version SHA for admin users */}
-      {isAdmin && sha && sha !== "local" && (
+      {/* Footer with version SHA + buildTime for admin users */}
+      {isAdmin && buildInfo && buildInfo.sha !== "local" && (
         <footer className="hidden md:block border-t py-2 px-4 text-center">
           <span className="text-xs text-muted-foreground font-mono" data-testid="text-version-sha">
-            Build: {sha.slice(0, 7)}
+            Build: {buildInfo.sha} @ {formatBuildTime(buildInfo.buildTime)}
           </span>
         </footer>
       )}
