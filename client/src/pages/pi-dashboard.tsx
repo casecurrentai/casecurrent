@@ -115,6 +115,16 @@ export default function PIDashboardPage() {
 
   const { data, isLoading, error } = useQuery<PIDashboardData>({
     queryKey: ["/v1/analytics/pi-dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/v1/analytics/pi-dashboard", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`${res.status}: ${body}`);
+      }
+      return res.json();
+    },
     enabled: !!token,
   });
 
