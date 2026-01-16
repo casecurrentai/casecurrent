@@ -1,0 +1,87 @@
+IMPORTANT: Do not mark complete until we can prove why lead enrichment is not populating names/intake in production.
+
+TASK: Add a mobile-friendly enrichment diagnostic and fix any blocking issue discovered.
+
+Problem
+- Leads still show "Unknown Caller"
+- Intake tab still empty
+- Dashboard completeness shows phone but caller name = 0%
+- We suspect transcript persistence and/or extraction-to-lead mapping still failing in production.
+
+Deliverables
+
+1) Add endpoint: GET /api/diag/last-call (AUTHENTICATED)
+- Must use the logged-in user’s orgId from session/cookie auth (same as leads query).
+- Returns JSON with the most recent call for that org, and enrichment status.
+
+Response shape:
+{
+  orgId,
+  leadId,
+  callId,
+  callSid,
+  callCreatedAt,
+  transcript: {
+    exists: boolean,
+    messageCount: number,
+    hasUser: boolean,
+    hasAssistant: boolean,
+    first200: string
+  },
+  extraction: {
+    ran: boolean,
+    extractedFields: string[],   // keys present
+    callerName: string | null,
+    incidentDate: string | null,
+    practiceAreaGuess: string | null
+  },
+  lead: {
+    currentDisplayName: string,
+    contactName: string | null,
+    phone: string | null,
+    intakeExists: boolean
+  },
+  scoring: {
+    exists: boolean,
+    score: number | null,
+    tier: string | null
+  },
+  pipeline: {
+    finalizeCalled: boolean,
+    finalizeAt: string | null,
+    lastError: string | null
+  }
+}
+
+2) Instrumentation (must be in production logs)
+Add logs with these tags and include orgId + callSid:
+- [FINALIZE_BEGIN]
+- [TX_APPEND] (user + assistant)
+- [TX_SAVED]
+- [EXTRACT_BEGIN]
+- [EXTRACT_OK] (include extracted keys)
+- [LEAD_UPDATE_OK] (include new displayName)
+- [FINALIZE_DONE]
+- [FINALIZE_ERR] (include error.message + stack)
+
+3) Fix the most likely root cause if found:
+- If transcript has user messages but no assistant messages: ensure pendingText / response.text.delta accumulation is appended to transcript before finalize.
+- If transcript exists but extraction not running: ensure finalize runs on twilio_stop and ws_close with finalize-once guard.
+- If extraction ran but lead name not updated: ensure mapping writes to Lead.displayName and/or Contact.firstName/lastName and Lead list uses that field.
+- If extraction is written in nested structure only: normalize to flat fields used by dashboard completeness (callerName, phoneNumber, etc.) and keep backward compatibility.
+
+4) Add UI shortcut for mobile
+- Add a “Debug” item under the left nav (only for demo owner/admin).
+- Route /debug that calls /api/diag/last-call and renders JSON in a <pre> with a refresh button.
+
+Acceptance tests (must pass on production casecurrent.co from mobile)
+A) Make a test call and say: "My name is John Smith."
+B) Open /debug and confirm:
+   - transcript.exists = true
+   - messageCount > 4
+   - hasUser = true and hasAssistant = true
+   - extraction.ran = true
+   - extraction.callerName = "John Smith"
+   - lead.currentDisplayName becomes "John Smith"
+C) Leads list shows John Smith (not Unknown Caller)
+D) Lead Intake tab shows caller name + phone (not empty)

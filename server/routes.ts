@@ -804,6 +804,168 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/diag/last-call - AUTHENTICATED mobile-friendly enrichment diagnostic
+  // Returns the most recent call for the user's org with full enrichment status
+  // Restricted to admin/owner roles for security
+  app.get('/api/diag/last-call', flexAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      
+      // Require admin or owner role
+      if (user.role !== 'admin' && user.role !== 'owner') {
+        return res.status(403).json({ error: 'Admin or owner role required' });
+      }
+      
+      const orgId = user.orgId;
+      
+      // Find the most recent call for this org
+      const call = await prisma.call.findFirst({
+        where: { orgId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          lead: {
+            include: {
+              contact: { select: { id: true, name: true, firstName: true, lastName: true, primaryPhone: true, primaryEmail: true } },
+              intake: { select: { id: true, answers: true, completionStatus: true, completedAt: true } },
+              qualification: { select: { id: true, score: true, disposition: true, reasons: true, confidence: true } },
+            },
+          },
+        },
+      });
+      
+      if (!call) {
+        return res.json({
+          orgId,
+          leadId: null,
+          callId: null,
+          callSid: null,
+          callCreatedAt: null,
+          message: 'No calls found for this organization',
+          transcript: { exists: false, messageCount: 0, hasUser: false, hasAssistant: false, first200: null },
+          extraction: { ran: false, extractedFields: [], callerName: null, incidentDate: null, practiceAreaGuess: null },
+          lead: { currentDisplayName: null, contactName: null, phone: null, intakeExists: false },
+          scoring: { exists: false, score: null, tier: null },
+          pipeline: { finalizeCalled: false, finalizeAt: null, lastError: null },
+        });
+      }
+      
+      const lead = call.lead;
+      const intakeData = lead?.intakeData as Record<string, unknown> | null;
+      const intakeAnswers = lead?.intake?.answers as Record<string, unknown> | null;
+      const transcriptJson = call.transcriptJson as { role: string; text: string; timestamp: string }[] | { segments: string[] } | null;
+      
+      // Parse transcript to check for user/assistant messages
+      let hasUser = false;
+      let hasAssistant = false;
+      let messageCount = 0;
+      let first200 = '';
+      
+      if (call.transcriptText) {
+        first200 = call.transcriptText.substring(0, 200);
+        const lines = call.transcriptText.split('\n');
+        messageCount = lines.length;
+        for (const line of lines) {
+          if (line.startsWith('Caller:') || line.startsWith('[Caller]:') || line.startsWith('[user]:')) {
+            hasUser = true;
+          }
+          if (line.startsWith('Avery:') || line.startsWith('[AI]:') || line.startsWith('[assistant]:')) {
+            hasAssistant = true;
+          }
+        }
+      } else if (Array.isArray(transcriptJson)) {
+        messageCount = transcriptJson.length;
+        for (const msg of transcriptJson) {
+          if (msg.role === 'user') hasUser = true;
+          if (msg.role === 'ai' || msg.role === 'assistant') hasAssistant = true;
+        }
+        first200 = transcriptJson.slice(0, 3).map(m => `${m.role}: ${m.text?.substring(0, 50)}`).join(' | ');
+      } else if (transcriptJson && 'segments' in transcriptJson && Array.isArray(transcriptJson.segments)) {
+        messageCount = transcriptJson.segments.length;
+        first200 = transcriptJson.segments.slice(0, 3).join(' | ').substring(0, 200);
+        for (const seg of transcriptJson.segments) {
+          if (seg.includes('[Caller]') || seg.includes('Caller:')) hasUser = true;
+          if (seg.includes('[AI]') || seg.includes('Avery:')) hasAssistant = true;
+        }
+      }
+      
+      // Extract fields from intake data
+      const extractedFields = intakeData ? Object.keys(intakeData).filter(k => {
+        const v = intakeData[k];
+        return v !== null && v !== undefined && v !== '' && !['caller', 'score', 'conflicts', 'keyFacts'].includes(k);
+      }) : [];
+      
+      const callerName = (intakeData as any)?.callerName || 
+                         (intakeData as any)?.caller?.fullName || 
+                         lead?.displayName || 
+                         null;
+      const incidentDate = (intakeData as any)?.incidentDate || null;
+      const practiceAreaGuess = (intakeData as any)?.practiceAreaGuess || 
+                                (intakeData as any)?.practiceArea || 
+                                lead?.practiceAreaId || 
+                                null;
+      
+      // Check if enrichment ran (indicated by having extraction data)
+      const extractionRan = extractedFields.length > 0 || !!callerName || !!practiceAreaGuess;
+      
+      // Check pipeline status - if transcript exists but no extraction, pipeline may have failed
+      const finalizeCalled = !!call.transcriptText && call.transcriptText.length > 20;
+      const finalizeAt = lead?.intake?.completedAt?.toISOString() || null;
+      
+      // Detect potential errors
+      let lastError: string | null = null;
+      if (call.transcriptText && call.transcriptText.length > 50 && !extractionRan) {
+        lastError = 'Transcript exists but extraction did not run or failed';
+      } else if (extractionRan && !lead?.displayName && callerName && callerName !== 'Unknown') {
+        lastError = 'Extraction ran but displayName not updated on lead';
+      } else if (messageCount > 0 && !hasUser) {
+        lastError = 'Transcript has no user messages - caller audio may not have been transcribed';
+      } else if (messageCount > 0 && !hasAssistant) {
+        lastError = 'Transcript has no assistant messages - AI responses may not have been captured';
+      }
+      
+      res.json({
+        orgId,
+        leadId: lead?.id || null,
+        callId: call.id,
+        callSid: call.twilioCallSid ? `****${call.twilioCallSid.slice(-8)}` : null,
+        callCreatedAt: call.createdAt?.toISOString() || null,
+        transcript: {
+          exists: !!call.transcriptText,
+          messageCount,
+          hasUser,
+          hasAssistant,
+          first200,
+        },
+        extraction: {
+          ran: extractionRan,
+          extractedFields,
+          callerName,
+          incidentDate,
+          practiceAreaGuess,
+        },
+        lead: {
+          currentDisplayName: lead?.displayName || null,
+          contactName: lead?.contact?.name || null,
+          phone: lead?.contact?.primaryPhone || null,
+          intakeExists: !!lead?.intake,
+        },
+        scoring: {
+          exists: !!lead?.qualification || !!lead?.score,
+          score: lead?.score || lead?.qualification?.score || null,
+          tier: lead?.scoreLabel || lead?.qualification?.disposition || null,
+        },
+        pipeline: {
+          finalizeCalled,
+          finalizeAt,
+          lastError,
+        },
+      });
+    } catch (error: any) {
+      console.error('[DIAG] last-call error:', error);
+      res.status(500).json({ error: error.message || 'Failed to get diagnostic data' });
+    }
+  });
+
   /**
    * @openapi
    * /v1/auth/register:

@@ -31,6 +31,7 @@ import {
   MoreHorizontal,
   Home,
   BarChart3,
+  Bug,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -71,6 +72,11 @@ const SECONDARY_NAV = [
   { href: "/settings/webhooks", label: "Webhooks", icon: Webhook },
 ];
 
+// Admin-only navigation items
+const ADMIN_NAV = [
+  { href: "/debug", label: "Debug", icon: Bug },
+];
+
 const ALL_NAV_ITEMS = [...PRIMARY_NAV, ...SECONDARY_NAV];
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -80,6 +86,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
 function MobileBottomNav() {
   const [location] = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  
+  // Combine secondary nav with admin nav items if user is admin/owner
+  const moreNavItems = isAdmin ? [...SECONDARY_NAV, ...ADMIN_NAV] : SECONDARY_NAV;
 
   return (
     <>
@@ -110,7 +121,7 @@ function MobileBottomNav() {
             <SheetTrigger asChild>
               <button
                 className={`flex flex-col items-center justify-center gap-0.5 px-4 min-h-[56px] min-w-[72px] transition-colors ${
-                  SECONDARY_NAV.some(item => location.startsWith(item.href))
+                  moreNavItems.some(item => location.startsWith(item.href))
                     ? "text-primary bg-primary/10" 
                     : "text-muted-foreground"
                 }`}
@@ -125,7 +136,7 @@ function MobileBottomNav() {
                 <SheetTitle>More Options</SheetTitle>
               </SheetHeader>
               <div className="space-y-1 pb-safe">
-                {SECONDARY_NAV.map((item) => {
+                {moreNavItems.map((item) => {
                   const isActive = location.startsWith(item.href);
                   return (
                     <Link key={item.href} href={item.href}>
@@ -158,10 +169,15 @@ function MobileBottomNav() {
 
 function DesktopNav() {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  
+  // Include admin nav items for admin/owner users
+  const navItems = isAdmin ? [...ALL_NAV_ITEMS, ...ADMIN_NAV] : ALL_NAV_ITEMS;
 
   return (
     <nav className="hidden md:flex items-center gap-1 flex-1">
-      {ALL_NAV_ITEMS.map((item) => {
+      {navItems.map((item) => {
         const isActive = location.startsWith(item.href);
         return (
           <Link key={item.href} href={item.href}>
@@ -183,6 +199,10 @@ function DesktopNav() {
 function MobileHeader() {
   const { user, organization, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  
+  // Include admin nav items for admin/owner users
+  const allNavItems = isAdmin ? [...ALL_NAV_ITEMS, ...ADMIN_NAV] : ALL_NAV_ITEMS;
 
   return (
     <div className="flex items-center gap-2 md:hidden">
@@ -213,7 +233,7 @@ function MobileHeader() {
 
             {/* Navigation */}
             <div className="flex-1 overflow-y-auto p-4 space-y-1">
-              {ALL_NAV_ITEMS.map((item) => (
+              {allNavItems.map((item) => (
                 <Link key={item.href} href={item.href}>
                   <button
                     onClick={() => setMenuOpen(false)}

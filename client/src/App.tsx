@@ -19,6 +19,7 @@ import ExperimentsPage from "@/pages/experiments";
 import ExperimentDetailPage from "@/pages/experiment-detail";
 import PolicyTestsPage from "@/pages/policy-tests";
 import PIDashboardPage from "@/pages/pi-dashboard";
+import DebugPage from "@/pages/debug";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
@@ -90,6 +91,33 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
   if (!isPlatformAdmin) {
     return <Redirect to="/leads" />;
+  }
+  
+  return <>{children}</>;
+}
+
+function AdminOrOwnerRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading, organization } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  const isAdminOrOwner = user.role === "admin" || user.role === "owner";
+  if (!isAdminOrOwner) {
+    return <Redirect to="/leads" />;
+  }
+
+  if (organization?.onboardingStatus !== "complete") {
+    return <Redirect to="/setup" />;
   }
   
   return <>{children}</>;
@@ -181,6 +209,13 @@ function Router() {
             <PolicyTestsPage />
           </AppLayout>
         </ProtectedRoute>
+      </Route>
+      <Route path="/debug">
+        <AdminOrOwnerRoute>
+          <AppLayout>
+            <DebugPage />
+          </AppLayout>
+        </AdminOrOwnerRoute>
       </Route>
       <Route path="/admin/contact-submissions">
         <ProtectedRoute>
