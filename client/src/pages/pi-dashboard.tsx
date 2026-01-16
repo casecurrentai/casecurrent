@@ -174,7 +174,10 @@ export default function PIDashboardPage() {
       <div className="p-4 sm:p-6">
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Failed to load dashboard data. Please try again.
+            <p className="mb-2">Failed to load dashboard data.</p>
+            {error && (
+              <p className="text-xs text-destructive">{error.message}</p>
+            )}
           </CardContent>
         </Card>
       </div>

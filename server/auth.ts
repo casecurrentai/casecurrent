@@ -99,6 +99,41 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
   next();
 }
 
+// Cookie name for token-based auth
+export const AUTH_COOKIE_NAME = "counseltech_auth";
+
+// Flexible auth middleware - accepts either Bearer token OR auth cookie
+// Use this for endpoints that need to work in browser direct access
+export function flexAuthMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  let token: string | null = null;
+  
+  // Try Authorization header first
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  }
+  
+  // Fall back to auth cookie
+  if (!token && req.cookies && req.cookies[AUTH_COOKIE_NAME]) {
+    token = req.cookies[AUTH_COOKIE_NAME];
+  }
+  
+  if (!token) {
+    console.log('[FLEX_AUTH_FAIL] reason=no_token_or_cookie');
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  
+  const payload = verifyToken(token);
+  
+  if (!payload) {
+    console.log('[FLEX_AUTH_FAIL] reason=invalid_or_expired_token');
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+  
+  req.user = payload;
+  next();
+}
+
 // Platform admin middleware - requires user to be in PLATFORM_ADMIN_EMAILS
 export function requirePlatformAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) {

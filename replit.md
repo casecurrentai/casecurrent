@@ -17,6 +17,8 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
 - **Build System**: esbuild for server bundling and Vite for the client.
 - **Development**: `tsx` is used for TypeScript execution in development.
 - **Authentication & Authorization**: Role-based access control (RBAC) with JWT tokens and Express sessions storing in PostgreSQL. Supports roles like owner, admin, staff, and viewer, with platform admin impersonation capabilities.
+  - **Dual Auth Support**: Login sets both a JWT token (returned in response) and an httpOnly cookie (`counseltech_auth`) for browser-based access
+  - **flexAuthMiddleware**: Endpoints that need browser direct access use this middleware which accepts either Bearer token OR auth cookie
 - **Monorepo Structure**: Organized into `client/`, `server/`, `shared/`, `apps/` (api, web), and `packages/` (shared, config) for modular development.
 
 ### Feature Specifications

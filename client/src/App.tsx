@@ -133,6 +133,13 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
+      <Route path="/pi-dashboard">
+        <ProtectedRoute>
+          <AppLayout>
+            <PIDashboardPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
       <Route path="/leads">
         <ProtectedRoute>
           <AppLayout>

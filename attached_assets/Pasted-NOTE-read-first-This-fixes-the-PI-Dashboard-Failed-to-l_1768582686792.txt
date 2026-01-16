@@ -1,0 +1,39 @@
+NOTE (read first): This fixes the PI Dashboard “Failed to load dashboard data” issue by making /v1/analytics/pi-dashboard use the SAME cookie/session auth as the rest of the app (Leads works), instead of requiring an Authorization header (which breaks on mobile and in-browser direct hits).
+
+TASK: Fix PI Dashboard API auth so it works in the web app (no Authorization header required)
+
+Problem
+- The PI Analytics Dashboard UI shows: “Failed to load dashboard data.”
+- When hitting GET /v1/analytics/pi-dashboard directly in the browser, it returns: {"error":"Authorization header required"}
+- On mobile I cannot add headers, and the rest of the app (Leads, etc.) works via normal session/cookies. So analytics is using the wrong auth mechanism.
+
+Goal
+Make GET /v1/analytics/pi-dashboard authenticate the same way as the rest of the app (cookie/session-based), not Bearer token headers.
+
+Required changes
+1) Backend auth alignment
+- Find where /v1/analytics/pi-dashboard is mounted (likely server/routes.ts or an analytics router).
+- Remove/replace any middleware that enforces Authorization header for this endpoint.
+- Apply the same middleware used by the Leads endpoints (whatever currently makes /v1/leads work when logged in).
+- Ensure the handler gets orgId from the existing session/user context (same mechanism as Leads).
+- Return 401 only if the user is not logged in (no session), not because of missing Authorization header.
+
+2) Frontend fetch alignment
+- Ensure the dashboard page calls the endpoint using same-origin cookies:
+  - If using fetch, ensure it’s not omitting credentials. Use credentials: "include" if needed.
+  - Confirm it calls the correct path (/v1/analytics/pi-dashboard) and not an incorrect /api/... variant.
+- Improve the UI error text to display the HTTP status + message returned so debugging is easier.
+
+3) Verification instrumentation
+- Add a log line when the endpoint is hit:
+  [PI_DASHBOARD_HIT] userId=<...> orgId=<...>
+- Add a log line when auth fails:
+  [PI_DASHBOARD_AUTH_FAIL] reason=<no_session|no_org|...>
+
+Acceptance tests (must all pass)
+A) Log into CaseCurrent in the browser, open /dashboard → it loads data (no “Failed to load” message).
+B) Visiting /v1/analytics/pi-dashboard in the browser while logged in returns JSON (not “Authorization header required”).
+C) Visiting /v1/analytics/pi-dashboard while logged out returns 401 Unauthorized.
+D) Confirm logs show [PI_DASHBOARD_HIT] with a real orgId.
+
+Do not mark complete until all acceptance tests pass.

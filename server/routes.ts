@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import type { Server } from 'http';
 import * as crypto from 'crypto';
 import swaggerUi from 'swagger-ui-express';
+import cookieParser from 'cookie-parser';
 import { WebSocketServer, WebSocket } from 'ws';
 import { prisma } from './db';
 import { swaggerSpec } from './openapi';
@@ -10,6 +11,8 @@ import {
   hashPassword,
   comparePassword,
   authMiddleware,
+  flexAuthMiddleware,
+  AUTH_COOKIE_NAME,
   requireMinRole,
   requirePlatformAdmin,
   createAuditLog,
@@ -138,6 +141,9 @@ function slugify(text: string): string {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Cookie parser for flexible auth
+  app.use(cookieParser());
+  
   // Swagger UI
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
   app.get('/docs.json', (_req, res) => {
@@ -849,6 +855,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       console.log('[LOGIN] Success! Sending response for:', email);
+      
+      // Set auth cookie for browser-based access (7 day expiry)
+      res.cookie(AUTH_COOKIE_NAME, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/',
+      });
+      
       res.json({
         token,
         user: {
@@ -9531,9 +9547,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *       200:
    *         description: PI dashboard data with funnel, speed, rescue queue, source ROI, and intake completeness
    */
-  app.get('/v1/analytics/pi-dashboard', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  app.get('/v1/analytics/pi-dashboard', flexAuthMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
+      console.log(`[PI_DASHBOARD_HIT] userId=${user.userId} orgId=${user.orgId}`);
       const days = parseInt(req.query.days as string) || 30;
       const data = await getPIDashboardData(prisma, user.orgId, days);
       res.json(data);
