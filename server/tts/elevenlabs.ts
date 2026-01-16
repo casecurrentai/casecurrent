@@ -22,6 +22,9 @@ export interface TTSStreamOptions {
   responseId?: string;
 }
 
+// Default voice ID - "Avery" voice for CaseCurrent
+const DEFAULT_VOICE_ID = "iyCZIebPlpayzTGqBX8l";
+
 /**
  * Get TTS configuration from environment variables
  */
@@ -32,7 +35,7 @@ export function getTTSConfig(): TTSConfig | null {
     return null;
   }
 
-  const voiceId = process.env.ELEVENLABS_VOICE_ID_AVERY || process.env.ELEVENLABS_VOICE_ID || "6aDn1KB0hjpdcocrUkmq";
+  const voiceId = process.env.ELEVENLABS_VOICE_ID_AVERY || process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
   const modelId = process.env.ELEVENLABS_MODEL_ID || "eleven_turbo_v2_5";
   const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT || "ulaw_8000";
 
@@ -89,6 +92,12 @@ export async function streamTTS(
   const outputFormat = opts.outputFormat || config.outputFormat;
   const responseId = opts.responseId || "unknown";
 
+  const url = `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/stream?output_format=${outputFormat}`;
+
+  // Verification log for voice ID confirmation (server-only, not spoken to callers)
+  console.log(`[TTS_VERIFY] Using ElevenLabs voiceId=${voiceId}`);
+  console.log(`[TTS_VERIFY] Full URL: ${url}`);
+
   console.log(JSON.stringify({
     event: "tts_start",
     response_id: responseId,
@@ -96,9 +105,8 @@ export async function streamTTS(
     model_id: modelId,
     format: outputFormat,
     text_length: text.length,
+    url: url,
   }));
-
-  const url = `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/stream?output_format=${outputFormat}`;
 
   const requestBody = {
     text,
