@@ -399,6 +399,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // Simple version endpoint (requested for deployment verification)
+  app.get('/api/version', (_req, res) => {
+    res.json({ sha: GIT_SHA });
+  });
+
   // Token-gated production phone number seeding endpoint
   // TODO: Remove or disable this endpoint after initial production seeding is verified
   app.post('/v1/diag/seed-phone-number', async (req, res) => {

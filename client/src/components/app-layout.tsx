@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,17 @@ import {
   BarChart3,
 } from "lucide-react";
 import type { ReactNode } from "react";
+
+function useVersion() {
+  const [sha, setSha] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/version")
+      .then((res) => res.json())
+      .then((data) => setSha(data.sha))
+      .catch(() => setSha(null));
+  }, []);
+  return sha;
+}
 
 // Primary navigation - shown in bottom nav on mobile
 const PRIMARY_NAV = [
@@ -274,6 +285,10 @@ function UserMenu() {
 }
 
 function AppLayoutInner({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const sha = useVersion();
+  const isAdmin = user?.role === "owner" || user?.role === "admin";
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -307,6 +322,15 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
+
+      {/* Footer with version SHA for admin users */}
+      {isAdmin && sha && sha !== "local" && (
+        <footer className="hidden md:block border-t py-2 px-4 text-center">
+          <span className="text-xs text-muted-foreground font-mono" data-testid="text-version-sha">
+            Build: {sha.slice(0, 7)}
+          </span>
+        </footer>
+      )}
     </div>
   );
 }
