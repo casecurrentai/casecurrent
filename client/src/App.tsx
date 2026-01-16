@@ -18,6 +18,7 @@ import WebhooksPage from "@/pages/webhooks";
 import ExperimentsPage from "@/pages/experiments";
 import ExperimentDetailPage from "@/pages/experiment-detail";
 import PolicyTestsPage from "@/pages/policy-tests";
+import PIDashboardPage from "@/pages/pi-dashboard";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
@@ -121,7 +122,14 @@ function Router() {
       <Route path="/dashboard">
         <ProtectedRoute>
           <AppLayout>
-            <Redirect to="/leads" />
+            <PIDashboardPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/analytics">
+        <ProtectedRoute>
+          <AppLayout>
+            <PIDashboardPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>

@@ -44,6 +44,7 @@ import {
   getExperimentStats,
   listExperiments,
 } from './analytics/experiments';
+import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -9417,6 +9418,147 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (error) {
       console.error('Analytics summary error:', error);
       res.status(500).json({ error: 'Failed to get analytics' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/analytics/pi-dashboard:
+   *   get:
+   *     summary: Get PI-focused analytics dashboard data
+   *     tags: [Analytics]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: days
+   *         schema:
+   *           type: integer
+   *           default: 30
+   *     responses:
+   *       200:
+   *         description: PI dashboard data with funnel, speed, rescue queue, source ROI, and intake completeness
+   */
+  app.get('/v1/analytics/pi-dashboard', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const days = parseInt(req.query.days as string) || 30;
+      const data = await getPIDashboardData(prisma, user.orgId, days);
+      res.json(data);
+    } catch (error) {
+      console.error('PI dashboard error:', error);
+      res.status(500).json({ error: 'Failed to get PI dashboard data' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/calls/{id}/rescue:
+   *   post:
+   *     summary: Resolve a missed call in the rescue queue
+   *     tags: [Calls]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Call resolved
+   *       404:
+   *         description: Call not found
+   */
+  app.post('/v1/calls/:id/rescue', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const result = await resolveMissedCall(prisma, user.orgId, id, user.userId);
+      if (!result.success) {
+        return res.status(404).json({ error: result.error });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Rescue call error:', error);
+      res.status(500).json({ error: 'Failed to resolve call' });
+    }
+  });
+
+  /**
+   * @openapi
+   * /v1/leads/{id}/milestones:
+   *   patch:
+   *     summary: Update lead funnel milestones
+   *     tags: [Leads]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               consultScheduledAt:
+   *                 type: string
+   *                 format: date-time
+   *               consultCompletedAt:
+   *                 type: string
+   *                 format: date-time
+   *               retainerSentAt:
+   *                 type: string
+   *                 format: date-time
+   *               retainerSignedAt:
+   *                 type: string
+   *                 format: date-time
+   *     responses:
+   *       200:
+   *         description: Milestones updated
+   *       404:
+   *         description: Lead not found
+   */
+  app.patch('/v1/leads/:id/milestones', authMiddleware, requireMinRole('staff'), async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { consultScheduledAt, consultCompletedAt, retainerSentAt, retainerSignedAt } = req.body;
+
+      const lead = await prisma.lead.findFirst({ where: { id, orgId: user.orgId } });
+      if (!lead) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+
+      const updateData: Record<string, Date | null> = {};
+      if (consultScheduledAt !== undefined) {
+        updateData.consultScheduledAt = consultScheduledAt ? new Date(consultScheduledAt) : null;
+      }
+      if (consultCompletedAt !== undefined) {
+        updateData.consultCompletedAt = consultCompletedAt ? new Date(consultCompletedAt) : null;
+      }
+      if (retainerSentAt !== undefined) {
+        updateData.retainerSentAt = retainerSentAt ? new Date(retainerSentAt) : null;
+      }
+      if (retainerSignedAt !== undefined) {
+        updateData.retainerSignedAt = retainerSignedAt ? new Date(retainerSignedAt) : null;
+      }
+
+      const updated = await prisma.lead.update({
+        where: { id },
+        data: updateData,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Update milestones error:', error);
+      res.status(500).json({ error: 'Failed to update milestones' });
     }
   });
 

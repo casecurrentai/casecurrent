@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth, ProtectedRoute } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,11 +30,13 @@ import {
   X,
   MoreHorizontal,
   Home,
+  BarChart3,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 // Primary navigation - shown in bottom nav on mobile
 const PRIMARY_NAV = [
+  { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/experiments", label: "Experiments", icon: FlaskConical },
   { href: "/policy-tests", label: "Tests", icon: ShieldCheck },
@@ -49,11 +51,7 @@ const SECONDARY_NAV = [
 const ALL_NAV_ITEMS = [...PRIMARY_NAV, ...SECONDARY_NAV];
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  return (
-    <ProtectedRoute>
-      <AppLayoutInner>{children}</AppLayoutInner>
-    </ProtectedRoute>
-  );
+  return <AppLayoutInner>{children}</AppLayoutInner>;
 }
 
 function MobileBottomNav() {

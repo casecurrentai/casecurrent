@@ -178,6 +178,11 @@ model Lead {
   dncAt                 DateTime? @map("dnc_at")
   lastActivityAt        DateTime? @map("last_activity_at")
   lastHumanResponseAt   DateTime? @map("last_human_response_at")
+  firstContactAt        DateTime? @map("first_contact_at")
+  consultScheduledAt    DateTime? @map("consult_scheduled_at")
+  consultCompletedAt    DateTime? @map("consult_completed_at")
+  retainerSentAt        DateTime? @map("retainer_sent_at")
+  retainerSignedAt      DateTime? @map("retainer_signed_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
@@ -250,6 +255,7 @@ model PhoneNumber {
   inboundEnabled   Boolean  @default(true) @map("inbound_enabled")
   afterHoursEnabled Boolean @default(false) @map("after_hours_enabled")
   onCallUserId     String?  @map("on_call_user_id")
+  sourceTag        String?  @map("source_tag")
   routing          Json?
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -301,6 +307,9 @@ model Call {
   endedAt         DateTime? @map("ended_at")
   durationSeconds Int?      @map("duration_seconds")
   callOutcome     String?   @map("call_outcome") // connected, voicemail, no-answer, busy, failed
+  resolved        Boolean   @default(false)
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?   @map("resolved_by")
   recordingUrl    String?   @map("recording_url")
   transcriptText  String?   @map("transcript_text")
   transcriptJson  Json?     @map("transcript_json")
