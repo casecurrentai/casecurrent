@@ -125,6 +125,8 @@ model Contact {
   id           String   @id @default(uuid())
   orgId        String   @map("org_id")
   name         String
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
   primaryPhone String?  @map("primary_phone")
   primaryEmail String?  @map("primary_email")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -159,12 +161,16 @@ model Lead {
   source                String
   status                String    @default("new")
   priority              String    @default("medium")
+  displayName           String?   @map("display_name")
   practiceAreaId        String?   @map("practice_area_id")
   incidentDate          DateTime? @map("incident_date")
   incidentLocation      String?   @map("incident_location")
   summary               String?
   score                 Int?      @default(0)
+  scoreLabel            String?   @map("score_label")
+  scoreReasons          Json?     @map("score_reasons")
   urgency               String?   @default("normal")
+  intakeData            Json?     @map("intake_data")
   ownerUserId           String?   @map("owner_user_id")
   nextStep              String?   @map("next_step")
   dnc                   Boolean   @default(false)

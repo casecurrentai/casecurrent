@@ -1,0 +1,128 @@
+Task: Populate Leads with Name + Intake Summary + Practice Area + Score (and fix call “active” status)
+
+Current state (confirmed via UI):
+- Lead displays “Unknown Caller” with only phone number.
+- Lead Summary shows Source=Phone, Practice Area=Not assigned.
+- Intake tab says “No intake started” (Start Intake button).
+- Score tab has no meaningful data.
+- Calls show as “active” even after the call ended.
+
+Goal:
+After an inbound call, the lead should automatically show:
+- Caller full name (if provided) instead of “Unknown Caller”
+- Practice Area (auto-classified)
+- Intake Summary (short)
+- Score (0–100 + label + reasons)
+- Calls should show completed/ended (not “active”) after twilio_stop
+
+Architecture assumption:
+Inbound calls are handled via Twilio Media Stream in server/telephony/twilio/streamHandler.ts.
+We already create Lead/Contact/Call on stream “start”. Now we need:
+(1) data capture during conversation (name)
+(2) post-call extraction + scoring (from transcript)
+(3) DB fields + API + UI rendering
+
+-------------------------
+Step 1 — Collect name in the conversation (Avery prompt)
+Update the agent conversation/prompt (wherever Avery system prompt lives) so that within the first ~30 seconds she asks:
+- “What’s your full name?” (and confirm spelling if uncertain)
+- “What’s a good callback number?” (if different)
+Persist the name as soon as it’s captured.
+
+Acceptance:
+- During calls, transcripts should include explicit name capture.
+
+-------------------------
+Step 2 — Persist caller name to Contact/Lead as soon as we have it
+In server/telephony/twilio/streamHandler.ts:
+- Maintain a rolling transcript buffer for the call (you already log user_transcript events).
+- Add a simple name-capture detector:
+  - If transcript contains patterns like “my name is X”, “this is X”, or the assistant asked “full name” and the next user utterance is likely the name,
+  - parse it conservatively (first + last if present).
+- When name is detected:
+  - Update Contact.firstName/lastName (or Contact.name) AND Lead.displayName/title if those fields exist.
+  - Log: [NAME_CAPTURED] callSid=... contactId=... name="..."
+
+If schema lacks a display name:
+- Add lead.displayName and contact.fullName OR firstName/lastName (Prisma migration).
+- Ensure lead list uses lead.displayName if present else “Unknown Caller”.
+
+-------------------------
+Step 3 — Post-call Intake Extraction (structured JSON) + Practice Area + Score
+On twilio_stop (or stream close), run an “intake extraction + scoring” step using the full transcript.
+
+Implementation:
+- Create a service: server/intake/extractIntake.ts (or similar).
+- Input: transcript (assistant + user), fromNumber, toNumber, callSid, orgId.
+- Output: STRICT JSON (validate with zod) like:
+  {
+    "caller": { "fullName": "...", "email": null, "phone": "..." },
+    "practiceArea": "Personal Injury | Family | Criminal | Immigration | Employment | Other",
+    "incidentDate": "YYYY-MM-DD|null",
+    "location": "...|null",
+    "summary": "1–3 sentences",
+    "keyFacts": ["...", "..."],
+    "urgency": "low|medium|high",
+    "conflicts": { "opposingParty": "...|null" },
+    "score": { "value": 0-100, "label": "low|medium|high", "reasons": ["...","..."] }
+  }
+
+Scoring:
+- Start simple and deterministic:
+  - If practiceArea supported by the firm => +30
+  - If injury/medical treatment => +20
+  - If clear liability + witnesses => +20
+  - If statute/urgent timeline => +15
+  - If caller uncooperative/unknown facts => subtract
+- Optionally let LLM provide reasons + classification but clamp numeric score with rules.
+
+Persistence:
+- Save extraction result to DB:
+  - lead.practiceArea
+  - lead.summary
+  - lead.urgency
+  - lead.scoreValue + lead.scoreLabel + lead.scoreReasons (JSON)
+  - store full extracted JSON in lead.intakeData (JSON) OR new Intake table linked to leadId
+- Log: [INTAKE_EXTRACTED] leadId=... practiceArea=... score=...
+
+-------------------------
+Step 4 — Fix Call status
+Currently activity list shows calls as “active” even after end.
+On twilio_stop / ws_close:
+- Update Call record: status="completed" (or endedAt timestamp)
+- Ensure UI uses status to display active vs completed.
+
+Log: [CALL_ENDED] callSid=... callId=... duration=...
+
+-------------------------
+Step 5 — UI: actually display the new data
+Frontend:
+- Lead list row:
+  - Primary: lead.displayName (or Contact fullName), fallback Unknown Caller
+  - Secondary: practiceArea and score label/value badge
+- Lead detail:
+  - Lead Summary: show practiceArea, summary text, urgency badge
+- Intake tab:
+  - If intakeData exists, render extracted fields instead of “No intake started”
+  - Keep “Start Intake” only for manual override / missing extraction
+- Score tab:
+  - Render score value + label + reasons list + lastComputedAt
+
+Files likely touched:
+- server/telephony/twilio/streamHandler.ts
+- server/routes.ts (if adding APIs)
+- prisma/schema.prisma + migration
+- web app components for lead list/detail/tabs
+
+-------------------------
+Acceptance criteria (must prove with logs + UI)
+After one inbound call:
+1) Lead list shows caller name (not “Unknown Caller”) if caller gave it.
+2) Lead detail shows Practice Area not “Not assigned”.
+3) Intake tab shows auto-generated intake (no “No intake started”).
+4) Score tab shows numeric score + reasons.
+5) Calls show completed (not “active”) after end.
+6) Logs include:
+   [NAME_CAPTURED] (if name was spoken)
+   [INTAKE_EXTRACTED]
+   [CALL_ENDED]
