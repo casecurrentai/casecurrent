@@ -1,0 +1,62 @@
+Bug: Calls create leads/calls, Dashboard page loads, but NO enrichment shows (still "Unknown Caller", Intake empty, completeness 0, scoring 0).
+Therefore: ingestion OK; enrichment pipeline (transcript -> extraction -> upsert) is failing or not running in prod.
+
+TASK: Make enrichment deterministic and observable. Do not mark complete until acceptance tests pass.
+
+A) Instrument post-call enrichment with definitive logs
+In server/telephony/twilio/streamHandler.ts (or wherever ws events are handled):
+1) On start event: log [STREAM_START] requestId callSid from to orgId source=...
+2) On every user_transcript: append to transcript buffer and log [TX_APPEND] callSid role=user len=...
+3) On every assistant text output (the text sent to ElevenLabs): append and log [TX_APPEND] callSid role=assistant len=...
+4) On call end (twilio_stop AND ws_close): run finalize() exactly once per callSid and log:
+   - [FINALIZE_BEGIN] callSid msgCount leadId orgId
+   - [TRANSCRIPT_UPSERT_OK] callSid transcriptId msgCount
+   - [EXTRACT_BEGIN] callSid
+   - [EXTRACT_OK] callSid keys=[...] callerName=... practiceAreaGuess=...
+   - [INTAKE_UPSERT_OK] callSid intakeId populatedFields=[...]
+   - [LEAD_UPDATE_OK] callSid leadId displayName=... practiceArea=... score=...
+   - [FINALIZE_DONE] callSid
+
+On any error: [FINALIZE_ERROR] step=... callSid err=... stack=...
+
+IMPORTANT: Add an in-memory guard so finalize() only executes once per callSid.
+
+B) Persist transcripts and extracted fields in DB
+- Ensure a CallTranscript table exists (or equivalent) storing:
+  callSid, orgId, leadId, messagesJson, fullText, extractedJson, createdAt.
+- Upsert by callSid.
+
+C) Extraction output MUST be FLAT keys matching dashboard expectations
+Extraction JSON MUST include:
+callerName, phoneNumber, practiceAreaGuess,
+incidentDate, incidentLocation, injuryDescription,
+atFaultParty, medicalTreatment, insuranceInfo
+(No nested caller.fullName structures.)
+
+D) Write enrichment results to the correct tables used by UI
+- Update Contact + Lead display name if callerName exists.
+- Update Lead.practiceArea (or practiceAreaGuess field).
+- Upsert an Intake record keyed by leadId/orgId using the flat fields above.
+- Store score fields on Lead: score_0_100, tier, reasons[].
+
+E) Ensure UI gets these fields
+- Update lead detail API (server routes for lead profile) to include:
+  contact/displayName, intake fields, transcript (latest), score/tier/reasons.
+- Update PI dashboard analytics endpoint to compute completeness from Intake flat fields AND lead phone.
+
+F) Add a protected diagnostic endpoint to prove data exists
+Add GET /v1/diag/enrichment?callSid=... (requires DIAG_TOKEN header) returning:
+leadId, orgId, displayName, practiceArea,
+transcriptExists, msgCount,
+extractedKeys,
+intakeExists, populatedFields,
+score/tier.
+
+Acceptance tests (must all pass):
+1) Make a test call and say: "My name is John Smith. I was in a car accident yesterday in Baton Rouge."
+2) After call ends, logs must show FINALIZE_BEGIN -> ... -> FINALIZE_DONE with msgCount > 0.
+3) Lead list shows "John Smith" (not Unknown Caller).
+4) Lead detail Intake tab shows callerName + phoneNumber + injuryDescription (not empty state).
+5) Calls tab shows transcript messages.
+6) PI dashboard completeness shows >0% for Caller Name and Phone Number.
+7) Score exists (0-100) with tier + reasons.

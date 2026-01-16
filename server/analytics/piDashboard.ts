@@ -427,14 +427,14 @@ function getIntakeFieldValue(data: Record<string, unknown>, field: string): unkn
     return data[field];
   }
   
-  // Nested structure fallback mappings
+  // Nested structure fallback mappings - support both old and new field names
   const nestedMappings: Record<string, string[]> = {
-    callerName: ['caller.fullName', 'caller.name'],
-    phone: ['caller.phone'],
+    callerName: ['callerName', 'caller.fullName', 'caller.name'],
+    phone: ['phone', 'phoneNumber', 'caller.phone'],
     incidentDate: ['incidentDate'],
-    incidentLocation: ['location', 'incidentLocation'],
-    injuryDescription: ['summary', 'injuryDescription'],
-    atFault: ['conflicts.opposingParty', 'atFault'],
+    incidentLocation: ['incidentLocation', 'location'],
+    injuryDescription: ['injuryDescription', 'summary'],
+    atFault: ['atFault', 'atFaultParty', 'conflicts.opposingParty'],
     medicalTreatment: ['medicalTreatment'],
     insuranceInfo: ['insuranceInfo'],
   };

@@ -596,6 +596,93 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /v1/diag/enrichment?callSid=...&token=DIAG_TOKEN
+  // Diagnostic endpoint to verify enrichment data exists for a given call
+  app.get('/v1/diag/enrichment', async (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    
+    // Return 404 in production if DIAG_TOKEN not set (security)
+    if (!diagToken) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    
+    const token = req.query.token as string;
+    if (token !== diagToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const callSid = (req.query.callSid as string) || '';
+      
+      if (!callSid) {
+        return res.status(400).json({ ok: false, error: 'callSid required' });
+      }
+      
+      // Find call by callSid
+      const call = await prisma.call.findUnique({
+        where: { twilioCallSid: callSid },
+        include: {
+          lead: {
+            include: {
+              contact: { select: { name: true, primaryPhone: true } },
+              intake: { select: { id: true, answers: true, completionStatus: true } },
+              qualification: { select: { score: true, disposition: true, reasons: true } },
+            },
+          },
+        },
+      });
+      
+      if (!call) {
+        return res.json({
+          ok: true,
+          callSid: callSid.slice(-8),
+          found: false,
+          message: 'Call not found',
+        });
+      }
+      
+      const lead = call.lead;
+      const intakeData = lead?.intakeData as Record<string, unknown> | null;
+      const intakeAnswers = lead?.intake?.answers as Record<string, unknown> | null;
+      const transcript = call.transcriptJson as unknown[] | null;
+      
+      // Extract populated fields from intake data
+      const extractedKeys = intakeData ? Object.keys(intakeData).filter(k => {
+        const v = intakeData[k];
+        return v !== null && v !== undefined && v !== '' && typeof v !== 'object';
+      }) : [];
+      
+      // Check intake record populated fields
+      const intakePopulatedFields = intakeAnswers ? Object.keys(intakeAnswers).filter(k => {
+        const v = intakeAnswers[k];
+        return v !== null && v !== undefined && v !== '' && typeof v !== 'object';
+      }) : [];
+      
+      res.json({
+        ok: true,
+        callSid: `****${callSid.slice(-8)}`,
+        found: true,
+        leadId: lead?.id || null,
+        orgId: call.orgId,
+        displayName: lead?.displayName || lead?.contact?.name || null,
+        practiceArea: lead?.practiceAreaId || (intakeData as any)?.practiceArea || (intakeData as any)?.practiceAreaGuess || null,
+        transcriptExists: !!call.transcriptText,
+        msgCount: Array.isArray(transcript) ? transcript.length : 0,
+        transcriptLength: call.transcriptText?.length || 0,
+        extractedKeys,
+        intakeExists: !!lead?.intake,
+        intakeStatus: lead?.intake?.completionStatus || null,
+        populatedFields: intakePopulatedFields,
+        score: lead?.score || lead?.qualification?.score || null,
+        tier: lead?.scoreLabel || lead?.qualification?.disposition || null,
+        scoreReasons: lead?.scoreReasons || lead?.qualification?.reasons || null,
+      });
+    } catch (error: any) {
+      console.error('[DIAG] enrichment error:', error);
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
   /**
    * @openapi
    * /v1/auth/register:

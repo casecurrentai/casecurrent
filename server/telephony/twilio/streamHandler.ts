@@ -14,6 +14,18 @@ function maskPhone(phone: string | null | undefined): string {
   return '****' + digits.slice(-4);
 }
 
+// Finalize-once guard: track callSids that have already been finalized
+const finalizedCallSids = new Set<string>();
+const FINALIZED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// Clean up old entries periodically
+setInterval(() => {
+  // Clear finalized cache older than TTL (we don't track timestamps, so just clear periodically)
+  if (finalizedCallSids.size > 1000) {
+    finalizedCallSids.clear();
+  }
+}, 30 * 60 * 1000); // Every 30 minutes
+
 const OPENAI_REALTIME_URL =
   'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
 const TOKEN_MAX_AGE_SECONDS = 600;
@@ -34,17 +46,50 @@ interface PostCallContext {
 
 async function processCallEnd(ctx: PostCallContext): Promise<void> {
   const { requestId, callSid, leadId, contactId, orgId, callStartTime, fromE164, toE164, transcriptBuffer } = ctx;
+  const maskSid = (sid: string | null) => sid ? `****${sid.slice(-8)}` : null;
   
-  if (!leadId || !orgId) {
-    console.log(JSON.stringify({ event: 'post_call_skipped', requestId, reason: 'no_lead_id' }));
+  // FINALIZE-ONCE GUARD: Prevent duplicate processing for the same callSid
+  if (callSid && finalizedCallSids.has(callSid)) {
+    console.log(JSON.stringify({ 
+      tag: '[FINALIZE_SKIP]', 
+      requestId, 
+      callSid: maskSid(callSid),
+      reason: 'already_finalized',
+    }));
     return;
   }
+  
+  if (!leadId || !orgId) {
+    console.log(JSON.stringify({ 
+      tag: '[FINALIZE_SKIP]', 
+      requestId, 
+      callSid: maskSid(callSid),
+      reason: 'no_lead_id',
+    }));
+    return;
+  }
+  
+  // Mark as finalized immediately to prevent race conditions
+  if (callSid) {
+    finalizedCallSids.add(callSid);
+  }
+  
+  // [FINALIZE_BEGIN] - Start of enrichment pipeline
+  console.log(JSON.stringify({ 
+    tag: '[FINALIZE_BEGIN]', 
+    requestId, 
+    callSid: maskSid(callSid),
+    leadId,
+    orgId,
+    msgCount: transcriptBuffer.length,
+  }));
   
   const callEndTime = new Date();
   const durationSeconds = callStartTime 
     ? Math.round((callEndTime.getTime() - callStartTime.getTime()) / 1000)
     : null;
   
+  let currentStep = 'call_update';
   try {
     // Step 1: Update Call status to completed
     if (callSid) {
@@ -60,7 +105,7 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       console.log(JSON.stringify({ 
         tag: '[CALL_ENDED]', 
         requestId, 
-        callSid: callSid ? `****${callSid.slice(-8)}` : null,
+        callSid: maskSid(callSid),
         durationSeconds,
         updatedCount: updatedCall.count,
       }));
@@ -80,17 +125,39 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     });
     
     // Step 3: Build full transcript text
+    currentStep = 'build_transcript';
     const fullTranscript = transcriptBuffer
       .map(t => `${t.role === 'ai' ? 'Avery' : 'Caller'}: ${t.text}`)
       .join('\n');
     
+    // [TRANSCRIPT_UPSERT_OK] - Log transcript ready for processing
+    console.log(JSON.stringify({ 
+      tag: '[TRANSCRIPT_UPSERT_OK]', 
+      requestId,
+      callSid: maskSid(callSid),
+      msgCount: transcriptBuffer.length,
+      transcriptLength: fullTranscript.length,
+    }));
+    
     if (!fullTranscript || fullTranscript.length < 20) {
-      console.log(JSON.stringify({ event: 'intake_skipped', requestId, reason: 'transcript_too_short', length: fullTranscript.length }));
+      console.log(JSON.stringify({ 
+        tag: '[FINALIZE_SKIP]', 
+        requestId, 
+        callSid: maskSid(callSid),
+        reason: 'transcript_too_short', 
+        length: fullTranscript.length,
+      }));
       return;
     }
     
     // Step 4: Extract intake data
-    console.log(JSON.stringify({ event: 'intake_extraction_start', requestId, transcriptLength: fullTranscript.length }));
+    currentStep = 'extraction';
+    console.log(JSON.stringify({ 
+      tag: '[EXTRACT_BEGIN]', 
+      requestId, 
+      callSid: maskSid(callSid),
+      transcriptLength: fullTranscript.length,
+    }));
     
     const extraction: IntakeExtraction = await extractIntakeWithOpenAI(
       fullTranscript,
@@ -100,17 +167,19 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       orgId
     );
     
+    // [EXTRACT_OK] - Log extraction success with key fields
     console.log(JSON.stringify({ 
-      tag: '[INTAKE_EXTRACTED]', 
+      tag: '[EXTRACT_OK]', 
       requestId,
-      leadId,
-      practiceArea: extraction.practiceArea,
-      score: extraction.score.value,
-      scoreLabel: extraction.score.label,
+      callSid: maskSid(callSid),
+      keys: Object.keys(extraction),
       callerName: extraction.caller.fullName,
+      practiceAreaGuess: extraction.practiceArea,
+      score: extraction.score.value,
     }));
     
     // Step 5: Update Contact with name if detected
+    currentStep = 'contact_update';
     if (contactId && extraction.caller.fullName && extraction.caller.fullName !== 'Unknown') {
       await prisma.contact.update({
         where: { id: contactId },
@@ -123,7 +192,7 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       });
       
       console.log(JSON.stringify({ 
-        tag: '[NAME_CAPTURED]', 
+        tag: '[CONTACT_UPDATE_OK]', 
         requestId,
         contactId,
         name: extraction.caller.fullName,
@@ -131,19 +200,29 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     }
     
     // Step 6: Update Lead with extraction data
-    // Store intakeData with flat field names for dashboard compatibility
-    // Spread extraction first, then override with flat field names
+    // Store intakeData with FLAT field names matching dashboard expectations
+    currentStep = 'lead_update';
     const flatIntakeData = {
+      // Original nested extraction data
       ...extraction,
+      // FLAT KEYS for dashboard compatibility
       callerName: extraction.caller.fullName,
-      phone: extraction.caller.phone || fromE164,
+      phoneNumber: extraction.caller.phone || fromE164,
+      phone: extraction.caller.phone || fromE164, // Both for compatibility
+      practiceAreaGuess: extraction.practiceArea,
       incidentDate: extraction.incidentDate,
       incidentLocation: extraction.location,
       injuryDescription: extraction.summary,
-      atFault: extraction.conflicts?.opposingParty,
-      medicalTreatment: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('medical') || f.toLowerCase().includes('treatment')) || null,
-      insuranceInfo: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('insurance')) || null,
+      atFaultParty: extraction.conflicts?.opposingParty,
+      atFault: extraction.conflicts?.opposingParty, // Both for compatibility
+      medicalTreatment: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('medical') || f.toLowerCase().includes('treatment') || f.toLowerCase().includes('hospital') || f.toLowerCase().includes('doctor')) || null,
+      insuranceInfo: extraction.keyFacts?.find((f: string) => f.toLowerCase().includes('insurance') || f.toLowerCase().includes('claim')) || null,
     };
+    
+    // Compute populated fields for logging
+    const populatedFields = Object.entries(flatIntakeData)
+      .filter(([k, v]) => v !== null && v !== undefined && v !== '' && !['caller', 'score', 'conflicts', 'keyFacts'].includes(k))
+      .map(([k]) => k);
     
     await prisma.lead.update({
       where: { id: leadId },
@@ -161,15 +240,19 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       },
     });
     
+    // [LEAD_UPDATE_OK] - Lead enrichment complete
     console.log(JSON.stringify({ 
-      tag: '[TRANSCRIPT_FLUSHED]', 
+      tag: '[LEAD_UPDATE_OK]', 
       requestId,
-      callSid: callSid ? `****${callSid.slice(-8)}` : null,
+      callSid: maskSid(callSid),
       leadId,
-      messageCount: transcriptBuffer.length,
+      displayName: extraction.caller.fullName || null,
+      practiceArea: extraction.practiceArea,
+      score: extraction.score.value,
     }));
     
     // Step 7: Store transcript in Call record
+    currentStep = 'transcript_store';
     if (callSid) {
       await prisma.call.updateMany({
         where: { twilioCallSid: callSid },
@@ -181,15 +264,8 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       });
     }
     
-    console.log(JSON.stringify({ 
-      tag: '[EXTRACTION_SAVED]', 
-      requestId,
-      callSid: callSid ? `****${callSid.slice(-8)}` : null,
-      leadId,
-      hasName: !!(extraction.caller.fullName && extraction.caller.fullName !== 'Unknown'),
-    }));
-    
     // Step 8: Create or update Intake record
+    currentStep = 'intake_upsert';
     await prisma.intake.upsert({
       where: { leadId },
       create: {
@@ -206,13 +282,17 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       },
     });
     
+    // [INTAKE_UPSERT_OK] - Log with populated fields
     console.log(JSON.stringify({ 
-      tag: '[INTAKE_UPSERTED]', 
+      tag: '[INTAKE_UPSERT_OK]', 
       requestId,
+      callSid: maskSid(callSid),
       leadId,
+      populatedFields,
     }));
     
     // Step 9: Create or update Qualification record
+    currentStep = 'qualification_upsert';
     await prisma.qualification.upsert({
       where: { leadId },
       create: {
@@ -231,14 +311,28 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       },
     });
     
-    console.log(JSON.stringify({ event: 'post_call_complete', requestId, leadId }));
+    // [FINALIZE_DONE] - Complete enrichment pipeline success
+    console.log(JSON.stringify({ 
+      tag: '[FINALIZE_DONE]', 
+      requestId, 
+      callSid: maskSid(callSid),
+      leadId,
+      displayName: extraction.caller.fullName || null,
+      score: extraction.score.value,
+      tier: extraction.score.label,
+      msgCount: transcriptBuffer.length,
+    }));
     
   } catch (err: any) {
+    // [FINALIZE_ERROR] - Log error with step information
     console.error(JSON.stringify({ 
-      event: 'post_call_error', 
+      tag: '[FINALIZE_ERROR]', 
       requestId,
+      callSid: maskSid(callSid),
       leadId,
+      step: currentStep,
       error: err?.message || String(err),
+      stack: err?.stack?.split('\n').slice(0, 3).join(' | ') || null,
     }));
   }
 }
@@ -801,6 +895,17 @@ ${generateVoicePromptInstructions()}`;
             const textToSpeak = pendingText.trim();
             pendingText = '';
             
+            // CRITICAL FIX: Add AI text to transcript buffer for enrichment
+            transcriptBuffer.push({ role: 'ai', text: textToSpeak, timestamp: new Date() });
+            console.log(JSON.stringify({ 
+              tag: '[TX_APPEND]', 
+              requestId,
+              callSid: callSid ? `****${callSid.slice(-8)}` : null,
+              role: 'assistant',
+              len: textToSpeak.length,
+              preview: textToSpeak.substring(0, 50),
+            }));
+            
             console.log(JSON.stringify({ 
               event: 'tts_trigger', 
               requestId, 
@@ -857,17 +962,37 @@ ${generateVoicePromptInstructions()}`;
           currentResponseId = null;
           ttsSpeaking = false;
         } else if (message.type === 'response.audio_transcript.done') {
+          // NOTE: This fires in AUDIO mode only. In TEXT mode, we capture from response.done above.
           const text = message.transcript || '';
           if (text) {
-            transcriptBuffer.push({ role: 'ai', text, timestamp: new Date() });
+            // Avoid duplicate if already captured in response.done
+            const alreadyCaptured = transcriptBuffer.some(t => t.role === 'ai' && t.text === text);
+            if (!alreadyCaptured) {
+              transcriptBuffer.push({ role: 'ai', text, timestamp: new Date() });
+              console.log(JSON.stringify({ 
+                tag: '[TX_APPEND]', 
+                requestId, 
+                callSid: callSid ? `****${callSid.slice(-8)}` : null,
+                role: 'assistant',
+                len: text.length,
+                source: 'audio_transcript',
+              }));
+            }
           }
-          console.log(JSON.stringify({ event: 'ai_transcript', requestId, text: text.substring(0, 80) }));
         } else if (message.type === 'conversation.item.input_audio_transcription.completed') {
           const text = message.transcript || '';
           if (text) {
             transcriptBuffer.push({ role: 'user', text, timestamp: new Date() });
+            // [TX_APPEND] - User transcript captured
+            console.log(JSON.stringify({ 
+              tag: '[TX_APPEND]', 
+              requestId, 
+              callSid: callSid ? `****${callSid.slice(-8)}` : null,
+              role: 'user',
+              len: text.length,
+              preview: text.substring(0, 50),
+            }));
           }
-          console.log(JSON.stringify({ event: 'user_transcript', requestId, text: text.substring(0, 80) }));
         } else if (message.type === 'error') {
           console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
         }
