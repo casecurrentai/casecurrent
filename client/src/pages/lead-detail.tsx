@@ -1197,6 +1197,7 @@ export default function LeadDetailPage() {
   const [, params] = useRoute("/leads/:id");
   const { token } = useAuth();
   const leadId = params?.id;
+  const [activeSection, setActiveSection] = useState<SectionId>("activity");
 
   const { data: lead, isLoading, error } = useQuery<Lead>({
     queryKey: ["/v1/leads", leadId],
@@ -1264,7 +1265,7 @@ export default function LeadDetailPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg sm:text-2xl font-bold truncate" data-testid="text-lead-name">
-              {lead.displayName || lead.contact.name}
+              {getBestDisplayName(lead)}
             </h1>
             <Badge className={`text-xs ${STATUS_COLORS[lead.status]}`} data-testid="badge-status">
               {lead.status}
@@ -1300,15 +1301,15 @@ export default function LeadDetailPage() {
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
-                  {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
+                  {getBestDisplayName(lead).charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{lead.displayName || lead.contact.name}</p>
+                  <p className="font-semibold truncate">{getBestDisplayName(lead)}</p>
                   <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                    {lead.contact.primaryPhone && (
-                      <a href={`tel:${lead.contact.primaryPhone}`} className="hover:underline flex items-center gap-1">
+                    {getBestPhone(lead) && (
+                      <a href={`tel:${getBestPhone(lead)}`} className="hover:underline flex items-center gap-1">
                         <Phone className="h-3 w-3" />
-                        {lead.contact.primaryPhone}
+                        {getBestPhone(lead)}
                       </a>
                     )}
                     {lead.contact.primaryEmail && (
@@ -1340,7 +1341,7 @@ export default function LeadDetailPage() {
                 <div className="space-y-0.5 sm:space-y-1">
                   <p className="text-[10px] sm:text-sm text-muted-foreground">Practice Area</p>
                   <p className="text-sm sm:text-base font-medium" data-testid="text-practice-area">
-                    {lead.practiceArea?.name || "Not assigned"}
+                    {getBestPracticeArea(lead)}
                   </p>
                 </div>
                 {lead.incidentDate && (
@@ -1389,59 +1390,69 @@ export default function LeadDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Tabs - Scrollable on mobile */}
-          <Tabs defaultValue="interactions" className="w-full">
-            <ScrollArea className="w-full">
-              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:w-full sm:grid-cols-6 gap-1">
-                <TabsTrigger value="interactions" className="gap-1 px-3 sm:px-2" data-testid="tab-interactions">
+          {/* Mobile: Swipeable cards */}
+          <div className="md:hidden" data-testid="mobile-section-view">
+            <MobileSwipeCards
+              activeSection={activeSection}
+              onSectionChange={setActiveSection}
+              interactions={interactions}
+              leadId={leadId!}
+              token={token!}
+            />
+          </div>
+
+          {/* Desktop/Tablet: Traditional tabs */}
+          <div className="hidden md:block">
+            <Tabs defaultValue="interactions" className="w-full">
+              <TabsList className="grid w-full grid-cols-6 gap-1">
+                <TabsTrigger value="interactions" className="gap-1 px-2" data-testid="tab-interactions">
                   <MessageSquare className="h-4 w-4" />
                   <span className="whitespace-nowrap">Activity</span>
                   {interactions.length > 0 && (
                     <Badge variant="secondary" className="text-[10px] ml-1 h-4 px-1">{interactions.length}</Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="calls" className="gap-1 px-3 sm:px-2" data-testid="tab-calls">
+                <TabsTrigger value="calls" className="gap-1 px-2" data-testid="tab-calls">
                   <PhoneCall className="h-4 w-4" />
                   <span className="whitespace-nowrap">Calls</span>
                 </TabsTrigger>
-                <TabsTrigger value="messages" className="gap-1 px-3 sm:px-2" data-testid="tab-messages">
+                <TabsTrigger value="messages" className="gap-1 px-2" data-testid="tab-messages">
                   <MessageSquare className="h-4 w-4" />
                   <span className="whitespace-nowrap">Messages</span>
                 </TabsTrigger>
-                <TabsTrigger value="intake" className="gap-1 px-3 sm:px-2" data-testid="tab-intake">
+                <TabsTrigger value="intake" className="gap-1 px-2" data-testid="tab-intake">
                   <ClipboardList className="h-4 w-4" />
                   <span className="whitespace-nowrap">Intake</span>
                 </TabsTrigger>
-                <TabsTrigger value="qualification" className="gap-1 px-3 sm:px-2" data-testid="tab-qualification">
+                <TabsTrigger value="qualification" className="gap-1 px-2" data-testid="tab-qualification">
                   <CheckCircle className="h-4 w-4" />
                   <span className="whitespace-nowrap">Score</span>
                 </TabsTrigger>
-                <TabsTrigger value="tasks" className="gap-1 px-3 sm:px-2" data-testid="tab-tasks">
+                <TabsTrigger value="tasks" className="gap-1 px-2" data-testid="tab-tasks">
                   <FileText className="h-4 w-4" />
                   <span className="whitespace-nowrap">Tasks</span>
                 </TabsTrigger>
               </TabsList>
-              <ScrollBar orientation="horizontal" className="sm:hidden" />
-            </ScrollArea>
-            <TabsContent value="interactions" className="mt-4">
-              <InteractionTimeline interactions={interactions} />
-            </TabsContent>
-            <TabsContent value="calls" className="mt-4">
-              <CallsPanel interactions={interactions} />
-            </TabsContent>
-            <TabsContent value="messages" className="mt-4">
-              <MessagesPanel interactions={interactions} />
-            </TabsContent>
-            <TabsContent value="intake" className="mt-4">
-              <IntakePanel leadId={leadId!} token={token!} />
-            </TabsContent>
-            <TabsContent value="qualification" className="mt-4">
-              <QualificationPanel leadId={leadId!} token={token!} />
-            </TabsContent>
-            <TabsContent value="tasks" className="mt-4">
-              <PlaceholderPanel icon={FileText} title="Tasks and follow-ups will appear here" />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="interactions" className="mt-4">
+                <InteractionTimeline interactions={interactions} />
+              </TabsContent>
+              <TabsContent value="calls" className="mt-4">
+                <CallsPanel interactions={interactions} />
+              </TabsContent>
+              <TabsContent value="messages" className="mt-4">
+                <MessagesPanel interactions={interactions} />
+              </TabsContent>
+              <TabsContent value="intake" className="mt-4">
+                <IntakePanel leadId={leadId!} token={token!} />
+              </TabsContent>
+              <TabsContent value="qualification" className="mt-4">
+                <QualificationPanel leadId={leadId!} token={token!} />
+              </TabsContent>
+              <TabsContent value="tasks" className="mt-4">
+                <PlaceholderPanel icon={FileText} title="Tasks and follow-ups will appear here" />
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
 
         {/* Sidebar - Desktop only */}
@@ -1456,10 +1467,10 @@ export default function LeadDetailPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
-                  {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
+                  {getBestDisplayName(lead).charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <p className="font-semibold" data-testid="text-contact-name">{lead.displayName || lead.contact.name}</p>
+                  <p className="font-semibold" data-testid="text-contact-name">{getBestDisplayName(lead)}</p>
                   <p className="text-sm text-muted-foreground">
                     Contact since {new Date(lead.contact.createdAt).toLocaleDateString()}
                   </p>

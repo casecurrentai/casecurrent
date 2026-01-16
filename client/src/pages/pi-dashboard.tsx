@@ -188,7 +188,7 @@ export default function PIDashboardPage() {
     <div className="space-y-6 p-4 sm:p-6 pb-20 md:pb-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">PI Analytics Dashboard</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Intake Analytics Dashboard</h1>
           <p className="text-sm text-muted-foreground">
             Last 30 days: {new Date(data.periodStart).toLocaleDateString()} - {new Date(data.periodEnd).toLocaleDateString()}
           </p>

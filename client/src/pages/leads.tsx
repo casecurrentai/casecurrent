@@ -74,6 +74,38 @@ const STATUS_OPTIONS = [
   { value: "closed", label: "Closed" },
 ];
 
+// Best available display name/practice area resolution (matching lead-detail.tsx)
+function getBestDisplayName(lead: Lead): string {
+  if (lead.displayName && lead.displayName.trim()) {
+    return lead.displayName;
+  }
+  if (lead.contact?.name && lead.contact.name.trim() && lead.contact.name !== "Unknown Caller") {
+    return lead.contact.name;
+  }
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.callerName && typeof intakeData.callerName === "string" && intakeData.callerName.trim()) {
+    return intakeData.callerName;
+  }
+  if (intakeData?.caller?.fullName && typeof intakeData.caller.fullName === "string" && intakeData.caller.fullName.trim()) {
+    return intakeData.caller.fullName;
+  }
+  return "Unknown Caller";
+}
+
+function getBestPracticeArea(lead: Lead): string | null {
+  if (lead.practiceArea?.name && lead.practiceArea.name.trim()) {
+    return lead.practiceArea.name;
+  }
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.practiceAreaGuess && typeof intakeData.practiceAreaGuess === "string" && intakeData.practiceAreaGuess.trim()) {
+    return intakeData.practiceAreaGuess;
+  }
+  if (intakeData?.practiceArea && typeof intakeData.practiceArea === "string" && intakeData.practiceArea.trim()) {
+    return intakeData.practiceArea;
+  }
+  return null;
+}
+
 const PRIORITY_COLORS: Record<string, string> = {
   urgent: "bg-destructive text-destructive-foreground",
   high: "bg-orange-500 text-white dark:bg-orange-600",
@@ -340,7 +372,7 @@ export default function LeadsPage() {
                   <div className="flex items-start gap-3">
                     {/* Avatar */}
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
-                      {(lead.displayName || lead.contact.name).charAt(0).toUpperCase()}
+                      {getBestDisplayName(lead).charAt(0).toUpperCase()}
                     </div>
                     
                     {/* Content */}
@@ -350,7 +382,7 @@ export default function LeadsPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate" data-testid={`text-lead-name-${lead.id}`}>
-                              {lead.displayName || lead.contact.name}
+                              {getBestDisplayName(lead)}
                             </span>
                             {lead.score !== null && lead.score > 0 && (
                               <Badge 
@@ -419,8 +451,8 @@ export default function LeadsPage() {
                         >
                           {lead.priority}
                         </Badge>
-                        {lead.practiceArea && (
-                          <Badge variant="secondary" className="text-xs">{lead.practiceArea.name}</Badge>
+                        {getBestPracticeArea(lead) && (
+                          <Badge variant="secondary" className="text-xs">{getBestPracticeArea(lead)}</Badge>
                         )}
                         {/* Mobile: Date */}
                         <span className="text-xs text-muted-foreground sm:hidden ml-auto">

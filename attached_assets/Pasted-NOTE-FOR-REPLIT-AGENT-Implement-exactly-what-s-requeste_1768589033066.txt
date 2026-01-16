@@ -1,0 +1,120 @@
+NOTE FOR REPLIT AGENT:
+Implement exactly what’s requested below. Do NOT mark complete until the acceptance tests pass on MOBILE (iPhone Safari) and DESKTOP. Keep existing routes working. Prefer minimal dependencies (CSS scroll-snap over adding heavy carousel libs) unless absolutely necessary.
+
+TASK: Fix Lead Detail mobile UX (no horizontal tab scrolling) + improve “Unknown Caller” display + make the Dashboard name not PI-specific.
+
+WHY:
+- On mobile, the Lead detail sub-navigation (Activity / Calls / Messages / Intake / Score / Tasks) overflows horizontally and requires the user to scroll sideways to reach tabs (bad UX).
+- Lead header still shows “Unknown Caller” and “Not assigned” even when we have partial intake data somewhere; we need “best available” display logic so the UI looks intelligent even before the pipeline is perfect.
+- “PI Analytics Dashboard” is too narrow as a product name. We need a more general label while keeping the underlying metrics compatible with contingency PI firms in Louisiana.
+
+──────────────────────────────────────────────────────────────────────────────
+PART 1 — Lead Detail: Replace overflow tabs with swipeable “cards” on mobile
+──────────────────────────────────────────────────────────────────────────────
+Goal:
+On mobile (< md breakpoint), the Lead detail sections should be presented as swipeable cards (carousel-like). Each card corresponds to one section:
+- Activity
+- Calls
+- Messages
+- Intake
+- Score
+- Tasks
+
+Requirements:
+1) Desktop/tablet behavior (>= md) should remain as current tabs (no regression).
+2) Mobile behavior (< md):
+   - No horizontal scrolling tab bar.
+   - Show a compact “section selector” (pills OR dots) + the swipeable cards beneath it.
+   - User can swipe left/right to move between cards.
+   - The selector reflects the active card as the user swipes.
+
+Implementation guidance (preferred):
+- Use CSS scroll-snap for a lightweight carousel:
+  - container: overflow-x-auto, flex, snap-x snap-mandatory, scroll-smooth, touch-pan-x
+  - each card: w-full shrink-0 snap-start
+- Track active index with IntersectionObserver (preferred) OR onScroll + math fallback.
+- Keep each card’s content the same components currently rendered in each TabPanel so logic stays consistent.
+
+UI details:
+- Each card should look like a shadcn “Card” (or your existing Card component).
+- Put the selector above the card stack:
+  - Pills: “Activity”, “Calls”, “Messages”, “Intake”, “Score”, “Tasks”
+  - Or dots with labels (either is fine). Pills are clearer.
+- Optional: Add subtle left/right chevrons for discoverability, but swiping must work without them.
+
+Acceptance tests (Mobile):
+A) On an iPhone-sized viewport, the Lead detail page shows pills/dots + a card. No tab strip requiring sideways scroll.
+B) You can reach Score and Tasks by swiping; no horizontal scrolling is needed anywhere.
+C) The active pill/dot updates as you swipe.
+D) Desktop still shows normal tabs and everything works.
+
+Files likely involved (adjust to your structure):
+- apps/web/src/pages/leads/LeadDetail*.tsx (or equivalent)
+- any Tabs component wrapper used on Lead detail
+
+──────────────────────────────────────────────────────────────────────────────
+PART 2 — “Best available caller identity” (stop showing Unknown Caller when we have clues)
+──────────────────────────────────────────────────────────────────────────────
+Goal:
+Improve Lead header + Lead list display so it uses the best available name and practice area.
+
+Implement “best available” displayName resolution:
+Use the first non-empty value in this order:
+1) lead.displayName (or lead.name if that’s your field)
+2) contact.fullName / contact.displayName (if a Contact relation exists)
+3) intake.callerName (flat)
+4) intake.caller.fullName (nested legacy format)
+5) fallback: “Unknown Caller”
+
+Practice area display:
+Use first non-empty:
+1) lead.practiceArea (if present)
+2) intake.practiceAreaGuess
+3) intake.practiceArea (legacy/nested if exists)
+4) fallback: “Not assigned”
+
+Also:
+- Always show caller phone (from Contact or intake.callerPhone / caller.phone).
+- If score exists, show Score badge (e.g., “Score 72 • High”); otherwise omit.
+
+Acceptance tests:
+E) After a call where caller says “My name is John Smith”, Lead list and Lead header show “John Smith” (not Unknown Caller) IF the data exists anywhere in lead/contact/intake.
+F) If practiceAreaGuess exists, it appears instead of “Not assigned”.
+
+Files likely involved:
+- Lead list row component
+- Lead header component on Lead detail
+- Any mapper/selector utilities
+
+──────────────────────────────────────────────────────────────────────────────
+PART 3 — Rename “PI Analytics Dashboard” to a general product name (without breaking routes)
+──────────────────────────────────────────────────────────────────────────────
+Goal:
+Keep the dashboard functionality, but rename UI text so it isn’t narrowly “PI”.
+
+Requirements:
+1) Keep existing route(s) working:
+   - If current path is /dashboard, keep /dashboard.
+   - If analytics endpoint is /v1/analytics/pi-dashboard, keep it for now (backward compatible).
+2) Update UI labels:
+   - Page title: change from “PI Analytics Dashboard” → “Intake Analytics Dashboard” (or “Client Intake Dashboard”).
+   - Subtitle can mention “optimized for contingency PI firms” if you want, but the main title must be general.
+3) Optional but recommended:
+   - Add a small “Practice Area filter” UI later; for now you may simply label the funnel sections in a practice-area-agnostic way (Inbound Calls, AI Answered, Human Answered, Consult Scheduled, Retainer Signed, etc.).
+
+Acceptance tests:
+G) Dashboard page renders with the new title and still loads data.
+H) No broken links; existing nav “Dashboard” works.
+
+Files likely involved:
+- Dashboard page component
+- Left nav config
+- Any constants for labels
+
+──────────────────────────────────────────────────────────────────────────────
+DELIVERABLES
+──────────────────────────────────────────────────────────────────────────────
+1) Implement mobile swipe-card UX for Lead detail sections.
+2) Implement best-available display name + practice area resolution for Lead list + Lead header.
+3) Rename PI dashboard UI strings to a general “Intake Analytics Dashboard” (keep routes stable).
+4) Provide a short list of changed files + confirmation that acceptance tests A–H pass.
