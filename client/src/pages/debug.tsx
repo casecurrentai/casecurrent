@@ -12,6 +12,12 @@ interface DiagnosticData {
   callSid: string | null;
   callCreatedAt: string | null;
   message?: string;
+  transcriptStats?: {
+    msgCount: number;
+    userCount: number;
+    assistantCount: number;
+    fullTextLen: number;
+  };
   transcript: {
     exists: boolean;
     messageCount: number;
@@ -105,11 +111,11 @@ export default function DebugPage() {
         <Button 
           onClick={handleRefresh} 
           disabled={isFetching}
-          size="sm"
-          data-testid="button-refresh-debug"
+          size="default"
+          data-testid="button-load-recent-call"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
+          Load Most Recent Call
         </Button>
       </div>
 
@@ -189,6 +195,21 @@ export default function DebugPage() {
                   <DiagRow label="Created" value={formatTime(data.callCreatedAt)} />
                 </CardContent>
               </Card>
+
+              {/* Transcript Stats */}
+              {data.transcriptStats && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Transcript Stats</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-sm">
+                    <DiagRow label="Total Messages" value={data.transcriptStats.msgCount} good={data.transcriptStats.msgCount > 4} />
+                    <DiagRow label="User Count" value={data.transcriptStats.userCount} good={data.transcriptStats.userCount > 0} />
+                    <DiagRow label="Assistant Count" value={data.transcriptStats.assistantCount} good={data.transcriptStats.assistantCount > 0} />
+                    <DiagRow label="Full Text Length" value={data.transcriptStats.fullTextLen} good={data.transcriptStats.fullTextLen > 100} />
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Transcript */}
               <Card>

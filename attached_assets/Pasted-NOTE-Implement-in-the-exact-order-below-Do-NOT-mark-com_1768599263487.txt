@@ -1,0 +1,170 @@
+NOTE: Implement in the exact order below. Do NOT mark complete until ALL acceptance tests pass. Assume production is casecurrent.co and we must validate using in-app UI (mobile) + minimal diag endpoints. Do not rely on server logs as storage.
+
+GOAL
+Fix call enrichment end-to-end so inbound calls populate:
+- Lead display name (not “Unknown Caller”)
+- Intake tab (has extracted fields)
+- Calls tab transcript (user + assistant)
+- PI/Intake Analytics Dashboard metrics (completeness > 0, AI Answered > 0)
+Also fix the mobile Lead Detail UI so sub-sections are swipeable cards (no horizontal tab row scrolling).
+
+========================================================
+ORDER OF IMPLEMENTATION (NON-NEGOTIABLE)
+1) Transcript persistence (buffer -> flush on call end -> DB upsert by callSid)
+2) Extraction pass (structured JSON) + update Lead/Contact displayName
+3) Intake record population + Intake tab no longer empty
+4) Dashboard metrics wired to persisted fields (completeness, qualified, answered, etc.)
+5) Scoring (0-100 + tier + reasons)
+6) Mobile UI: swipeable cards replacing horizontal tabs on mobile ONLY
+
+========================================================
+1) TRANSCRIPT PERSISTENCE (CRITICAL BUG FIX)
+Context: We are in TEXT mode for the AI (modalities: ['text']). OpenAI emits assistant text via text delta events; we buffer this into pendingText for ElevenLabs TTS. However this assistant text is NOT being appended into our transcript buffer, so saved transcripts are user-only or nearly empty -> enrichment fails.
+
+Implement in server/telephony/twilio/streamHandler.ts (or the actual Twilio WS handler):
+A) Maintain per-call buffers keyed by callSid:
+- transcriptBuffer[callSid] = array of { role: 'user'|'assistant', text, ts }
+- assistantPendingText[callSid] = string (accumulate deltas into coherent assistant utterances)
+
+B) On inbound user transcript events:
+- append to transcriptBuffer[callSid] role='user'
+- log once per append with tag: [TX_APPEND user] callSid=... len=...
+
+C) On assistant text deltas (the SAME text you send to ElevenLabs):
+- accumulate into assistantPendingText[callSid]
+- ALSO append to transcriptBuffer in coherent chunks:
+  - Either append each delta (acceptable) OR preferably append at “turn end” / “response done” event as a single assistant message.
+- This must be wired to the REAL event names used by our OpenAI Realtime integration.
+  - Find where pendingText is appended and spoken via ElevenLabs.
+  - Mirror that same text into transcriptBuffer[callSid] with role='assistant'.
+
+D) Finalize-once guard:
+- Ensure call-end finalization runs exactly once per callSid even if multiple ws_close/stop events fire.
+- Use a Set or Map finalized[callSid] boolean. If already finalized, log [FINALIZE_SKIP].
+
+E) On call end (twilio_stop / ws_close / call termination):
+- Upsert CallTranscript (or equivalent) row by callSid with:
+  orgId, leadId, callId, messagesJson, fullText, createdAt/endedAt
+- messagesJson must include BOTH user and assistant.
+- fullText should be a joined readable transcript.
+
+Instrumentation:
+- Add logs: [FINALIZE_BEGIN], [FINALIZE_SAVED], [FINALIZE_DONE], [FINALIZE_ERR]
+- Add a short “transcriptStats” object at save time: msgCount, userCount, assistantCount, fullTextLen.
+
+========================================================
+2) EXTRACTION + NAME UPDATE
+After transcript is saved, run a single structured extraction pass:
+Fields (FLAT NAMES — these are what the dashboard expects):
+- callerName
+- phone
+- incidentDate
+- incidentLocation
+- injuryDescription
+- atFaultParty
+- medicalTreatment
+- insuranceInfo
+- practiceAreaGuess
+- qualified (boolean) + qualificationReasons (array)
+- score (0-100) + tier (low/medium/high)
+
+Requirements:
+- Do NOT store only nested structures (caller.fullName) unless you also store flat fields.
+- If callerName is present at ANY confidence > minimal threshold, update Lead/Contact displayName immediately. Do not gate name updates behind “qualified”.
+
+Persist extraction results:
+- Store in CallTranscript.extractedJson (or equivalent)
+- Upsert an Intake record tied to leadId (see next section)
+
+Logs:
+- [EXTRACT_BEGIN] callSid=...
+- [EXTRACT_OK] callSid=... callerName=... score=...
+- [EXTRACT_ERR] callSid=... error=...
+
+========================================================
+3) INTAKE RECORD + UI POPULATION
+A) Upsert Intake by leadId after extraction:
+- Populate intake fields using FLAT names above.
+- Ensure Lead Detail “Intake” tab uses this intake record and no longer shows “No intake started”.
+
+B) Lead list display name logic:
+- Prefer displayName if set
+- Else prefer intake.callerName if set
+- Else fallback “Unknown Caller”
+
+========================================================
+4) DASHBOARD METRICS WIRED TO REAL DATA
+Rename “PI Analytics Dashboard” -> “Intake Analytics Dashboard” (copy update only; route can stay /dashboard).
+Metrics:
+- Inbound Calls = count calls in period
+- AI Answered = Twilio call connected + Avery stream started (define from existing call/session records; or set a boolean on call when stream starts)
+- Human Answered = staff call completed OR lead.first_contact_at set
+- Intake completeness must compute from the actual persisted intake fields:
+  callerName, phone, incidentDate, incidentLocation, injuryDescription, atFaultParty, medicalTreatment, insuranceInfo
+
+Fix for legacy/nested data:
+- If older records have nested objects, dashboard must read both:
+  caller.fullName -> callerName fallback
+  caller.phone -> phone fallback
+But primary target is flat field persistence going forward.
+
+========================================================
+5) SCORING
+A) Store score + tier + reasons on Lead (or related model) after extraction.
+B) Ensure Lead Detail “Score” tab shows:
+- Score (0-100)
+- Tier
+- Reasons/factors
+
+========================================================
+6) DEBUG TOOL MUST WORK ON MOBILE (NO DESKTOP REQUIRED)
+Current issue: “Error loading diagnostic: The string did not match the expected pattern.”
+Likely causes:
+- Debug endpoint validates UUID but we pass Twilio CallSid (CA...)
+- Or query param parsing/token format mismatch
+
+Fix:
+A) Provide an in-app debug page “Enrichment Debug” that works without manual IDs:
+- Button: “Load Most Recent Call”
+- Server endpoint returns last call for org (orderBy createdAt desc) + enrichment status.
+B) Also allow optional identifier param that accepts BOTH UUID and Twilio CallSid:
+- If identifier starts with “CA” or matches /^CA[a-zA-Z0-9]{32}$/ treat as callSid and query by callSid
+- Else treat as UUID and query by id
+C) Return:
+- callSid, leadId, orgId
+- transcriptStats (msgCount, assistantCount, userCount, fullTextLen)
+- extracted fields summary (callerName, phone, score, qualified)
+- intake completeness snapshot
+
+Acceptance for debug page:
+- It must load on mobile and never crash due to ID parsing.
+
+========================================================
+MOBILE UI FIX (SWIPEABLE CARDS)
+Problem: On mobile, Lead Detail sub-sections (Activity / Calls / Messages / Intake / Score / Tasks) require horizontal scrolling across a long tab row.
+Requirement:
+- On mobile ONLY, replace the tab row with swipeable cards (carousel).
+- Each card corresponds to one section and shows full content for that section.
+- Desktop remains normal tabs.
+
+Implementation:
+- Detect mobile breakpoint (CSS or hook).
+- Use scroll-snap carousel (lightweight) or a small carousel lib.
+- Show pagination dots or labels.
+- Support deep-linking: ?tab=calls opens the Calls card.
+
+========================================================
+ACCEPTANCE TESTS (MUST ALL PASS)
+A) Make a test call and say clearly: “My name is John Smith.” 
+   -> Lead list shows “John Smith” (not Unknown Caller)
+B) Lead detail -> Intake tab shows at least callerName + phone and does NOT say “No intake started”
+C) Lead detail -> Calls tab shows a transcript with BOTH user + assistant messages
+D) Intake Analytics Dashboard -> Intake completeness shows >0% for Caller Name and Phone Number
+E) Intake Analytics Dashboard -> Inbound Calls increments AND “AI Answered” is NOT 0 after a completed test call
+F) Enrichment Debug page -> “Load Most Recent Call” works on mobile and shows transcriptStats with assistantCount > 0
+G) Mobile Lead Detail -> sections are swipeable cards; no sideways scrolling tab row needed
+
+DELIVERABLES
+- Commit all changes
+- Provide a short checklist of what changed (files + purpose)
+- Provide exactly how to test on production with the demo credentials and a new inbound call

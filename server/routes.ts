@@ -923,12 +923,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         lastError = 'Transcript has no assistant messages - AI responses may not have been captured';
       }
       
+      // Compute transcriptStats for diagnostic response
+      const transcriptStats = {
+        msgCount: messageCount,
+        userCount: hasUser ? Math.max(1, messageCount > 0 ? Math.floor(messageCount / 2) : 0) : 0,
+        assistantCount: hasAssistant ? Math.max(1, messageCount > 0 ? Math.ceil(messageCount / 2) : 0) : 0,
+        fullTextLen: call.transcriptText?.length || 0,
+      };
+      
+      // If we have transcriptJson array, calculate exact counts
+      if (Array.isArray(transcriptJson)) {
+        transcriptStats.userCount = transcriptJson.filter(m => m.role === 'user').length;
+        transcriptStats.assistantCount = transcriptJson.filter(m => m.role === 'ai' || m.role === 'assistant').length;
+        transcriptStats.msgCount = transcriptJson.length;
+      }
+      
       res.json({
         orgId,
         leadId: lead?.id || null,
         callId: call.id,
         callSid: call.twilioCallSid ? `****${call.twilioCallSid.slice(-8)}` : null,
         callCreatedAt: call.createdAt?.toISOString() || null,
+        transcriptStats,
         transcript: {
           exists: !!call.transcriptText,
           messageCount,

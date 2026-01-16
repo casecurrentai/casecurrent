@@ -74,6 +74,12 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     finalizedCallSids.add(callSid);
   }
   
+  // Compute transcript stats for diagnostics
+  const userCount = transcriptBuffer.filter(t => t.role === 'user').length;
+  const assistantCount = transcriptBuffer.filter(t => t.role === 'ai').length;
+  const fullTextLen = transcriptBuffer.map(t => t.text).join('\n').length;
+  const transcriptStats = { msgCount: transcriptBuffer.length, userCount, assistantCount, fullTextLen };
+  
   // [FINALIZE_BEGIN] - Start of enrichment pipeline
   console.log(JSON.stringify({ 
     tag: '[FINALIZE_BEGIN]', 
@@ -81,7 +87,7 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     callSid: maskSid(callSid),
     leadId,
     orgId,
-    msgCount: transcriptBuffer.length,
+    transcriptStats,
   }));
   
   const callEndTime = new Date();
@@ -320,7 +326,7 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       displayName: extraction.caller.fullName || null,
       score: extraction.score.value,
       tier: extraction.score.label,
-      msgCount: transcriptBuffer.length,
+      transcriptStats,
     }));
     
   } catch (err: any) {
