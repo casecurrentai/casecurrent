@@ -1,0 +1,88 @@
+Build a new premium marketing page for the CaseCurrent voice assistant “Avery” using the same structure, spacing, and component patterns as the existing marketing pages (see screenshot reference of the “Solutions for Every Practice” page).
+	1.	Add a new marketing route:
+
+	•	Path: /voice (preferred) (or /avery if routing conventions require)
+	•	Page title: “Avery Voice Intake”
+	•	Meta description: “Avery answers every call instantly with emotionally intelligent intake, structured summaries, routing, and premium voice options including ElevenLabs Professional Voice Cloning.”
+
+	2.	Add a new top navigation tab to this page:
+
+	•	Label: “Voice AI” (or “Avery (Voice)” if that matches site naming)
+	•	Style it as a premium nav item:
+	•	Desktop: pill-style link with deep blue or purple background + thin gold border + subtle hover glow
+	•	Mobile menu: add a small “Premium” badge next to it
+	•	Keep styling subtle and consistent with the brand (no loud gradients).
+
+	3.	Page content and sections (build in this order, matching existing marketing-page format):
+A) Hero
+
+	•	H1: “Avery: Human-Sounding Voice Intake”
+	•	Body: “Avery answers every call instantly, keeps conversations calm and natural, captures clean intake details, and routes the right matters to your team—without hold music, missed calls, or inconsistent handling.”
+	•	CTAs: “Book a Demo” (primary), “Contact Sales” (secondary)
+	•	Chips: “24/7 Answering”, “Real-Time Intake + Routing”, “Premium Voice Options”
+
+B) Feature cards section (same card layout style as “Practice Areas”)
+Section title: “What Avery Can Handle”
+Subtitle: “Designed for real callers—confused callers, stressed callers, angry callers—and built to keep the conversation moving with empathy and structure.”
+Cards:
+	1.	New Case Intake (chips: Guided questions, Confirmation prompts, Clean summaries)
+	2.	Emotional Callers (chips: De-escalation, Gentle pacing, Trauma-aware tone)
+	3.	Lead Qualification (chips: Urgency flags, Disqualifier checks, Intake completeness)
+	4.	Scheduling + Routing (chips: Warm transfer logic, Call-back capture, After-hours coverage)
+	5.	Follow-Ups That Convert (chips: SMS/email nudges, Document links, No-pressure follow-ups)
+
+C) Operational Outcomes (same outcome card pattern)
+Cards:
+	•	24/7 Availability
+	•	Faster Response
+	•	Consistent Quality
+	•	Complete Data
+	•	Better First Impression
+
+D) Premium Voice Options (new premium centerpiece section)
+	•	Section title: “Premium Voice Options”
+	•	Add 3 option cards:
+
+	1.	Studio Voice (Included) with bullets:
+	•	Natural pacing and human cadence
+	•	Consistent tone across every call
+	•	Optimized for phone-quality audio
+	2.	Signature Voice (Mid-Tier Add-On) with label: “Powered by ElevenLabs Professional Voice Cloning”
+	•	Emphasize: solo practitioners, brand continuation, consistency, “same Avery brain, but your voice”
+	•	Add fine print: “Signature Voice requires attorney consent and firm-provided recordings. Avery always discloses she is an AI assistant.”
+	3.	Multi-Voice Routing (Top Tier / Enterprise)
+	•	Emphasize: different voices by department/practice area, unified intake brain, brand consistency at scale
+
+E) Integrations section (same style as existing)
+	•	Zapier, Clio, MyCase, Custom Webhooks
+
+F) Smart Intake Workflow section
+	•	Step list:
+Greeting + New/Existing Check
+Caller Basics
+Incident Details
+Injuries + Treatment
+Insurance + Parties
+Urgency Flags
+Conflict Check Prompts
+Summary + Handoff
+	•	Add right-side badges/tags:
+Urgent, Needs Follow-Up, Complete Intake, Ready for Review
+
+G) Bottom CTA band
+	•	Title: “See Avery in Action”
+	•	Subtitle: “Book a short demo to hear real call scenarios—including the Signature Voice option for solo practitioners.”
+	•	Buttons: Book a Demo / Contact Sales
+
+	4.	Design requirements:
+
+	•	Reuse existing typography, spacing, and background guilloche patterns.
+	•	Ensure mobile layout is polished (no generic empty sections).
+	•	Keep the new premium nav styling consistent with the overall brand palette.
+
+	5.	Acceptance criteria:
+
+	•	Page renders correctly on mobile and desktop.
+	•	Premium nav link appears in desktop nav and mobile menu.
+	•	All CTAs route to existing demo/contact routes used elsewhere in the site.
+	•	No layout regressions on other marketing pages.
