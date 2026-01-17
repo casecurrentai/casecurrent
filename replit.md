@@ -66,7 +66,7 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
     - `AVERY_LUNA_STYLE` (optional): Set to `true` to enable Luna-style human voice delivery (default: false)
   - **ElevenLabs TTS Environment Variables** (Avery voice):
     - `ELEVENLABS_API_KEY`: ElevenLabs API key (required for TTS)
-    - `ELEVENLABS_VOICE_ID_AVERY` or `ELEVENLABS_VOICE_ID`: Voice ID (default: `iyCZIebPlpayzTGqBX8l` = Avery)
+    - `ELEVENLABS_VOICE_ID_AVERY` or `ELEVENLABS_VOICE_ID`: Voice ID (default: `SAz9YHcvj6GT2YYXdXww` = Avery)
     - `ELEVENLABS_MODEL_ID`: TTS model ID (default: `eleven_turbo_v2_5`)
     - `ELEVENLABS_OUTPUT_FORMAT`: Audio output format (default: `ulaw_8000` for Twilio)
   - **Webhook Configuration**: Set OpenAI webhook URL to `https://your-domain.com/v1/telephony/openai/webhook`

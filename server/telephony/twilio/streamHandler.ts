@@ -873,7 +873,7 @@ ${generateVoicePromptInstructions()}`;
               type: 'response.create',
               response: {
                 modalities: ['text'],  // TEXT ONLY - ElevenLabs generates audio
-                instructions: 'Greet the caller warmly and ask how you can help them today with their legal matter.',
+                instructions: 'Greet the caller warmly and thank them for calling the Demo Law Firm; ask how you can help them today.',
               },
             }));
           }

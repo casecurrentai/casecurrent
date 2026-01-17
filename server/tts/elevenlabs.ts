@@ -23,7 +23,7 @@ export interface TTSStreamOptions {
 }
 
 // Default voice ID - "Avery" voice for CaseCurrent
-const DEFAULT_VOICE_ID = "iyCZIebPlpayzTGqBX8l";
+const DEFAULT_VOICE_ID = "SAz9YHcvj6GT2YYXdXww";
 
 /**
  * Get TTS configuration from environment variables
