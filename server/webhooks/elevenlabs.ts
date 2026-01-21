@@ -106,6 +106,51 @@ async function checkIdempotency(
 }
 
 export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
+  // Debug endpoint to view recent webhook events with linked Call/Lead IDs
+  router.get('/debug/recent', async (req: Request, res: Response) => {
+    try {
+      const events = await prisma.webhookEvent.findMany({
+        where: { provider: 'elevenlabs' },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
+
+      const enrichedEvents = await Promise.all(
+        events.map(async (event) => {
+          const payload = event.payload as Record<string, unknown>;
+          const conversationId = payload.conversation_id || event.externalId;
+          
+          const call = await prisma.call.findFirst({
+            where: { elevenLabsId: conversationId as string },
+            select: { id: true, leadId: true, orgId: true, durationSeconds: true, callOutcome: true },
+          });
+
+          return {
+            id: event.id,
+            eventType: event.eventType,
+            externalId: event.externalId,
+            processedAt: event.processedAt,
+            call: call ? {
+              callId: call.id,
+              leadId: call.leadId,
+              orgId: call.orgId,
+              durationSeconds: call.durationSeconds,
+              callOutcome: call.callOutcome,
+            } : null,
+          };
+        })
+      );
+
+      res.status(200).json({ events: enrichedEvents });
+    } catch (err: any) {
+      console.log(JSON.stringify({
+        event: 'elevenlabs_debug_error',
+        error: err?.message || String(err),
+      }));
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   router.post('/inbound', async (req: Request, res: Response) => {
     const startMs = Date.now();
     const payload = req.body as InboundPayload;
@@ -276,17 +321,28 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         return;
       }
 
+      // Only update fields that ElevenLabs provides - do NOT overwrite Twilio-set callOutcome
+      const callUpdateData: Record<string, unknown> = {
+        endedAt: payload.ended_at ? new Date(payload.ended_at) : (call.endedAt || new Date()),
+        transcriptText: payload.transcript || call.transcriptText,
+        transcriptJson: payload.transcript_json ? (payload.transcript_json as any) : undefined,
+        aiSummary: payload.summary || call.aiSummary,
+        recordingUrl: payload.recording_url || call.recordingUrl,
+      };
+      
+      // Only set durationSeconds if not already set by Twilio
+      if (payload.duration_seconds && !call.durationSeconds) {
+        callUpdateData.durationSeconds = payload.duration_seconds;
+      }
+      
+      // Only set callOutcome if not already set (Twilio may have set it)
+      if (payload.outcome && !call.callOutcome) {
+        callUpdateData.callOutcome = payload.outcome;
+      }
+      
       await prisma.call.update({
         where: { id: call.id },
-        data: {
-          endedAt: payload.ended_at ? new Date(payload.ended_at) : new Date(),
-          durationSeconds: payload.duration_seconds || null,
-          transcriptText: payload.transcript || null,
-          transcriptJson: (payload.transcript_json as any) || undefined,
-          aiSummary: payload.summary || null,
-          recordingUrl: payload.recording_url || null,
-          callOutcome: payload.outcome || 'connected',
-        },
+        data: callUpdateData,
       });
 
       await prisma.interaction.update({
