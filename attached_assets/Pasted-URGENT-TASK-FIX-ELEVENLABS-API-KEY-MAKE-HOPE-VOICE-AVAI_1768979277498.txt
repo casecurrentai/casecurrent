@@ -1,0 +1,74 @@
+URGENT TASK: FIX ELEVENLABS API KEY + MAKE “HOPE” VOICE AVAILABLE + STOP SILENT CALLS
+
+Context / Symptoms
+- Calls only play the Twilio failsafe: “Avery is connecting, one moment”, then silence.
+- Logs show ElevenLabs TTS is failing and ttsFrameCount=0.
+- Replit can list voices via ElevenLabs, but “Hope” is not appearing, meaning the API key being used by the app is NOT tied to the ElevenLabs workspace where “Hope” exists.
+- Current Replit Secrets include ELEVENLABS_VOICE_ID and ELEVENLABS_VOICE_ID_AVERY but DO NOT include an ElevenLabs API key secret.
+
+Goal
+1) Ensure the app uses the NEW ElevenLabs API key from the correct workspace (where “Hope” exists).
+2) Confirm “Hope” appears in GET /v1/voices for that key.
+3) Set Avery to use Hope’s voice_id.
+4) Add a hard fallback so calls never go silent even if ElevenLabs fails again.
+5) Republish.
+
+Step-by-step Requirements
+
+A) Add the missing ElevenLabs API key secret
+1) Create a new Replit Secret:
+   - Name: ELEVENLABS_API_KEY
+   - Value: (the new ElevenLabs API key I just created in the SAME workspace where “Hope” exists)
+2) Do NOT put this key into any other existing secrets.
+
+B) Ensure code reads the correct env var for ElevenLabs auth
+1) Search the codebase for ElevenLabs header usage: "xi-api-key"
+2) Ensure the ElevenLabs request ALWAYS uses:
+   - process.env.ELEVENLABS_API_KEY first
+   - fallback to process.env.XI_API_KEY second (optional)
+3) Add a safe startup log that confirms the key is loaded WITHOUT printing it:
+   - [ELEVENLABS_KEY] present=true length=<len>
+   - If missing: present=false
+
+C) Verify that “Hope” is visible to this API key (non-negotiable)
+1) Add a one-time debug function/route or script that calls:
+   GET https://api.elevenlabs.io/v1/voices
+   Header: xi-api-key: process.env.ELEVENLABS_API_KEY
+2) Log the voice IDs + names returned (at least the first 30).
+3) Confirm that a voice named “Hope” appears in this list.
+   - If it does NOT appear: the key is still for the wrong workspace. STOP and fix workspace/key mismatch.
+
+D) Set Avery voice ID to Hope
+1) Once Hope appears in the list, capture its voice_id.
+2) Update Replit Secrets:
+   - ELEVENLABS_VOICE_ID_AVERY = <Hope voice_id>
+   - ELEVENLABS_VOICE_ID       = <Hope voice_id>
+3) Confirm the runtime log prints:
+   [TTS_VERIFY] Using ElevenLabs voiceId=<Hope voice_id>
+
+E) Make silence impossible (fallback)
+1) In the ElevenLabs TTS wrapper: if any non-2xx response occurs, log:
+   - status code
+   - error body
+   - voiceId used
+2) Implement fallback behavior for the current utterance:
+   - Retry ONCE using a fallback voiceId that is known-good (pick “Matilda” if needed: XrExE9yKIg1WjnnlVkGX)
+   - If retry fails, use Twilio <Say> (Polly or default) to speak the response text so the caller never hears silence.
+3) Add a final call summary log including:
+   - ttsFrameCount
+   - number of TTS failures
+   - whether fallback was used
+
+F) Republish + validate
+1) Republish the app.
+2) Place a test call.
+3) Confirm in logs:
+   - [ELEVENLABS_KEY] present=true
+   - Hope is listed in /v1/voices
+   - [TTS_VERIFY] Using ElevenLabs voiceId=<Hope id>
+   - No ElevenLabs 400 errors
+   - ttsFrameCount > 0
+4) If Hope still isn’t visible, report back with:
+   - the /v1/voices output (names + ids)
+   - which env var is being used for xi-api-key
+   - whether ELEVENLABS_API_KEY is present at runtime
