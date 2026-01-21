@@ -1,0 +1,107 @@
+IMPLEMENTATION REQUEST — TURN STATE MACHINE FIX (no handwaving)
+
+Context:
+- Twilio media stream + transcript events + barge-in logic: server/telephony/twilio/streamHandler.ts
+- ElevenLabs TTS: server/tts/elevenlabs.ts
+Problem:
+Avery asks questions and immediately responds as if the user answered (phantom turns). She also cuts off the caller’s responses because the listening window is too short / interim transcripts are treated as final / barge-in triggers on echo.
+
+Goal:
+Implement a strict turn-state machine in streamHandler.ts that enforces correct “yield the floor” behavior for legal intake calls.
+
+Non-negotiable requirements:
+1) Add a single TurnController inside server/telephony/twilio/streamHandler.ts (class or closure) that owns:
+   - state
+   - timers
+   - speech duration tracking
+   - transcript buffering
+   - the ONLY place where the LLM can be called
+   - the ONLY place where ElevenLabs speak/stop is orchestrated
+2) After Avery asks a question, the system MUST enter WAITING_FOR_USER_START and MUST NOT call the LLM again until:
+   - a FINAL transcript is received AND validated (min speech duration / min words), OR
+   - a long silence timeout triggers a reprompt.
+3) NEVER advance on interim transcripts. Interim is UI/log-only.
+4) Add POST_TTS_DEADZONE after TTS ends to ignore echo before listening begins.
+5) Implement barge-in correctly:
+   - Only evaluate barge-in while Avery is speaking (ASSIST_SPEAKING).
+   - Ignore speech events for the first 800ms after TTS start (echo ignore).
+   - Require 650ms of sustained user speech before triggering barge-in.
+   - Enforce 800ms cooldown after a barge-in triggers.
+   - On barge-in trigger: stop ElevenLabs immediately + transition to USER_SPEAKING + cancel no-input timers.
+6) Add a runtime assertion/guard:
+   - If state == WAITING_FOR_USER_START, block any call to the LLM and log a FATAL with state + stack context.
+7) Add detailed logging for every transition and decision:
+   - state_from -> state_to
+   - msSinceTtsStart
+   - sustainedSpeechMs
+   - userSpeechTotalMs
+   - transcriptFinalReceived (true/false)
+   - decision: TRIGGER/IGNORE + reason
+
+State machine (must implement these states):
+INIT
+IDLE
+ASSIST_PLANNING
+ASSIST_SPEAKING
+POST_TTS_DEADZONE
+WAITING_FOR_USER_START
+USER_SPEAKING
+USER_END_DEBOUNCE
+USER_FINALIZING
+USER_VALIDATING
+NO_INPUT_REPROMPT
+SHORT_UTTER_REPROMPT
+
+Thresholds (legal intake tuned defaults; make them constants near top of streamHandler.ts):
+postTtsDeadzoneMs = 450
+longNoInputMs = 9000          (used after questions)
+idleNoInputMs = 12000         (general idle)
+endDebounceMs = 450
+finalizeTimeoutMs = 1200
+minUtteranceMs = 900
+minWords = 2
+bargeInEchoIgnoreMs = 800
+bargeInSustainedSpeechMs = 650
+bargeInCooldownMs = 800
+
+Slot-aware improvement (phone number):
+When Avery asks for callback number:
+- If transcript contains digits or DTMF, accept 1-word utterances (override minWords).
+- Always confirm the number back and ask “Is that correct?” and WAIT.
+
+Changes required in server/tts/elevenlabs.ts:
+- Expose an explicit stop/cancel method if not already present (e.g., stopCurrentTts()) that streamHandler.ts can call during barge-in.
+- Ensure onTtsFinished callback/event is reliably fired (or a promise resolves) so streamHandler can transition to POST_TTS_DEADZONE.
+
+Implementation steps:
+A) Read existing streamHandler.ts and identify:
+   - where LLM is called
+   - where ElevenLabs speak is started
+   - where speech_started / speech_stopped are handled
+   - where transcript interim/final events are handled
+B) Refactor orchestration so those event handlers only call TurnController methods:
+   - onTtsFinished()
+   - onSpeechStarted()
+   - onSpeechStopped()
+   - onTranscriptInterim(text)
+   - onTranscriptFinal(text)
+   - onSpeechProgressWhileAssistantSpeaking() (timer-driven or frame-driven)
+C) Ensure the “phantom answer” cannot happen:
+   - After a question, no assistant follow-up can occur without validated user final transcript or long silence reprompt.
+
+Deliverables:
+1) Code changes in both files.
+2) A concise test plan with 5 scenarios:
+   - silent user after question -> reprompt after ~9s
+   - user answers slowly -> not cut off mid-sentence
+   - speakerphone echo -> does NOT barge-in instantly
+   - real interruption while Avery speaks -> barge-in triggers after ~650ms sustained speech
+   - callback number capture -> repeats back and confirms
+3) Example log lines for a “good” turn and for each reprompt path.
+
+Do NOT:
+- Change unrelated business logic, database writes, or routing.
+- Add new dependencies.
+- Move files. Keep changes scoped to the two files above unless absolutely necessary.
+
+Start by summarizing (in 6–10 bullets) exactly what you found in streamHandler.ts relevant to turn-taking, then implement.
