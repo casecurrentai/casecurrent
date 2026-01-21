@@ -1,5 +1,6 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '../../apps/api/src/generated/prisma';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -9,6 +10,30 @@ interface InboundPayload {
   call_sid?: string;
   conversation_id?: string;
   timestamp?: string;
+  client_data?: {
+    interactionId?: string;
+    callSid?: string;
+    [key: string]: unknown;
+  };
+}
+
+interface RawTranscriptEntry {
+  role?: string;
+  speaker?: string;
+  message?: string;
+  text?: string;
+  content?: string;
+  timestamp?: string | number;
+  time?: number;
+  timeInCallSecs?: number;
+  start_time?: number;
+  [key: string]: unknown;
+}
+
+interface NormalizedTranscriptEntry {
+  role: string;
+  message: string;
+  timeInCallSecs: number | null;
 }
 
 interface PostCallPayload {
@@ -18,12 +43,17 @@ interface PostCallPayload {
   called_number?: string;
   duration_seconds?: number;
   transcript?: string;
-  transcript_json?: Array<{ role: string; message: string; timestamp?: string }>;
+  transcript_json?: RawTranscriptEntry[];
   summary?: string;
   extracted_data?: Record<string, unknown>;
   outcome?: string;
   recording_url?: string;
   ended_at?: string;
+  client_data?: {
+    interactionId?: string;
+    callSid?: string;
+    [key: string]: unknown;
+  };
 }
 
 function normalizeE164(phone: string | null | undefined): string | null {
@@ -46,6 +76,83 @@ function maskPhone(phone: string | null): string {
   if (!phone) return 'null';
   if (phone.length <= 4) return '****';
   return `****${phone.slice(-4)}`;
+}
+
+function normalizeTranscript(raw: RawTranscriptEntry[] | undefined): NormalizedTranscriptEntry[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  
+  return raw.map((entry) => {
+    const role = entry.role || entry.speaker || 'unknown';
+    const message = entry.message || entry.text || entry.content || '';
+    
+    let timeInCallSecs: number | null = null;
+    if (typeof entry.timeInCallSecs === 'number') {
+      timeInCallSecs = entry.timeInCallSecs;
+    } else if (typeof entry.time === 'number') {
+      timeInCallSecs = entry.time;
+    } else if (typeof entry.start_time === 'number') {
+      timeInCallSecs = entry.start_time;
+    } else if (typeof entry.timestamp === 'number') {
+      timeInCallSecs = entry.timestamp;
+    }
+    
+    return {
+      role: String(role),
+      message: String(message),
+      timeInCallSecs,
+    };
+  });
+}
+
+function verifyElevenLabsSignature(
+  rawBody: string,
+  signatureHeader: string | undefined,
+  secret: string
+): boolean {
+  if (!signatureHeader || !secret) {
+    return false;
+  }
+
+  try {
+    const parts = signatureHeader.split(',');
+    if (parts.length < 2) return false;
+
+    const timestampPart = parts.find(p => p.startsWith('t='));
+    const hashPart = parts.find(p => p.startsWith('v1='));
+
+    if (!timestampPart || !hashPart) return false;
+
+    const timestamp = timestampPart.split('=')[1];
+    const receivedHash = hashPart.split('=')[1];
+
+    const payload = `${timestamp}.${rawBody}`;
+    const expectedHash = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+
+    if (!crypto.timingSafeEqual(Buffer.from(receivedHash, 'hex'), Buffer.from(expectedHash, 'hex'))) {
+      return false;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const timestampNum = parseInt(timestamp, 10);
+    if (Math.abs(now - timestampNum) > 300) {
+      console.log(JSON.stringify({
+        event: 'elevenlabs_signature_timestamp_expired',
+        timestampAge: now - timestampNum,
+      }));
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.log(JSON.stringify({
+      event: 'elevenlabs_signature_verification_error',
+      error: err instanceof Error ? err.message : String(err),
+    }));
+    return false;
+  }
 }
 
 async function lookupFirmByNumber(
@@ -105,8 +212,83 @@ async function checkIdempotency(
   }
 }
 
+async function findCallByCorrelation(
+  prisma: PrismaClient,
+  payload: PostCallPayload
+): Promise<{ call: any; correlationMethod: string } | null> {
+  const clientData = payload.client_data;
+
+  if (clientData?.interactionId) {
+    const call = await prisma.call.findFirst({
+      where: { interactionId: clientData.interactionId },
+      include: { lead: true },
+    });
+    if (call) {
+      return { call, correlationMethod: 'clientData.interactionId' };
+    }
+  }
+
+  if (clientData?.callSid) {
+    const call = await prisma.call.findFirst({
+      where: { twilioCallSid: clientData.callSid },
+      include: { lead: true },
+    });
+    if (call) {
+      return { call, correlationMethod: 'clientData.callSid' };
+    }
+  }
+
+  if (payload.conversation_id) {
+    const call = await prisma.call.findFirst({
+      where: { elevenLabsId: payload.conversation_id },
+      include: { lead: true },
+    });
+    if (call) {
+      return { call, correlationMethod: 'conversation_id' };
+    }
+  }
+
+  if (payload.call_sid) {
+    const call = await prisma.call.findFirst({
+      where: { twilioCallSid: payload.call_sid },
+      include: { lead: true },
+    });
+    if (call) {
+      return { call, correlationMethod: 'call_sid' };
+    }
+  }
+
+  return null;
+}
+
 export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
-  // Debug endpoint to view recent webhook events with linked Call/Lead IDs
+  const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET;
+
+  const signatureMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    if (!webhookSecret) {
+      console.log(JSON.stringify({
+        event: 'elevenlabs_signature_skipped',
+        reason: 'ELEVENLABS_WEBHOOK_SECRET not configured',
+      }));
+      next();
+      return;
+    }
+
+    const signature = req.headers['elevenlabs-signature'] as string | undefined;
+    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+
+    if (!verifyElevenLabsSignature(rawBody, signature, webhookSecret)) {
+      console.log(JSON.stringify({
+        event: 'elevenlabs_signature_invalid',
+        hasSignature: !!signature,
+      }));
+      res.status(403).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    next();
+  };
+
   router.get('/debug/recent', async (req: Request, res: Response) => {
     try {
       const events = await prisma.webhookEvent.findMany({
@@ -122,7 +304,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
           
           const call = await prisma.call.findFirst({
             where: { elevenLabsId: conversationId as string },
-            select: { id: true, leadId: true, orgId: true, durationSeconds: true, callOutcome: true },
+            select: { id: true, leadId: true, orgId: true, durationSeconds: true, callOutcome: true, aiFlags: true },
           });
 
           return {
@@ -136,6 +318,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
               orgId: call.orgId,
               durationSeconds: call.durationSeconds,
               callOutcome: call.callOutcome,
+              aiFlags: call.aiFlags,
             } : null,
           };
         })
@@ -151,7 +334,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
     }
   });
 
-  router.post('/inbound', async (req: Request, res: Response) => {
+  router.post('/inbound', signatureMiddleware, async (req: Request, res: Response) => {
     const startMs = Date.now();
     const payload = req.body as InboundPayload;
 
@@ -161,6 +344,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       called_number: maskPhone(payload.called_number),
       has_call_sid: !!payload.call_sid,
       has_conversation_id: !!payload.conversation_id,
+      has_client_data: !!payload.client_data,
     }));
 
     try {
@@ -259,6 +443,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         callId: call.id,
         leadId: lead.id,
         orgId,
+        interactionId: interaction.id,
         durationMs: Date.now() - startMs,
       }));
 
@@ -266,6 +451,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         status: 'ok',
         callId: call.id,
         leadId: lead.id,
+        interactionId: interaction.id,
       });
     } catch (err: any) {
       console.log(JSON.stringify({
@@ -277,7 +463,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
     }
   });
 
-  router.post('/post-call', async (req: Request, res: Response) => {
+  router.post('/post-call', signatureMiddleware, async (req: Request, res: Response) => {
     const startMs = Date.now();
     const payload = req.body as PostCallPayload;
 
@@ -286,6 +472,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       conversation_id: payload.conversation_id,
       has_transcript: !!payload.transcript,
       has_extracted_data: !!payload.extracted_data,
+      has_client_data: !!payload.client_data,
       duration_seconds: payload.duration_seconds,
     }));
 
@@ -301,45 +488,60 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         return;
       }
 
-      const call = await prisma.call.findFirst({
-        where: {
-          OR: [
-            { elevenLabsId: payload.conversation_id },
-            { twilioCallSid: payload.call_sid || undefined },
-          ],
-        },
-        include: { lead: true },
-      });
+      const correlationResult = await findCallByCorrelation(prisma, payload);
 
-      if (!call) {
+      if (!correlationResult) {
         console.log(JSON.stringify({
-          event: 'elevenlabs_postcall_call_not_found',
+          event: 'UNLINKED_ELEVENLABS_CALL',
           conversation_id: payload.conversation_id,
           call_sid: payload.call_sid,
+          caller_id: maskPhone(payload.caller_id || null),
+          called_number: maskPhone(payload.called_number || null),
+          from_e164: maskPhone(normalizeE164(payload.caller_id)),
+          to_e164: maskPhone(normalizeE164(payload.called_number)),
+          client_data_interaction_id: payload.client_data?.interactionId,
+          client_data_call_sid: payload.client_data?.callSid,
         }));
-        res.status(404).json({ error: 'Call not found' });
+
+        res.status(200).json({
+          status: 'unlinked',
+          conversation_id: payload.conversation_id,
+          message: 'Webhook stored but no matching call found',
+        });
         return;
       }
 
-      // Only update fields that ElevenLabs provides - do NOT overwrite Twilio-set callOutcome
+      const { call, correlationMethod } = correlationResult;
+
+      const normalizedTranscript = normalizeTranscript(payload.transcript_json);
+
+      const existingAiFlags = (call.aiFlags as Record<string, unknown>) || {};
+      const updatedAiFlags: Record<string, unknown> = { ...existingAiFlags };
+      
+      if (payload.outcome) {
+        updatedAiFlags.aiOutcomeGuess = payload.outcome;
+      }
+
       const callUpdateData: Record<string, unknown> = {
         endedAt: payload.ended_at ? new Date(payload.ended_at) : (call.endedAt || new Date()),
         transcriptText: payload.transcript || call.transcriptText,
-        transcriptJson: payload.transcript_json ? (payload.transcript_json as any) : undefined,
         aiSummary: payload.summary || call.aiSummary,
         recordingUrl: payload.recording_url || call.recordingUrl,
+        aiFlags: updatedAiFlags,
       };
-      
-      // Only set durationSeconds if not already set by Twilio
+
+      if (normalizedTranscript.length > 0) {
+        callUpdateData.transcriptJson = normalizedTranscript;
+      }
+
       if (payload.duration_seconds && !call.durationSeconds) {
         callUpdateData.durationSeconds = payload.duration_seconds;
       }
-      
-      // Only set callOutcome if not already set (Twilio may have set it)
-      if (payload.outcome && !call.callOutcome) {
-        callUpdateData.callOutcome = payload.outcome;
+
+      if (!call.elevenLabsId && payload.conversation_id) {
+        callUpdateData.elevenLabsId = payload.conversation_id;
       }
-      
+
       await prisma.call.update({
         where: { id: call.id },
         data: callUpdateData,
@@ -377,7 +579,10 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         event: 'elevenlabs_postcall_processed',
         callId: call.id,
         leadId: call.leadId,
+        correlationMethod,
         hasExtractedData: !!payload.extracted_data,
+        transcriptEntries: normalizedTranscript.length,
+        aiOutcomeGuess: payload.outcome || null,
         durationMs: Date.now() - startMs,
       }));
 
@@ -385,6 +590,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         status: 'ok',
         callId: call.id,
         leadId: call.leadId,
+        correlationMethod,
       });
     } catch (err: any) {
       console.log(JSON.stringify({
