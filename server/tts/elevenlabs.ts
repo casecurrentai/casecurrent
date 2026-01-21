@@ -252,6 +252,41 @@ export interface TTSResult {
  * @param onChunk - Callback for each audio chunk
  * @returns TTSResult with success/failure info
  */
+/**
+ * List all available voices from ElevenLabs API
+ * Used for debugging and verifying voice availability
+ */
+export async function listVoices(): Promise<{ voices: Array<{ voice_id: string; name: string }>; error?: string }> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    return { voices: [], error: "Missing ELEVENLABS_API_KEY" };
+  }
+
+  try {
+    const response = await fetch(`${ELEVENLABS_API_BASE}/voices`, {
+      method: "GET",
+      headers: {
+        "xi-api-key": apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { voices: [], error: `API error ${response.status}: ${errorText.substring(0, 200)}` };
+    }
+
+    const data = await response.json() as { voices?: Array<{ voice_id: string; name: string }> };
+    const voices = (data.voices || []).map((v: any) => ({
+      voice_id: v.voice_id,
+      name: v.name,
+    }));
+
+    return { voices };
+  } catch (error: any) {
+    return { voices: [], error: error.message };
+  }
+}
+
 export async function streamTTSWithFallback(
   text: string,
   opts: TTSStreamOptions = {},

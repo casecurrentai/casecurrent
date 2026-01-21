@@ -717,6 +717,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /v1/diag/voices?token=DIAG_TOKEN
+  // Diagnostic endpoint to list available ElevenLabs voices
+  app.get('/v1/diag/voices', async (req, res) => {
+    const diagToken = process.env.DIAG_TOKEN;
+    
+    if (!diagToken) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    
+    const token = req.query.token as string;
+    if (token !== diagToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const { listVoices } = await import('./tts/elevenlabs');
+      const result = await listVoices();
+      
+      // Check if Hope is in the list
+      const hopeVoice = result.voices.find((v: { voice_id: string; name: string }) => 
+        v.name.toLowerCase().includes('hope')
+      );
+      
+      const configuredVoiceId = process.env.ELEVENLABS_VOICE_ID_AVERY || process.env.ELEVENLABS_VOICE_ID;
+      const configuredVoiceFound = configuredVoiceId 
+        ? result.voices.some((v: { voice_id: string; name: string }) => v.voice_id === configuredVoiceId)
+        : false;
+      
+      res.json({
+        ok: true,
+        apiKeyPresent: !!process.env.ELEVENLABS_API_KEY,
+        apiKeyLength: process.env.ELEVENLABS_API_KEY?.length || 0,
+        configuredVoiceId,
+        configuredVoiceFound,
+        hopeFound: !!hopeVoice,
+        hopeVoiceId: hopeVoice?.voice_id || null,
+        voiceCount: result.voices.length,
+        voices: result.voices.slice(0, 30), // First 30 voices
+        error: result.error,
+      });
+    } catch (error: any) {
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
   // GET /v1/diag/enrichment?callSid=...&token=DIAG_TOKEN
   // Diagnostic endpoint to verify enrichment data exists for a given call
   app.get('/v1/diag/enrichment', async (req, res) => {

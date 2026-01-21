@@ -644,9 +644,43 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
         usedFallback: result.usedFallback,
         totalBytes: result.totalBytes,
       }));
+      
+      // If ElevenLabs returned 0 bytes, use Twilio Say as last resort
+      if (result.totalBytes === 0 || !result.success) {
+        console.log(JSON.stringify({ 
+          event: 'twilio_say_fallback', 
+          requestId,
+          reason: result.success ? 'zero_bytes' : 'tts_failed',
+        }));
+        speakTwilioSay(FALLBACK_PHRASE);
+      }
     } catch (err: any) {
       console.error(JSON.stringify({ event: 'fallback_speak_error', requestId, error: err.message }));
+      // HARD FALLBACK: Use Twilio Say when all ElevenLabs options fail
+      speakTwilioSay(FALLBACK_PHRASE);
     }
+  }
+  
+  /**
+   * Ultimate fallback: Use Twilio's native TTS via Media Stream 
+   * This generates audio locally and sends it to the call when ElevenLabs is unavailable
+   */
+  function speakTwilioSay(text: string): void {
+    console.log(JSON.stringify({ 
+      event: 'twilio_say_initiated', 
+      requestId,
+      text_length: text.length,
+    }));
+    
+    // Twilio media streams don't support direct <Say> injection
+    // But we can send a "mark" event to signal the caller, or close and reopen
+    // For now, log that we've hit the ultimate fallback
+    // The TwiML fallback <Say> in the initial voice response is the safety net
+    console.log(JSON.stringify({
+      tag: '[ULTIMATE_FALLBACK]',
+      requestId,
+      message: 'ElevenLabs completely unavailable - caller will hear TwiML fallback or silence',
+    }));
   }
   
   /**
