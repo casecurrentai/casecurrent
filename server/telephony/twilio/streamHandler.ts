@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { createHmac } from 'crypto';
 import { generateVoicePromptInstructions } from '../../voice/DisfluencyController';
-import { streamTTS, logTTSConfig, isTTSAvailable } from '../../tts/elevenlabs';
+import { streamTTS, streamTTSWithFallback, logTTSConfig, logElevenLabsKeyStatus, isTTSAvailable } from '../../tts/elevenlabs';
 import { prisma } from '../../db';
 import { extractIntakeWithOpenAI, type IntakeExtraction } from '../../intake/extractIntake';
 
@@ -1294,7 +1294,8 @@ ${generateVoicePromptInstructions()}`;
           }
         })();
         
-        // Log TTS configuration for diagnostics
+        // Log ElevenLabs key status and TTS configuration for diagnostics
+        logElevenLabsKeyStatus();
         logTTSConfig();
         
         initOpenAI();

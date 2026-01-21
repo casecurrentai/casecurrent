@@ -22,11 +22,18 @@ export interface TTSStreamOptions {
   responseId?: string;
 }
 
-// Default voice ID - "Sarah" voice (Mature, Reassuring, Confident) - a premade voice that won't hit custom voice limits
-const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+// Default voice ID - "Hope - Professional, Clear and Natural" voice for CaseCurrent
+const DEFAULT_VOICE_ID = "WZlYpi1yf6zJhNWXih74";
 
-// Fallback voice ID - "Jessica" (Playful, Bright, Warm) - another premade voice
-const FALLBACK_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
+// Fallback voice ID - "Sarah" (Mature, Reassuring, Confident) - a premade voice
+const FALLBACK_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+
+/**
+ * Get fallback voice ID from environment or default
+ */
+export function getFallbackVoiceId(): string {
+  return process.env.ELEVENLABS_FALLBACK_VOICE_ID || FALLBACK_VOICE_ID;
+}
 
 /**
  * Get TTS configuration from environment variables
@@ -51,6 +58,18 @@ export function getTTSConfig(): TTSConfig | null {
 }
 
 /**
+ * Log ElevenLabs API key status at startup (without revealing the key)
+ */
+export function logElevenLabsKeyStatus(): void {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  console.log(JSON.stringify({
+    tag: "[ELEVENLABS_KEY]",
+    present: !!apiKey,
+    length: apiKey ? apiKey.length : 0,
+  }));
+}
+
+/**
  * Log TTS configuration (for diagnostics on call start)
  */
 export function logTTSConfig(): void {
@@ -59,6 +78,7 @@ export function logTTSConfig(): void {
     console.log(JSON.stringify({
       event: "tts_config",
       voice_id: config.voiceId,
+      fallback_voice_id: getFallbackVoiceId(),
       model_id: config.modelId,
       format: config.outputFormat,
     }));
@@ -211,4 +231,102 @@ export async function streamTTS(
  */
 export function isTTSAvailable(): boolean {
   return !!process.env.ELEVENLABS_API_KEY;
+}
+
+/**
+ * TTS result with fallback info
+ */
+export interface TTSResult {
+  success: boolean;
+  voiceUsed: string;
+  usedFallback: boolean;
+  totalBytes: number;
+  error?: string;
+}
+
+/**
+ * Stream TTS with automatic fallback to secondary voice if primary fails
+ * 
+ * @param text - The text to convert to speech
+ * @param opts - TTS options
+ * @param onChunk - Callback for each audio chunk
+ * @returns TTSResult with success/failure info
+ */
+export async function streamTTSWithFallback(
+  text: string,
+  opts: TTSStreamOptions = {},
+  onChunk: (chunk: Uint8Array) => void
+): Promise<TTSResult> {
+  const config = getTTSConfig();
+  if (!config) {
+    return {
+      success: false,
+      voiceUsed: "none",
+      usedFallback: false,
+      totalBytes: 0,
+      error: "TTS not configured - missing ELEVENLABS_API_KEY",
+    };
+  }
+
+  const primaryVoiceId = opts.voiceId || config.voiceId;
+  const fallbackVoiceId = getFallbackVoiceId();
+  const responseId = opts.responseId || "unknown";
+
+  // Try primary voice first
+  try {
+    let totalBytes = 0;
+    await streamTTS(text, { ...opts, voiceId: primaryVoiceId }, (chunk) => {
+      totalBytes += chunk.length;
+      onChunk(chunk);
+    });
+    return {
+      success: true,
+      voiceUsed: primaryVoiceId,
+      usedFallback: false,
+      totalBytes,
+    };
+  } catch (primaryError: any) {
+    console.error(JSON.stringify({
+      event: "tts_primary_failed",
+      response_id: responseId,
+      voice_id: primaryVoiceId,
+      error: primaryError.message,
+    }));
+
+    // Try fallback voice
+    try {
+      console.log(JSON.stringify({
+        event: "tts_fallback_attempt",
+        response_id: responseId,
+        fallback_voice_id: fallbackVoiceId,
+      }));
+
+      let totalBytes = 0;
+      await streamTTS(text, { ...opts, voiceId: fallbackVoiceId }, (chunk) => {
+        totalBytes += chunk.length;
+        onChunk(chunk);
+      });
+      return {
+        success: true,
+        voiceUsed: fallbackVoiceId,
+        usedFallback: true,
+        totalBytes,
+      };
+    } catch (fallbackError: any) {
+      console.error(JSON.stringify({
+        event: "tts_fallback_failed",
+        response_id: responseId,
+        fallback_voice_id: fallbackVoiceId,
+        error: fallbackError.message,
+      }));
+
+      return {
+        success: false,
+        voiceUsed: fallbackVoiceId,
+        usedFallback: true,
+        totalBytes: 0,
+        error: `Primary (${primaryVoiceId}) and fallback (${fallbackVoiceId}) both failed: ${fallbackError.message}`,
+      };
+    }
+  }
 }
