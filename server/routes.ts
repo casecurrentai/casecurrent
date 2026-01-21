@@ -5386,7 +5386,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Avery is connecting. One moment.</Say>
   <Connect>
     <Stream url="${xmlEsc(streamUrl)}">
       <Parameter name="auth_token" value="${xmlEsc(authToken)}"/>
