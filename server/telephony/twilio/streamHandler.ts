@@ -422,6 +422,14 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let callStartTime: Date | null = null;
   let callerFromE164: string | null = null;
   let callerToE164: string | null = null;
+  
+  // 600ms fallback mechanism for first TTS response
+  const FALLBACK_TIMEOUT_MS = 600;
+  const FALLBACK_PHRASE = "Hi—one moment.";
+  let firstTTSTriggerTime: number | null = null;
+  let fallbackTimer: NodeJS.Timeout | null = null;
+  let fallbackPlayed = false;
+  let firstAudioFrameSent = false;
 
   const secret = process.env.STREAM_TOKEN_SECRET;
 
@@ -488,6 +496,22 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
                 media: { payload: audioBase64 } 
               }));
               ttsFrameCount++;
+              
+              // Track first audio frame and cancel fallback timer
+              if (!firstAudioFrameSent) {
+                firstAudioFrameSent = true;
+                if (fallbackTimer) {
+                  clearTimeout(fallbackTimer);
+                  fallbackTimer = null;
+                  console.log(JSON.stringify({ 
+                    tag: '[FALLBACK_CANCELLED]', 
+                    requestId,
+                    ms_since_tts_trigger: firstTTSTriggerTime ? Date.now() - firstTTSTriggerTime : null,
+                    reason: 'first_audio_arrived',
+                  }));
+                }
+              }
+              
               if (ttsFrameCount % LOG_FRAME_INTERVAL === 0) {
                 console.log(JSON.stringify({ event: 'tts_audio_to_twilio', requestId, frames: ttsFrameCount }));
               }
@@ -521,11 +545,95 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error(JSON.stringify({ event: 'tts_stream_error', requestId, responseId, error: err.message }));
+        
+        // TTS failed - trigger fallback if this was the first response and no audio sent yet
+        if (!firstAudioFrameSent && !fallbackPlayed) {
+          const msSinceTrigger = firstTTSTriggerTime ? Date.now() - firstTTSTriggerTime : null;
+          console.log(JSON.stringify({ 
+            tag: '[FALLBACK_SAY]', 
+            requestId,
+            reason: 'tts_error',
+            ms_since_tts_trigger: msSinceTrigger,
+            error: err.message,
+          }));
+          fallbackPlayed = true;
+          speakFallbackPhrase().catch(e => {
+            console.error(JSON.stringify({ event: 'fallback_speak_error', requestId, error: e.message }));
+          });
+        }
       }
     } finally {
       clearTimeout(timeoutId);
       ttsSpeaking = false;
       ttsAbortController = null;
+    }
+  }
+  
+  /**
+   * Speak fallback phrase via ElevenLabs fallback voice
+   * Used when primary TTS fails or times out
+   */
+  async function speakFallbackPhrase(): Promise<void> {
+    if (!isTTSAvailable()) {
+      console.error(JSON.stringify({ event: 'fallback_tts_unavailable', requestId }));
+      return;
+    }
+    
+    const fallbackResponseId = `fallback_${Date.now()}`;
+    let audioBuffer = Buffer.alloc(0);
+    
+    try {
+      // Use streamTTSWithFallback to ensure we try both primary and fallback voices
+      const result = await streamTTSWithFallback(
+        FALLBACK_PHRASE,
+        { responseId: fallbackResponseId },
+        (chunk: Uint8Array) => {
+          audioBuffer = Buffer.concat([audioBuffer, Buffer.from(chunk)]);
+          
+          while (audioBuffer.length >= TWILIO_FRAME_SIZE) {
+            const frame = audioBuffer.subarray(0, TWILIO_FRAME_SIZE);
+            audioBuffer = audioBuffer.subarray(TWILIO_FRAME_SIZE);
+            
+            const audioBase64 = frame.toString('base64');
+            if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+              twilioWs.send(JSON.stringify({ 
+                event: 'media', 
+                streamSid, 
+                media: { payload: audioBase64 } 
+              }));
+              ttsFrameCount++;
+              
+              // Mark first audio sent
+              if (!firstAudioFrameSent) {
+                firstAudioFrameSent = true;
+              }
+            }
+          }
+        }
+      );
+      
+      // Flush remaining audio
+      if (audioBuffer.length > 0 && streamSid && twilioWs.readyState === WebSocket.OPEN) {
+        const finalFrame = Buffer.alloc(TWILIO_FRAME_SIZE, 0xFF);
+        audioBuffer.copy(finalFrame);
+        const audioBase64 = finalFrame.toString('base64');
+        twilioWs.send(JSON.stringify({ 
+          event: 'media', 
+          streamSid, 
+          media: { payload: audioBase64 } 
+        }));
+        ttsFrameCount++;
+      }
+      
+      console.log(JSON.stringify({ 
+        event: 'fallback_speak_complete', 
+        requestId, 
+        voiceUsed: result.voiceUsed,
+        usedFallback: result.usedFallback,
+        totalBytes: result.totalBytes,
+      }));
+    } catch (err: any) {
+      console.error(JSON.stringify({ event: 'fallback_speak_error', requestId, error: err.message }));
     }
   }
 
@@ -919,6 +1027,33 @@ ${generateVoicePromptInstructions()}`;
               text_length: textToSpeak.length,
               text_preview: textToSpeak.substring(0, 80),
             }));
+            
+            // Start 600ms fallback timer only for first TTS trigger
+            // This measures actual TTS startup latency, not OpenAI processing time
+            if (!fallbackTimer && !firstAudioFrameSent && !fallbackPlayed) {
+              firstTTSTriggerTime = Date.now();
+              fallbackTimer = setTimeout(() => {
+                if (!firstAudioFrameSent && !fallbackPlayed) {
+                  const msSinceTrigger = firstTTSTriggerTime ? Date.now() - firstTTSTriggerTime : null;
+                  console.log(JSON.stringify({ 
+                    tag: '[FALLBACK_SAY]', 
+                    requestId,
+                    reason: 'tts_timeout',
+                    ms_since_tts_trigger: msSinceTrigger,
+                  }));
+                  fallbackPlayed = true;
+                  fallbackTimer = null;
+                  speakFallbackPhrase().catch(e => {
+                    console.error(JSON.stringify({ event: 'fallback_speak_error', requestId, error: e.message }));
+                  });
+                }
+              }, FALLBACK_TIMEOUT_MS);
+              console.log(JSON.stringify({ 
+                event: 'fallback_timer_started', 
+                requestId, 
+                timeout_ms: FALLBACK_TIMEOUT_MS,
+              }));
+            }
             
             // Speak via ElevenLabs TTS (async, don't await)
             speakElevenLabs(textToSpeak, responseId).catch((err) => {
