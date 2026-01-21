@@ -5377,8 +5377,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const xmlEsc = (str: string) =>
             str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+          // Log exact Stream URL for debugging
+          console.log(JSON.stringify({
+            tag: '[TWIML_STREAM_URL]',
+            callSid: maskCallSid(CallSid),
+            streamUrl,
+          }));
+
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Say voice="Polly.Joanna">Avery is connecting. One moment.</Say>
   <Connect>
     <Stream url="${xmlEsc(streamUrl)}">
       <Parameter name="auth_token" value="${xmlEsc(authToken)}"/>
