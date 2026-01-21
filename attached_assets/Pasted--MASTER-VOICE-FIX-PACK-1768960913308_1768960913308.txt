@@ -1,0 +1,537 @@
+/* ========================================================================
+   MASTER VOICE FIX PACK (TypeScript / Node 18+)
+   Addresses:
+   - Long pauses after questions / confirmation loops
+   - False barge-in (especially on speakerphone / echo)
+   - Bad phone number + email readout (TTS-friendly formatting)
+   - Updates ElevenLabs voiceId to: uYXf8XasLslADfZ2MB4u
+   - Adds “human + emotionally expressive” assistant instructions
+   ------------------------------------------------------------------------
+   HOW TO USE (minimal integration steps):
+   1) Drop this file in your server codebase (e.g., /src/voice/voiceMaster.ts)
+   2) Wire:
+      - onOpenAITextDelta(delta)   -> orchestrator.onModelTextDelta(delta)
+      - onOpenAITextDone()         -> orchestrator.onModelTextDone()
+      - onUserAudioStart(meta)     -> orchestrator.onUserSpeechStart(meta)
+      - onUserAudioEnd(meta)       -> orchestrator.onUserSpeechEnd(meta)
+      - onTwilioAudioOut(sendFn)   -> pass sendFn into orchestrator constructor
+   3) Ensure your ElevenLabs API key is available as ELEVENLABS_API_KEY or XI_API_KEY
+   4) Optional: set ELEVENLABS_VOICE_ID in Replit Secrets; otherwise defaults below.
+   ======================================================================== */
+
+import crypto from "crypto";
+
+/* ============================= CONFIG ============================== */
+
+const DEFAULT_ELEVENLABS_VOICE_ID = "uYXf8XasLslADfZ2MB4u";
+
+const ELEVENLABS_API_KEY =
+  process.env.ELEVENLABS_API_KEY ||
+  process.env.XI_API_KEY ||
+  "";
+
+if (!ELEVENLABS_API_KEY) {
+  // Fail fast so you don't silently fall back to something else.
+  console.warn("[voice] Missing ELEVENLABS_API_KEY / XI_API_KEY");
+}
+
+const ELEVENLABS_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID;
+
+// Turn-taking + barge-in guardrails (tune, but these defaults are safe)
+const BARGE_IN = {
+  // Ignore “user speech” events that happen right after Avery starts speaking.
+  // This filters speakerphone echo popping at the beginning of playback.
+  ignoreMsAfterAveryStart: 550,
+
+  // Require sustained speech duration to count as barge-in (filters tiny echoes).
+  minSpeechMs: 360,
+
+  // Require energy/confidence threshold if you have it (0..1). If you don’t,
+  // pass undefined and we’ll use duration-only gating.
+  minEnergy: 0.55,
+
+  // Additional hysteresis: once barge-in triggers, wait a moment before speaking again
+  coolDownMsAfterBargeIn: 450,
+};
+
+// Text buffering / flush rules to eliminate awkward pauses
+const FLUSH = {
+  // Start TTS once we have a reasonable chunk; don’t wait for full response.
+  minChars: 110,
+
+  // Or flush after a sentence boundary (., ?, !, or newline)
+  flushOnSentence: true,
+
+  // Or flush if no new tokens arrive for this long
+  idleMs: 750,
+
+  // Hard cap chunk size (avoid giant TTS calls)
+  maxChars: 550,
+};
+
+// ElevenLabs voice settings for “more human + emotionally expressive”
+// Notes: Some parameters vary by model; these are widely supported.
+// Lower stability -> more variation / expressiveness. “style” can increase emotion.
+const ELEVENLABS_VOICE_SETTINGS = {
+  stability: 0.28,
+  similarity_boost: 0.75,
+  style: 0.85,
+  use_speaker_boost: true,
+};
+
+// Use a low-latency model if available; adjust if your account differs.
+const ELEVENLABS_MODEL_ID =
+  process.env.ELEVENLABS_MODEL_ID || "eleven_turbo_v2";
+
+/* ===================== HUMAN / EXPRESSIVE SYSTEM PROMPT =====================
+
+Use this as your “system” or high-priority instruction for the model that
+generates Avery’s TEXT (before ElevenLabs TTS). The goal is to reduce robotic
+confirmations and eliminate “dead air” by being decisive.
+
+IMPORTANT: This prompt is for the LLM that generates Avery’s text.
+Do not include stage directions like “[laughs]” unless your TTS is trained for it.
+Keep emotional cues embedded as natural language and punctuation.
+*/
+export const AVERY_SYSTEM_PROMPT = `
+You are Avery: a warm, fast, emotionally intelligent human receptionist for a law firm.
+You must sound genuinely human, expressive, and present — never robotic.
+
+Core voice rules:
+- Be decisive: do NOT ask for unnecessary confirmation. Only confirm when uncertainty is high.
+- Avoid “Is that correct?” loops. Instead: repeat key info once, then move forward.
+- No dead air: keep responses concise and continuous. If you need a moment, speak briefly (“Okay — got it.”) then continue.
+- Use natural micro-expressions in language: varied sentence length, gentle emphasis, occasional friendly interjections (“Perfect.” “Okay.” “Got you.”).
+- Ask one question at a time. When collecting details (name/phone/email), keep it efficient.
+- When reading phone numbers: group them naturally (3-3-4). When reading emails: say “at” and “dot” clearly.
+- If the caller sounds stressed, slow slightly and show empathy in plain language, not therapy.
+
+Uncertainty policy:
+- If the user spelled something and you are confident: DO NOT confirm; proceed.
+- If you are not confident: ask a single clarifying question with a specific alternative (“Was that J-O-N or J-O-H-N?”).
+- After clarification, proceed immediately.
+
+Barge-in etiquette:
+- If the caller interrupts, stop talking instantly and yield. Respond with a short acknowledgement and continue.
+`;
+
+/* ============================= HELPERS ============================== */
+
+// Map digits to words for TTS clarity
+const DIGIT_WORD: Record<string, string> = {
+  "0": "zero",
+  "1": "one",
+  "2": "two",
+  "3": "three",
+  "4": "four",
+  "5": "five",
+  "6": "six",
+  "7": "seven",
+  "8": "eight",
+  "9": "nine",
+};
+
+function nowMs() {
+  return Date.now();
+}
+
+function clampText(s: string) {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+// Format phone numbers for speech, e.g., 504-555-1212 -> "five zero four … / five five five … / one two one two"
+export function formatPhoneForSpeech(input: string): string {
+  const digits = (input.match(/\d/g) || []).join("");
+  if (digits.length < 7) return input;
+
+  // Handle country code leading 1
+  const normalized = digits.length === 11 && digits.startsWith("1")
+    ? digits.slice(1)
+    : digits;
+
+  // If still not 10 digits, read digit-by-digit with small grouping
+  const toWords = (chunk: string) =>
+    chunk.split("").map(d => DIGIT_WORD[d] ?? d).join(" ");
+
+  if (normalized.length === 10) {
+    const a = normalized.slice(0, 3);
+    const b = normalized.slice(3, 6);
+    const c = normalized.slice(6);
+    return `${toWords(a)} — ${toWords(b)} — ${toWords(c)}`;
+  }
+
+  // Fallback for extensions / weird lengths
+  const groups: string[] = [];
+  for (let i = 0; i < normalized.length; i += 3) groups.push(normalized.slice(i, i + 3));
+  return groups.map(toWords).join(" — ");
+}
+
+// Format emails for speech: "mike.simmons@gmail.com" -> "mike dot simmons at gmail dot com"
+export function formatEmailForSpeech(input: string): string {
+  // Split around @ and dots; keep words pronounceable
+  const safe = input
+    .replace(/@/g, " at ")
+    .replace(/\./g, " dot ")
+    .replace(/_/g, " underscore ")
+    .replace(/-/g, " dash ");
+  return safe.replace(/\s+/g, " ").trim();
+}
+
+// Detect and transform phone numbers + emails inside general text
+export function sanitizeTextForTTS(text: string): string {
+  let out = text;
+
+  // Emails
+  out = out.replace(
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    (m) => formatEmailForSpeech(m)
+  );
+
+  // Phone-ish sequences (7+ digits with punctuation/spaces)
+  out = out.replace(
+    /(\+?1[\s.-]?)?(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g,
+    (m) => formatPhoneForSpeech(m)
+  );
+
+  // Long naked digit runs (e.g., case numbers) — speak digit-by-digit to avoid “twelve billion…”
+  out = out.replace(/\b\d{6,}\b/g, (m) => m.split("").map(d => DIGIT_WORD[d] ?? d).join(" "));
+
+  // Remove weird artifacts that TTS reads literally
+  out = out.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  return clampText(out);
+}
+
+// Sentence boundary detection for flush
+function hasSentenceBoundary(s: string) {
+  return /[.!?]\s$|\n$/.test(s);
+}
+
+/* ============================= ELEVENLABS STREAM ==============================
+
+We stream MP3 bytes from ElevenLabs and forward to Twilio as soon as possible.
+Your Twilio “sendAudio” should accept raw bytes (Buffer) or base64, depending on your implementation.
+Replace sendAudioChunk() below accordingly.
+*/
+
+type SendAudioChunk = (chunk: Buffer) => Promise<void> | void;
+
+async function streamElevenLabsTTS(params: {
+  text: string;
+  voiceId: string;
+  modelId: string;
+  sendAudioChunk: SendAudioChunk;
+  abortSignal: AbortSignal;
+  trace?: (msg: string, meta?: any) => void;
+}): Promise<void> {
+  const { text, voiceId, modelId, sendAudioChunk, abortSignal, trace } = params;
+
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`;
+
+  const body = {
+    text,
+    model_id: modelId,
+    voice_settings: ELEVENLABS_VOICE_SETTINGS,
+    // optimize_streaming_latency: 2, // If your account supports it; uncomment to test.
+  };
+
+  trace?.("[tts] request", {
+    voiceId,
+    modelId,
+    textChars: text.length,
+    url,
+  });
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xi-api-key": ELEVENLABS_API_KEY,
+      "Content-Type": "application/json",
+      "Accept": "audio/mpeg",
+    },
+    body: JSON.stringify(body),
+    signal: abortSignal,
+  });
+
+  if (!res.ok || !res.body) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`[tts] ElevenLabs failed ${res.status}: ${errText}`);
+  }
+
+  const reader = res.body.getReader();
+  let firstByteAt: number | null = null;
+
+  while (true) {
+    if (abortSignal.aborted) break;
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value?.length) continue;
+
+    if (firstByteAt === null) {
+      firstByteAt = nowMs();
+      trace?.("[tts] first_audio_byte", { ms: firstByteAt });
+    }
+
+    // Forward immediately to Twilio (or your media stream)
+    await sendAudioChunk(Buffer.from(value));
+  }
+
+  trace?.("[tts] complete");
+}
+
+/* ============================= ORCHESTRATOR ============================== */
+
+type SpeechMeta = {
+  // If you can pass these from your VAD/ASR layer, barge-in gets much better.
+  energy?: number;      // 0..1
+  confidence?: number;  // 0..1
+};
+
+type TraceFn = (event: string, meta?: any) => void;
+
+export class VoiceOrchestrator {
+  private sendAudioChunk: SendAudioChunk;
+  private trace: TraceFn;
+
+  private speaking = false;
+  private lastAverySpeakStartAt = 0;
+  private lastBargeInAt = 0;
+
+  private ttsAbort?: AbortController;
+
+  // Streaming text buffer from model
+  private buf = "";
+  private lastDeltaAt = 0;
+  private flushTimer?: NodeJS.Timeout;
+  private currentTurnId = crypto.randomUUID();
+
+  constructor(opts: {
+    sendAudioChunk: SendAudioChunk;
+    trace?: TraceFn;
+  }) {
+    this.sendAudioChunk = opts.sendAudioChunk;
+    this.trace = opts.trace || ((e, m) => console.log(e, m ?? ""));
+  }
+
+  /* ---------- USER SPEECH EVENTS ---------- */
+
+  onUserSpeechStart(meta: SpeechMeta = {}) {
+    const t = nowMs();
+    this.trace("[user] speech_start", { t, ...meta });
+
+    // If Avery is speaking, evaluate barge-in gating
+    if (this.speaking) {
+      const msSinceAveryStart = t - this.lastAverySpeakStartAt;
+      const msSinceLastBargeIn = t - this.lastBargeInAt;
+
+      if (msSinceLastBargeIn < BARGE_IN.coolDownMsAfterBargeIn) {
+        this.trace("[barge] ignored_cooldown", { msSinceLastBargeIn });
+        return;
+      }
+
+      if (msSinceAveryStart < BARGE_IN.ignoreMsAfterAveryStart) {
+        this.trace("[barge] ignored_early_echo", { msSinceAveryStart });
+        return;
+      }
+
+      // We don’t trigger on start alone; we wait for speech_end with duration.
+      // Still, we can mark intent here if needed.
+      this.trace("[barge] candidate", { msSinceAveryStart });
+    }
+  }
+
+  onUserSpeechEnd(meta: SpeechMeta & { durationMs?: number } = {}) {
+    const t = nowMs();
+    this.trace("[user] speech_end", { t, ...meta });
+
+    // If Avery is speaking, decide if this was real interruption
+    if (this.speaking) {
+      const durationMs = meta.durationMs ?? 0;
+      const energy = meta.energy;
+
+      const durationOk = durationMs >= BARGE_IN.minSpeechMs;
+      const energyOk = typeof energy === "number" ? energy >= BARGE_IN.minEnergy : true;
+
+      if (durationOk && energyOk) {
+        this.trace("[barge] TRIGGER", { durationMs, energy });
+        this.lastBargeInAt = t;
+        this.abortSpeaking("barge_in");
+      } else {
+        this.trace("[barge] ignored", { durationMs, energy, durationOk, energyOk });
+      }
+    }
+
+    // Also: end-of-user-turn should cause the model to respond.
+    // If your OpenAI layer needs a “commit” or “response.create”, do it there.
+    // This class focuses on TTS + buffering + barge-in.
+  }
+
+  /* ---------- MODEL TEXT STREAMING ---------- */
+
+  onModelTextDelta(delta: string) {
+    const t = nowMs();
+    this.lastDeltaAt = t;
+
+    // Avoid feeding TTS junk
+    const cleaned = delta.replace(/\u0000/g, "");
+    this.buf += cleaned;
+
+    this.trace("[model] delta", { chars: cleaned.length, bufChars: this.buf.length });
+
+    // Start (or reset) idle flush timer
+    this.resetFlushTimer();
+
+    // Early flush if sentence boundary and we already have enough content
+    if (FLUSH.flushOnSentence && this.buf.length >= 40 && hasSentenceBoundary(this.buf)) {
+      this.trace("[flush] sentence_boundary");
+      void this.flushIfReady({ force: true });
+      return;
+    }
+
+    // Flush if buffer passes min chars
+    if (this.buf.length >= FLUSH.minChars) {
+      void this.flushIfReady({ force: true });
+    }
+
+    // Hard cap
+    if (this.buf.length >= FLUSH.maxChars) {
+      void this.flushIfReady({ force: true });
+    }
+  }
+
+  onModelTextDone() {
+    this.trace("[model] done");
+    void this.flushIfReady({ force: true, final: true });
+  }
+
+  /* ---------- SPEAK / TTS ---------- */
+
+  private resetFlushTimer() {
+    if (this.flushTimer) clearTimeout(this.flushTimer);
+    this.flushTimer = setTimeout(() => {
+      this.trace("[flush] idle_timeout");
+      void this.flushIfReady({ force: true });
+    }, FLUSH.idleMs);
+  }
+
+  private async flushIfReady(opts: { force?: boolean; final?: boolean } = {}) {
+    const { force = false, final = false } = opts;
+
+    // If we’re already speaking, queueing additional audio can be okay,
+    // but for simplicity, we speak serially: abort current and replace only if final/important.
+    // If you want true queueing, implement an audio queue.
+    if (!this.buf.trim()) return;
+
+    // Reduce robotic confirmations: If the model is outputting “Is that correct?”
+    // repeatedly, strip it unless explicitly needed (this is a blunt but effective guard).
+    // Better: fix in prompt, but this prevents worst-case loops.
+    let text = this.buf;
+
+    // If it ends in “is that correct?” and we’re not in a low-confidence state, remove it.
+    text = text.replace(/\b(is that correct\?|right\?)\s*$/i, "");
+
+    // Decide chunk to speak
+    const chunk = force ? text : text.slice(0, FLUSH.minChars);
+    this.buf = text.slice(chunk.length); // keep remainder
+
+    const speakText = sanitizeTextForTTS(chunk);
+
+    if (!speakText) return;
+
+    // Start speaking this chunk
+    await this.speakChunk(speakText);
+
+    // If final, flush any remainder
+    if (final && this.buf.trim()) {
+      const rest = sanitizeTextForTTS(this.buf);
+      this.buf = "";
+      if (rest) await this.speakChunk(rest);
+    }
+  }
+
+  private async speakChunk(text: string) {
+    // Abort any current playback before starting a new chunk
+    this.abortSpeaking("new_chunk");
+
+    const turnId = this.currentTurnId;
+    const startAt = nowMs();
+
+    this.speaking = true;
+    this.lastAverySpeakStartAt = startAt;
+    this.ttsAbort = new AbortController();
+
+    this.trace("[speak] start", {
+      turnId,
+      voiceId: ELEVENLABS_VOICE_ID,
+      textChars: text.length,
+      t: startAt,
+      preview: text.slice(0, 120),
+    });
+
+    try {
+      await streamElevenLabsTTS({
+        text,
+        voiceId: ELEVENLABS_VOICE_ID,
+        modelId: ELEVENLABS_MODEL_ID,
+        sendAudioChunk: this.sendAudioChunk,
+        abortSignal: this.ttsAbort.signal,
+        trace: (msg, meta) => this.trace(msg, { turnId, ...meta }),
+      });
+
+      this.trace("[speak] end", { turnId, ms: nowMs() - startAt });
+    } catch (err: any) {
+      if (this.ttsAbort?.signal.aborted) {
+        this.trace("[speak] aborted", { turnId, reason: "abortSignal" });
+      } else {
+        this.trace("[speak] error", { turnId, error: String(err?.message || err) });
+      }
+    } finally {
+      // Only clear speaking if we’re still in the same turn
+      // (prevents older async completion stomping newer state)
+      if (turnId === this.currentTurnId) {
+        this.speaking = false;
+        this.ttsAbort = undefined;
+      }
+    }
+  }
+
+  abortSpeaking(reason: string) {
+    if (!this.speaking) return;
+    this.trace("[speak] abort", { reason });
+    this.ttsAbort?.abort();
+    this.speaking = false;
+    this.ttsAbort = undefined;
+
+    // Start a new “turn” id so any late promises can’t overwrite state
+    this.currentTurnId = crypto.randomUUID();
+  }
+}
+
+/* ============================= EXAMPLE WIRING ==============================
+
+Replace this with your actual Twilio Media Streams output function.
+
+Twilio Media Streams often expects base64 of PCM u-law frames, not MP3 bytes.
+If your current pipeline already supports ElevenLabs MP3 -> Twilio, keep using it.
+
+If you need MP3->uLaw conversion, do it in your existing audio path.
+This pack focuses on: buffering, barge-in gating, and text sanitization.
+
+Example skeleton:
+
+const orchestrator = new VoiceOrchestrator({
+  sendAudioChunk: async (mp3Bytes) => {
+    // TODO: convert MP3 to the format your Twilio stream expects, then send.
+    // e.g., sendToTwilio({ event: "media", media: { payload: base64ULaw } })
+  },
+  trace: (e, m) => console.log(e, JSON.stringify(m ?? {})),
+});
+
+openAI.on("text.delta", (d) => orchestrator.onModelTextDelta(d));
+openAI.on("text.done", () => orchestrator.onModelTextDone());
+
+vad.on("speech_start", (meta) => orchestrator.onUserSpeechStart(meta));
+vad.on("speech_end", (meta) => orchestrator.onUserSpeechEnd(meta));
+
+========================================================================= */
