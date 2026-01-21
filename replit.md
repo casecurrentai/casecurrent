@@ -20,7 +20,11 @@ The frontend uses Vite + React and Next.js 14 App Router, built with shadcn/ui a
 
 ### Feature Specifications
 - **Realtime Voice Integration**: Utilizes OpenAI Realtime Voice via SIP trunking for inbound calls, enabling AI agents to greet callers, collect lead information, and create database entries. Includes multi-tenancy safety checks.
-- **Telephony Ingest**: Handles inbound calls and SMS via Twilio, creating leads, interactions, and managing call status, recordings, and transcription.
+- **Telephony Ingest**: Handles inbound calls and SMS via Twilio and ElevenLabs, creating leads, interactions, and managing call status, recordings, and transcription.
+- **ElevenLabs Webhook Integration**: Data pipeline for ElevenLabs Agents with two endpoints:
+  - `POST /v1/webhooks/elevenlabs/inbound` - Called at call start. Receives caller_id, called_number, conversation_id, call_sid. Performs firm lookup via PhoneNumber.e164, upserts Contact/Lead/Call scoped by orgId.
+  - `POST /v1/webhooks/elevenlabs/post-call` - Called after call ends. Updates Call with duration, transcript, summary, recording. Merges extracted_data (callerName, phone, incidentDate, injuryDescription, etc.) into Lead.intakeData.
+  - Idempotency via WebhookEvent table with @@unique([provider, externalId, eventType]).
 - **Structured Intake Flow**: Manages the lifecycle of lead intake, supporting initialization, answer updates, and completion with practice area-specific question sets.
 - **AI Pipeline & Qualification**: Provides AI-driven lead qualification including transcription, summarization, intake extraction, and scoring based on defined factors, generating detailed qualification reasons.
 - **Webhook System**: Manages webhook endpoints for real-time notifications on events like `lead.created`, `lead.updated`, and `intake.completed`, featuring secure signing, retry logic, and delivery logging.

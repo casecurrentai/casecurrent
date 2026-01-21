@@ -48,6 +48,7 @@ import {
   listExperiments,
 } from './analytics/experiments';
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
+import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5042,6 +5043,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post('/v1/telephony/openai/webhook', async (req, res) => {
     await handleOpenAIWebhook(req, res);
   });
+
+  // ============================================
+  // TELEPHONY - ELEVENLABS WEBHOOKS
+  // ============================================
+
+  /**
+   * @openapi
+   * /v1/webhooks/elevenlabs/inbound:
+   *   post:
+   *     summary: Handle ElevenLabs inbound call webhook
+   *     tags: [Telephony]
+   *     description: Creates Lead/Call records when ElevenLabs agent receives a call
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               caller_id:
+   *                 type: string
+   *               called_number:
+   *                 type: string
+   *               call_sid:
+   *                 type: string
+   *               conversation_id:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: Call/Lead created successfully
+   *       400:
+   *         description: Invalid request
+   *       404:
+   *         description: No firm found for called_number
+   *
+   * /v1/webhooks/elevenlabs/post-call:
+   *   post:
+   *     summary: Handle ElevenLabs post-call webhook
+   *     tags: [Telephony]
+   *     description: Updates Lead with extracted intake data and call metadata
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               conversation_id:
+   *                 type: string
+   *               duration_seconds:
+   *                 type: integer
+   *               transcript:
+   *                 type: string
+   *               extracted_data:
+   *                 type: object
+   *     responses:
+   *       200:
+   *         description: Lead/Call updated successfully
+   *       404:
+   *         description: Call not found
+   */
+  app.use('/v1/webhooks/elevenlabs', createElevenLabsWebhookRouter(prisma));
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS

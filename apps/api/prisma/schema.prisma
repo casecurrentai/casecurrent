@@ -301,6 +301,7 @@ model Call {
   provider        String
   providerCallId  String?   @unique @map("provider_call_id") // OpenAI call_id (set when OpenAI webhook arrives)
   twilioCallSid   String?   @unique @map("twilio_call_sid")  // Twilio CallSid (set when Twilio webhook arrives)
+  elevenLabsId    String?   @unique @map("elevenlabs_id")    // ElevenLabs conversation_id
   fromE164        String    @map("from_e164")
   toE164          String    @map("to_e164")
   startedAt       DateTime  @map("started_at")
@@ -467,6 +468,20 @@ model OutgoingWebhookDelivery {
   endpoint     OutgoingWebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
 
   @@map("outgoing_webhook_deliveries")
+}
+
+// Incoming webhook events for idempotency
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  provider    String   // elevenlabs, twilio, openai, etc.
+  externalId  String   @map("external_id")  // e.g., conversation_id, call_sid
+  eventType   String   @map("event_type")   // inbound, post-call, status, etc.
+  payload     Json     // Raw webhook payload
+  processedAt DateTime @default(now()) @map("processed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, externalId, eventType])
+  @@map("webhook_events")
 }
 
 // ============================================
