@@ -74,8 +74,9 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
     - Gate 1: Only evaluate barge-in when `ttsSpeaking === true`
     - Gate 2: 800ms echo ignore window after TTS starts (ignores immediate audio feedback)
     - Gate 3: 800ms cooldown after a barge-in triggers (prevents rapid re-triggers)
-    - Gate 4: 600ms sustained speech requirement (short echo bursts are ignored)
-    - Logging: All barge-in decisions logged with `event: 'barge_in_decision'` including ttsSpeaking, msSinceTtsStart, durationMs, decision (TRIGGER/IGNORE), and reason
+    - Gate 4: 600ms sustained speech requirement - speech must remain active (no speech_stopped event) for full 600ms
+    - Gate 5: Speech still active check - confirms speechStartTime is still set when timer fires (guards race conditions)
+    - Logging: All barge-in decisions logged with `event: 'barge_in_decision'` including ttsSpeaking, msSinceTtsStart, durationMs, speechStillActive, decision (TRIGGER/IGNORE), and reason
   - **Diagnostic Endpoint for Voices**: `GET /v1/diag/voices?token=DIAG_TOKEN` - Lists all ElevenLabs voices and verifies configured voice is valid
   - **Webhook Configuration**: Set OpenAI webhook URL to `https://your-domain.com/v1/telephony/openai/webhook`
   - **Twilio Configuration**: Configure Twilio number webhook to `https://your-domain.com/v1/telephony/twilio/voice`

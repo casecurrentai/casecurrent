@@ -1252,9 +1252,14 @@ ${generateVoicePromptInstructions()}`;
               clearTimeout(bargeInTimer);
             }
             
+            // Track speech start for sustained check
+            const speechStartedAt = Date.now();
+            
             // Start timer for sustained speech
             bargeInTimer = setTimeout(() => {
               bargeInTimer = null;
+              
+              const actualDuration = Date.now() - speechStartedAt;
               
               // Re-check conditions when timer fires
               if (!ttsSpeaking) {
@@ -1263,24 +1268,40 @@ ${generateVoicePromptInstructions()}`;
                   requestId, 
                   ttsSpeaking: false,
                   msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
-                  durationMs: SUSTAINED_SPEECH_MS,
-                  energy: undefined,
+                  durationMs: actualDuration,
+                  speechStillActive: !!speechStartTime,
                   decision: 'IGNORE',
                   reason: 'tts_stopped_before_trigger'
                 }));
                 return;
               }
               
-              // TRIGGER BARGE-IN
+              // Verify speech is still active (speechStartTime is set)
+              // This guards against race conditions where speech_stopped didn't cancel the timer in time
+              if (!speechStartTime) {
+                console.log(JSON.stringify({ 
+                  event: 'barge_in_decision', 
+                  requestId, 
+                  ttsSpeaking: true,
+                  msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
+                  durationMs: actualDuration,
+                  speechStillActive: false,
+                  decision: 'IGNORE',
+                  reason: 'speech_ended_before_trigger'
+                }));
+                return;
+              }
+              
+              // TRIGGER BARGE-IN - Speech sustained for full duration while TTS was speaking
               console.log(JSON.stringify({ 
                 event: 'barge_in_decision', 
                 requestId, 
                 ttsSpeaking: true,
                 msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
-                durationMs: SUSTAINED_SPEECH_MS,
-                energy: undefined,
+                durationMs: actualDuration,
+                speechStillActive: true,
                 decision: 'TRIGGER',
-                reason: 'sustained_speech'
+                reason: 'sustained_speech_confirmed'
               }));
               
               executeBargeIn();
