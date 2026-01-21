@@ -412,6 +412,17 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let lastSpokenResponseId: string | null = null;
   let ttsAbortController: AbortController | null = null;
   let ttsSpeaking = false;
+  let ttsStartAt: number | null = null;
+  
+  // Barge-in control parameters
+  const ECHO_IGNORE_WINDOW_MS = 800;  // Ignore speech for 800ms after TTS starts
+  const SUSTAINED_SPEECH_MS = 600;     // Require 600ms sustained speech for barge-in
+  const SUSTAINED_SPEECH_WITH_ENERGY_MS = 450; // With high energy/confidence, only need 450ms
+  const ENERGY_THRESHOLD = 0.60;
+  const CONFIDENCE_THRESHOLD = 0.65;
+  const BARGE_IN_COOLDOWN_MS = 800;    // 800ms cooldown after barge-in
+  let bargeInTimer: NodeJS.Timeout | null = null;
+  let lastBargeInTime: number | null = null;
   
   // Transcript and lead tracking for post-call processing
   const transcriptBuffer: { role: 'ai' | 'user'; text: string; timestamp: Date }[] = [];
@@ -463,6 +474,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     }
     ttsAbortController = new AbortController();
     ttsSpeaking = true;
+    ttsStartAt = Date.now();
 
     // Audio buffer for framing
     let audioBuffer = Buffer.alloc(0);
@@ -635,6 +647,55 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     } catch (err: any) {
       console.error(JSON.stringify({ event: 'fallback_speak_error', requestId, error: err.message }));
     }
+  }
+  
+  /**
+   * Execute barge-in: Clear audio, cancel AI response, abort TTS
+   */
+  function executeBargeIn(): void {
+    lastBargeInTime = Date.now();
+    
+    console.log(JSON.stringify({ 
+      event: 'barge_in', 
+      requestId, 
+      ttsSpeaking, 
+      openaiResponseActive,
+      currentResponseId 
+    }));
+    
+    // 1. Clear Twilio audio buffer
+    if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+      twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
+    }
+    
+    // 2. Cancel OpenAI response (only if one is active AND we have a response ID)
+    if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+      if (openaiResponseActive && currentResponseId) {
+        openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+        console.log(JSON.stringify({ event: 'response_cancelled', requestId, responseId: currentResponseId }));
+      } else {
+        console.log(JSON.stringify({ 
+          event: 'cancel_skipped', 
+          requestId, 
+          reason: 'no_active_response',
+          openaiResponseActive,
+          currentResponseId 
+        }));
+      }
+    }
+    
+    // 3. Abort ElevenLabs TTS
+    if (ttsAbortController) {
+      ttsAbortController.abort();
+      ttsAbortController = null;
+    }
+    
+    // 4. Clear state
+    pendingText = '';
+    currentResponseId = null;
+    ttsSpeaking = false;
+    ttsStartAt = null;
+    openaiResponseActive = false;
   }
 
   function validateAuth(customParams: Record<string, string> | undefined): boolean {
@@ -1063,7 +1124,26 @@ ${generateVoicePromptInstructions()}`;
             pendingText = '';
           }
         } else if (message.type === 'input_audio_buffer.speech_stopped') {
+          // Calculate duration BEFORE resetting speechStartTime for accurate logging
+          const speechDurationMs = speechStartTime ? Date.now() - speechStartTime : 0;
           speechStartTime = null;
+          
+          // Cancel pending barge-in timer if speech stopped before sustained threshold
+          if (bargeInTimer) {
+            clearTimeout(bargeInTimer);
+            bargeInTimer = null;
+            console.log(JSON.stringify({ 
+              event: 'barge_in_decision', 
+              requestId, 
+              ttsSpeaking,
+              msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
+              durationMs: speechDurationMs,
+              energy: undefined,
+              decision: 'IGNORE',
+              reason: 'speech_stopped_before_sustained'
+            }));
+          }
+          
           // Only commit if we have buffered enough audio (>= 100ms)
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
             if (bufferedAudioFrameCount >= MIN_FRAMES_TO_COMMIT) {
@@ -1074,34 +1154,104 @@ ${generateVoicePromptInstructions()}`;
             }
           }
         } else if (message.type === 'input_audio_buffer.speech_started') {
-          // BARGE-IN: Caller started speaking - interrupt everything
+          // BARGE-IN EVALUATION: Caller started speaking
           speechStartTime = Date.now();
-          console.log(JSON.stringify({ event: 'barge_in', requestId, ttsSpeaking, openaiResponseActive }));
-          
-          // Reset audio frame counter since we're starting fresh
           bufferedAudioFrameCount = 0;
           
-          // 1. Clear Twilio audio buffer
-          if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-            twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
+          const now = Date.now();
+          const msSinceTtsStart = ttsStartAt ? now - ttsStartAt : null;
+          const msSinceLastBargeIn = lastBargeInTime ? now - lastBargeInTime : null;
+          
+          // Gate 1: Only evaluate barge-in when TTS is speaking
+          if (!ttsSpeaking) {
+            console.log(JSON.stringify({ 
+              event: 'barge_in_decision', 
+              requestId, 
+              ttsSpeaking: false,
+              msSinceTtsStart,
+              durationMs: 0,
+              energy: undefined,
+              decision: 'IGNORE',
+              reason: 'tts_not_speaking'
+            }));
+            // Don't start barge-in timer, just track speech for normal input
+          } 
+          // Gate 2: Echo ignore window (800ms after TTS starts)
+          else if (msSinceTtsStart !== null && msSinceTtsStart < ECHO_IGNORE_WINDOW_MS) {
+            console.log(JSON.stringify({ 
+              event: 'barge_in_decision', 
+              requestId, 
+              ttsSpeaking: true,
+              msSinceTtsStart,
+              durationMs: 0,
+              energy: undefined,
+              decision: 'IGNORE',
+              reason: 'echo_ignore_window'
+            }));
           }
-          // 2. Cancel OpenAI response (only if one is active)
-          if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-            if (openaiResponseActive) {
-              openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
-            } else {
-              console.log(JSON.stringify({ event: 'cancel_skipped', requestId, reason: 'no_active_response' }));
+          // Gate 3: Cooldown after previous barge-in
+          else if (msSinceLastBargeIn !== null && msSinceLastBargeIn < BARGE_IN_COOLDOWN_MS) {
+            console.log(JSON.stringify({ 
+              event: 'barge_in_decision', 
+              requestId, 
+              ttsSpeaking: true,
+              msSinceTtsStart,
+              durationMs: 0,
+              energy: undefined,
+              decision: 'IGNORE',
+              reason: 'cooldown_active',
+              msSinceLastBargeIn
+            }));
+          }
+          // Start sustained speech timer
+          else {
+            console.log(JSON.stringify({ 
+              event: 'barge_in_timer_started', 
+              requestId, 
+              ttsSpeaking: true,
+              msSinceTtsStart,
+              requiredDurationMs: SUSTAINED_SPEECH_MS
+            }));
+            
+            // Clear any existing timer
+            if (bargeInTimer) {
+              clearTimeout(bargeInTimer);
             }
+            
+            // Start timer for sustained speech
+            bargeInTimer = setTimeout(() => {
+              bargeInTimer = null;
+              
+              // Re-check conditions when timer fires
+              if (!ttsSpeaking) {
+                console.log(JSON.stringify({ 
+                  event: 'barge_in_decision', 
+                  requestId, 
+                  ttsSpeaking: false,
+                  msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
+                  durationMs: SUSTAINED_SPEECH_MS,
+                  energy: undefined,
+                  decision: 'IGNORE',
+                  reason: 'tts_stopped_before_trigger'
+                }));
+                return;
+              }
+              
+              // TRIGGER BARGE-IN
+              console.log(JSON.stringify({ 
+                event: 'barge_in_decision', 
+                requestId, 
+                ttsSpeaking: true,
+                msSinceTtsStart: ttsStartAt ? Date.now() - ttsStartAt : null,
+                durationMs: SUSTAINED_SPEECH_MS,
+                energy: undefined,
+                decision: 'TRIGGER',
+                reason: 'sustained_speech'
+              }));
+              
+              executeBargeIn();
+            }, SUSTAINED_SPEECH_MS);
           }
-          // 3. Abort ElevenLabs TTS
-          if (ttsAbortController) {
-            ttsAbortController.abort();
-            ttsAbortController = null;
-          }
-          // 4. Clear pending text buffer
-          pendingText = '';
-          currentResponseId = null;
-          ttsSpeaking = false;
         } else if (message.type === 'response.audio_transcript.done') {
           // NOTE: This fires in AUDIO mode only. In TEXT mode, we capture from response.done above.
           const text = message.transcript || '';
