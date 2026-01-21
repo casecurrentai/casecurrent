@@ -22,8 +22,11 @@ export interface TTSStreamOptions {
   responseId?: string;
 }
 
-// Default voice ID - "Avery" voice for CaseCurrent
-const DEFAULT_VOICE_ID = "uYXf8XasLslADfZ2MB4u";
+// Default voice ID - "Sarah" voice (Mature, Reassuring, Confident) - a premade voice that won't hit custom voice limits
+const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+
+// Fallback voice ID - "Jessica" (Playful, Bright, Warm) - another premade voice
+const FALLBACK_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 
 /**
  * Get TTS configuration from environment variables
