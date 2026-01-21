@@ -32,6 +32,568 @@ const TOKEN_MAX_AGE_SECONDS = 600;
 const LOG_FRAME_INTERVAL = 100;
 const START_TIMEOUT_MS = 5000;
 
+// =============================================================================
+// TURN STATE MACHINE - Legal Intake Tuned Thresholds
+// =============================================================================
+const TURN_THRESHOLDS = {
+  postTtsDeadzoneMs: 450,        // Ignore speech after TTS ends to filter echo
+  longNoInputMs: 9000,           // Reprompt after 9s silence (after questions)
+  idleNoInputMs: 12000,          // General idle timeout
+  endDebounceMs: 450,            // Debounce before finalizing user turn
+  finalizeTimeoutMs: 1200,       // Max wait for final transcript
+  minUtteranceMs: 900,           // Minimum speech duration to accept
+  minWords: 2,                   // Minimum word count to accept
+  bargeInEchoIgnoreMs: 800,      // Ignore speech for Xms after TTS starts
+  bargeInSustainedSpeechMs: 650, // Require sustained speech before barge-in
+  bargeInCooldownMs: 800,        // Cooldown after barge-in triggers
+} as const;
+
+// Turn states for the state machine
+type TurnState = 
+  | 'INIT'
+  | 'IDLE'
+  | 'ASSIST_PLANNING'
+  | 'ASSIST_SPEAKING'
+  | 'POST_TTS_DEADZONE'
+  | 'WAITING_FOR_USER_START'
+  | 'USER_SPEAKING'
+  | 'USER_END_DEBOUNCE'
+  | 'USER_FINALIZING'
+  | 'USER_VALIDATING'
+  | 'NO_INPUT_REPROMPT'
+  | 'SHORT_UTTER_REPROMPT';
+
+interface TurnControllerConfig {
+  requestId: string;
+  onSpeakText: (text: string, isReprompt: boolean) => Promise<void>;
+  onStopTts: () => void;
+  onRequestLlmResponse: (prompt?: string) => void;
+  onClearTwilioAudio: () => void;
+  onLog: (data: Record<string, any>) => void;
+}
+
+/**
+ * TurnController - Manages turn-taking state machine for voice conversations
+ * 
+ * Ensures correct "yield the floor" behavior:
+ * - After Avery asks a question, system MUST wait for validated user response
+ * - Phantom turns are prevented by requiring FINAL transcript + validation
+ * - Barge-in is carefully gated to avoid echo triggers
+ */
+class TurnController {
+  private state: TurnState = 'INIT';
+  private config: TurnControllerConfig;
+  
+  // Timing state
+  private ttsStartAt: number | null = null;
+  private ttsEndAt: number | null = null;
+  private speechStartAt: number | null = null;
+  private speechEndAt: number | null = null;
+  private lastBargeInAt: number | null = null;
+  private userSpeechTotalMs: number = 0;
+  
+  // Timers
+  private bargeInTimer: NodeJS.Timeout | null = null;
+  private noInputTimer: NodeJS.Timeout | null = null;
+  private endDebounceTimer: NodeJS.Timeout | null = null;
+  private finalizeTimer: NodeJS.Timeout | null = null;
+  private postTtsDeadzoneTimer: NodeJS.Timeout | null = null;
+  
+  // Transcript state
+  private pendingInterimTranscript: string = '';
+  private lastFinalTranscript: string = '';
+  private lastQuestionAsked: string = '';
+  private waitingForPhoneNumber: boolean = false;
+  
+  constructor(config: TurnControllerConfig) {
+    this.config = config;
+    this.logTransition('INIT', 'INIT', 'controller_created');
+  }
+  
+  // ===========================================================================
+  // PUBLIC API - Event handlers called by streamHandler
+  // ===========================================================================
+  
+  /**
+   * Called when LLM starts generating a response
+   */
+  onLlmResponseStarted(): void {
+    // Guard: Block LLM calls when waiting for user
+    if (this.state === 'WAITING_FOR_USER_START') {
+      this.logFatal('LLM_BLOCKED', 'Attempted to call LLM while WAITING_FOR_USER_START');
+      return;
+    }
+    
+    this.transition('ASSIST_PLANNING', 'llm_response_started');
+  }
+  
+  /**
+   * Called when TTS starts speaking
+   */
+  onTtsStarted(text: string): void {
+    this.ttsStartAt = Date.now();
+    this.clearNoInputTimer();
+    
+    // Detect if this is a question (ends with ?)
+    if (text.trim().endsWith('?')) {
+      this.lastQuestionAsked = text;
+      // Detect phone number requests
+      this.waitingForPhoneNumber = /phone|number|reach|call|callback/i.test(text);
+    }
+    
+    this.transition('ASSIST_SPEAKING', 'tts_started');
+  }
+  
+  /**
+   * Called when TTS finishes speaking normally (not barged in)
+   */
+  onTtsFinished(): void {
+    this.ttsEndAt = Date.now();
+    
+    // Enter deadzone to filter echo
+    this.transition('POST_TTS_DEADZONE', 'tts_finished');
+    
+    // After deadzone, transition to waiting for user
+    this.postTtsDeadzoneTimer = setTimeout(() => {
+      this.postTtsDeadzoneTimer = null;
+      if (this.state === 'POST_TTS_DEADZONE') {
+        this.transition('WAITING_FOR_USER_START', 'deadzone_complete');
+        this.startNoInputTimer();
+      }
+    }, TURN_THRESHOLDS.postTtsDeadzoneMs);
+  }
+  
+  /**
+   * Called when user speech is detected (from OpenAI VAD)
+   */
+  onSpeechStarted(): void {
+    const now = Date.now();
+    this.speechStartAt = now;
+    
+    // State-specific handling
+    switch (this.state) {
+      case 'ASSIST_SPEAKING':
+        // Evaluate barge-in
+        this.evaluateBargeIn(now);
+        break;
+        
+      case 'POST_TTS_DEADZONE':
+        // Ignore speech during deadzone (echo filtering)
+        this.logDecision('IGNORE', 'speech_in_deadzone', { 
+          msSinceTtsEnd: this.ttsEndAt ? now - this.ttsEndAt : null 
+        });
+        break;
+        
+      case 'WAITING_FOR_USER_START':
+        // User started speaking - transition
+        this.clearNoInputTimer();
+        this.transition('USER_SPEAKING', 'user_speech_detected');
+        break;
+        
+      case 'USER_END_DEBOUNCE':
+        // User resumed speaking - cancel debounce
+        if (this.endDebounceTimer) {
+          clearTimeout(this.endDebounceTimer);
+          this.endDebounceTimer = null;
+        }
+        this.transition('USER_SPEAKING', 'user_resumed_speaking');
+        break;
+        
+      case 'USER_SPEAKING':
+        // Already speaking, just update timing
+        break;
+        
+      default:
+        this.logDecision('IGNORE', 'speech_in_unexpected_state', { state: this.state });
+    }
+  }
+  
+  /**
+   * Called when user speech ends (from OpenAI VAD)
+   */
+  onSpeechStopped(): void {
+    const now = Date.now();
+    const speechDuration = this.speechStartAt ? now - this.speechStartAt : 0;
+    this.speechEndAt = now;
+    this.userSpeechTotalMs += speechDuration;
+    
+    // Cancel pending barge-in timer
+    if (this.bargeInTimer) {
+      clearTimeout(this.bargeInTimer);
+      this.bargeInTimer = null;
+      this.logDecision('IGNORE', 'barge_in_cancelled_speech_stopped', { 
+        speechDurationMs: speechDuration 
+      });
+    }
+    
+    // State-specific handling
+    switch (this.state) {
+      case 'USER_SPEAKING':
+        // Start end-of-turn debounce
+        this.transition('USER_END_DEBOUNCE', 'speech_stopped');
+        this.startEndDebounceTimer();
+        break;
+        
+      case 'ASSIST_SPEAKING':
+        // Speech stopped during TTS (was evaluating barge-in) - ignore
+        this.speechStartAt = null;
+        break;
+        
+      default:
+        // Reset for other states
+        this.speechStartAt = null;
+    }
+  }
+  
+  /**
+   * Called with interim transcript (UI/log only - DO NOT act on this)
+   */
+  onTranscriptInterim(text: string): void {
+    this.pendingInterimTranscript = text;
+    this.config.onLog({
+      event: 'transcript_interim',
+      requestId: this.config.requestId,
+      state: this.state,
+      text_preview: text.substring(0, 50),
+      note: 'UI_ONLY_DO_NOT_ACT',
+    });
+  }
+  
+  /**
+   * Called with final transcript - this is the ONLY transcript to act on
+   */
+  onTranscriptFinal(text: string): void {
+    this.lastFinalTranscript = text;
+    
+    // Cancel finalize timer if running
+    if (this.finalizeTimer) {
+      clearTimeout(this.finalizeTimer);
+      this.finalizeTimer = null;
+    }
+    
+    if (this.state === 'USER_END_DEBOUNCE' || this.state === 'USER_FINALIZING') {
+      this.transition('USER_VALIDATING', 'final_transcript_received');
+      this.validateUserUtterance(text);
+    } else {
+      this.config.onLog({
+        event: 'transcript_final_ignored',
+        requestId: this.config.requestId,
+        state: this.state,
+        reason: 'not_in_finalizing_state',
+      });
+    }
+  }
+  
+  /**
+   * Check if LLM calls are allowed in current state
+   */
+  canCallLlm(): boolean {
+    const blocked = ['WAITING_FOR_USER_START', 'USER_SPEAKING', 'USER_END_DEBOUNCE', 'USER_FINALIZING', 'USER_VALIDATING'];
+    return !blocked.includes(this.state);
+  }
+  
+  /**
+   * Get current state (for logging/debugging)
+   */
+  getState(): TurnState {
+    return this.state;
+  }
+  
+  /**
+   * Clean up all timers
+   */
+  cleanup(): void {
+    this.clearAllTimers();
+  }
+  
+  // ===========================================================================
+  // PRIVATE - State transitions
+  // ===========================================================================
+  
+  private transition(newState: TurnState, reason: string): void {
+    const oldState = this.state;
+    this.state = newState;
+    this.logTransition(oldState, newState, reason);
+  }
+  
+  private logTransition(from: TurnState, to: TurnState, reason: string): void {
+    this.config.onLog({
+      event: 'turn_state_change',
+      requestId: this.config.requestId,
+      fromState: from,
+      toState: to,
+      reason,
+      timestamp: new Date().toISOString(),
+      stateData: {
+        msSinceTtsStart: this.ttsStartAt ? Date.now() - this.ttsStartAt : null,
+        userSpeechTotalMs: this.userSpeechTotalMs,
+        transcriptFinalReceived: !!this.lastFinalTranscript,
+        speechStartTime: this.speechStartAt,
+        ttsStartTime: this.ttsStartAt,
+        waitingForPhoneNumber: this.waitingForPhoneNumber,
+      },
+    });
+  }
+  
+  private logDecision(decision: 'TRIGGER' | 'IGNORE', reason: string, extra: Record<string, any> = {}): void {
+    this.config.onLog({
+      event: 'barge_in_decision',
+      requestId: this.config.requestId,
+      state: this.state,
+      decision,
+      reason,
+      msSinceTtsStart: this.ttsStartAt ? Date.now() - this.ttsStartAt : null,
+      sustainedSpeechMs: this.speechStartAt ? Date.now() - this.speechStartAt : 0,
+      userSpeechTotalMs: this.userSpeechTotalMs,
+      ...extra,
+    });
+  }
+  
+  private logFatal(tag: string, message: string): void {
+    const stack = new Error().stack;
+    this.config.onLog({
+      event: 'FATAL_TURN_VIOLATION',
+      tag,
+      requestId: this.config.requestId,
+      state: this.state,
+      message,
+      stack: stack?.split('\n').slice(2, 5).join('\n'),
+    });
+  }
+  
+  // ===========================================================================
+  // PRIVATE - Barge-in logic
+  // ===========================================================================
+  
+  private evaluateBargeIn(now: number): void {
+    const msSinceTtsStart = this.ttsStartAt ? now - this.ttsStartAt : null;
+    const msSinceLastBargeIn = this.lastBargeInAt ? now - this.lastBargeInAt : null;
+    
+    // Gate 1: Must be in ASSIST_SPEAKING
+    if (this.state !== 'ASSIST_SPEAKING') {
+      this.logDecision('IGNORE', 'not_speaking', { state: this.state });
+      return;
+    }
+    
+    // Gate 2: Echo ignore window
+    if (msSinceTtsStart !== null && msSinceTtsStart < TURN_THRESHOLDS.bargeInEchoIgnoreMs) {
+      this.logDecision('IGNORE', 'echo_ignore_window', { msSinceTtsStart });
+      return;
+    }
+    
+    // Gate 3: Cooldown
+    if (msSinceLastBargeIn !== null && msSinceLastBargeIn < TURN_THRESHOLDS.bargeInCooldownMs) {
+      this.logDecision('IGNORE', 'cooldown_active', { msSinceLastBargeIn });
+      return;
+    }
+    
+    // Gate 4: Start sustained speech timer
+    this.config.onLog({
+      event: 'barge_in_timer_started',
+      requestId: this.config.requestId,
+      msSinceTtsStart,
+      requiredMs: TURN_THRESHOLDS.bargeInSustainedSpeechMs,
+    });
+    
+    const speechStartedAt = now;
+    
+    if (this.bargeInTimer) {
+      clearTimeout(this.bargeInTimer);
+    }
+    
+    this.bargeInTimer = setTimeout(() => {
+      this.bargeInTimer = null;
+      
+      const actualDuration = Date.now() - speechStartedAt;
+      
+      // Gate 5: Check TTS still speaking
+      if (this.state !== 'ASSIST_SPEAKING') {
+        this.logDecision('IGNORE', 'tts_stopped_before_trigger', { actualDuration });
+        return;
+      }
+      
+      // Gate 6: Verify speech is still active
+      if (!this.speechStartAt) {
+        this.logDecision('IGNORE', 'speech_ended_before_trigger', { actualDuration });
+        return;
+      }
+      
+      // TRIGGER BARGE-IN
+      this.logDecision('TRIGGER', 'sustained_speech_confirmed', { actualDuration });
+      this.executeBargeIn();
+      
+    }, TURN_THRESHOLDS.bargeInSustainedSpeechMs);
+  }
+  
+  private executeBargeIn(): void {
+    this.lastBargeInAt = Date.now();
+    
+    // Stop TTS immediately
+    this.config.onStopTts();
+    
+    // Clear Twilio audio buffer
+    this.config.onClearTwilioAudio();
+    
+    // Transition to user speaking
+    this.transition('USER_SPEAKING', 'barge_in_triggered');
+  }
+  
+  // ===========================================================================
+  // PRIVATE - Timers
+  // ===========================================================================
+  
+  private startNoInputTimer(): void {
+    this.clearNoInputTimer();
+    
+    // Use longer timeout for questions vs general idle
+    const timeout = this.lastQuestionAsked 
+      ? TURN_THRESHOLDS.longNoInputMs 
+      : TURN_THRESHOLDS.idleNoInputMs;
+    
+    this.noInputTimer = setTimeout(() => {
+      this.noInputTimer = null;
+      if (this.state === 'WAITING_FOR_USER_START') {
+        this.transition('NO_INPUT_REPROMPT', 'no_input_timeout');
+        this.handleNoInputReprompt();
+      }
+    }, timeout);
+  }
+  
+  private clearNoInputTimer(): void {
+    if (this.noInputTimer) {
+      clearTimeout(this.noInputTimer);
+      this.noInputTimer = null;
+    }
+  }
+  
+  private startEndDebounceTimer(): void {
+    if (this.endDebounceTimer) {
+      clearTimeout(this.endDebounceTimer);
+    }
+    
+    this.endDebounceTimer = setTimeout(() => {
+      this.endDebounceTimer = null;
+      
+      if (this.state === 'USER_END_DEBOUNCE') {
+        this.transition('USER_FINALIZING', 'debounce_complete');
+        this.startFinalizeTimer();
+      }
+    }, TURN_THRESHOLDS.endDebounceMs);
+  }
+  
+  private startFinalizeTimer(): void {
+    if (this.finalizeTimer) {
+      clearTimeout(this.finalizeTimer);
+    }
+    
+    this.finalizeTimer = setTimeout(() => {
+      this.finalizeTimer = null;
+      
+      if (this.state === 'USER_FINALIZING') {
+        // No final transcript received - try to validate with what we have
+        this.config.onLog({
+          event: 'finalize_timeout',
+          requestId: this.config.requestId,
+          pendingInterim: this.pendingInterimTranscript.substring(0, 50),
+        });
+        this.transition('USER_VALIDATING', 'finalize_timeout');
+        this.validateUserUtterance(this.pendingInterimTranscript || '');
+      }
+    }, TURN_THRESHOLDS.finalizeTimeoutMs);
+  }
+  
+  private clearAllTimers(): void {
+    if (this.bargeInTimer) clearTimeout(this.bargeInTimer);
+    if (this.noInputTimer) clearTimeout(this.noInputTimer);
+    if (this.endDebounceTimer) clearTimeout(this.endDebounceTimer);
+    if (this.finalizeTimer) clearTimeout(this.finalizeTimer);
+    if (this.postTtsDeadzoneTimer) clearTimeout(this.postTtsDeadzoneTimer);
+    this.bargeInTimer = null;
+    this.noInputTimer = null;
+    this.endDebounceTimer = null;
+    this.finalizeTimer = null;
+    this.postTtsDeadzoneTimer = null;
+  }
+  
+  // ===========================================================================
+  // PRIVATE - Validation and reprompts
+  // ===========================================================================
+  
+  private validateUserUtterance(text: string): void {
+    const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    const hasDigits = /\d/.test(text);
+    
+    // Slot-aware: For phone numbers, accept 1-word utterances with digits
+    const effectiveMinWords = (this.waitingForPhoneNumber && hasDigits) ? 1 : TURN_THRESHOLDS.minWords;
+    
+    const isValid = 
+      this.userSpeechTotalMs >= TURN_THRESHOLDS.minUtteranceMs &&
+      wordCount >= effectiveMinWords;
+    
+    this.config.onLog({
+      event: 'utterance_validation',
+      requestId: this.config.requestId,
+      text_preview: text.substring(0, 50),
+      wordCount,
+      userSpeechTotalMs: this.userSpeechTotalMs,
+      minUtteranceMs: TURN_THRESHOLDS.minUtteranceMs,
+      minWords: effectiveMinWords,
+      waitingForPhoneNumber: this.waitingForPhoneNumber,
+      isValid,
+    });
+    
+    if (isValid) {
+      // Valid utterance - allow LLM to respond
+      this.resetUserState();
+      this.transition('IDLE', 'utterance_validated');
+      this.config.onRequestLlmResponse();
+    } else {
+      // Short utterance - reprompt
+      this.transition('SHORT_UTTER_REPROMPT', 'utterance_too_short');
+      this.handleShortUtterReprompt();
+    }
+  }
+  
+  private handleNoInputReprompt(): void {
+    this.resetUserState();
+    
+    const reprompt = this.lastQuestionAsked 
+      ? "I'm sorry, I didn't catch that. Could you please repeat?"
+      : "Are you still there?";
+    
+    this.config.onSpeakText(reprompt, true).catch(err => {
+      this.config.onLog({
+        event: 'reprompt_error',
+        requestId: this.config.requestId,
+        error: err.message,
+      });
+    });
+  }
+  
+  private handleShortUtterReprompt(): void {
+    this.resetUserState();
+    
+    const reprompt = "I'm sorry, could you say that again? I want to make sure I get it right.";
+    
+    this.config.onSpeakText(reprompt, true).catch(err => {
+      this.config.onLog({
+        event: 'reprompt_error',
+        requestId: this.config.requestId,
+        error: err.message,
+      });
+    });
+  }
+  
+  private resetUserState(): void {
+    this.userSpeechTotalMs = 0;
+    this.lastFinalTranscript = '';
+    this.pendingInterimTranscript = '';
+    this.speechStartAt = null;
+    this.speechEndAt = null;
+    this.waitingForPhoneNumber = false;
+  }
+}
+
 interface PostCallContext {
   requestId: string;
   callSid: string | null;
@@ -443,6 +1005,66 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let firstAudioFrameSent = false;
 
   const secret = process.env.STREAM_TOKEN_SECRET;
+  
+  // ==========================================================================
+  // TurnController instance - manages turn-taking state machine
+  // ==========================================================================
+  let turnController: TurnController | null = null;
+  
+  function initTurnController(): void {
+    turnController = new TurnController({
+      requestId,
+      
+      // Speak text via ElevenLabs TTS
+      onSpeakText: async (text: string, isReprompt: boolean) => {
+        const responseId = `reprompt_${Date.now()}`;
+        // Add to transcript buffer
+        transcriptBuffer.push({ role: 'ai', text, timestamp: new Date() });
+        console.log(JSON.stringify({
+          tag: '[TX_APPEND]',
+          requestId,
+          role: 'assistant',
+          len: text.length,
+          isReprompt,
+        }));
+        await speakElevenLabs(text, responseId);
+      },
+      
+      // Stop current TTS playback
+      onStopTts: () => {
+        if (ttsAbortController) {
+          ttsAbortController.abort();
+          ttsAbortController = null;
+        }
+        ttsSpeaking = false;
+        ttsStartAt = null;
+      },
+      
+      // Request LLM response (signal that user turn is complete)
+      onRequestLlmResponse: (prompt?: string) => {
+        // OpenAI Realtime API auto-generates responses after speech_stopped + commit
+        // We don't need to explicitly call response.create - the VAD handles it
+        // But we log that we're now allowing the LLM to respond
+        console.log(JSON.stringify({
+          event: 'llm_response_permitted',
+          requestId,
+          turnControllerState: turnController?.getState(),
+        }));
+      },
+      
+      // Clear Twilio audio buffer
+      onClearTwilioAudio: () => {
+        if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
+          twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
+        }
+      },
+      
+      // Structured logging
+      onLog: (data: Record<string, any>) => {
+        console.log(JSON.stringify(data));
+      },
+    });
+  }
 
   const startTimeout = setTimeout(() => {
     if (!authenticated) {
@@ -475,6 +1097,11 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     ttsAbortController = new AbortController();
     ttsSpeaking = true;
     ttsStartAt = Date.now();
+    
+    // Notify TurnController that TTS is starting
+    if (turnController) {
+      turnController.onTtsStarted(text);
+    }
 
     // Audio buffer for framing
     let audioBuffer = Buffer.alloc(0);
@@ -578,6 +1205,11 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       clearTimeout(timeoutId);
       ttsSpeaking = false;
       ttsAbortController = null;
+      
+      // Notify TurnController that TTS finished (not aborted)
+      if (turnController && !ttsAbortController) {
+        turnController.onTtsFinished();
+      }
     }
   }
   
@@ -1087,6 +1719,20 @@ ${generateVoicePromptInstructions()}`;
           currentResponseId = message.response?.id || null;
           pendingText = '';  // Reset text buffer for new response
           console.log(JSON.stringify({ event: 'response_started', requestId, responseId: currentResponseId }));
+          
+          // Notify TurnController that LLM is responding
+          if (turnController) {
+            // Guard: Block if waiting for user
+            if (!turnController.canCallLlm()) {
+              console.log(JSON.stringify({
+                event: 'FATAL_LLM_BLOCKED',
+                requestId,
+                turnState: turnController.getState(),
+                message: 'LLM response started while waiting for user input - this should not happen',
+              }));
+            }
+            turnController.onLlmResponseStarted();
+          }
         } else if (message.type === 'response.text.delta' || message.type === 'response.output_text.delta' || message.type === 'response.content_part.delta') {
           // Accumulate text deltas for TTS
           const textDelta = message.delta?.text || message.delta || '';
@@ -1162,6 +1808,11 @@ ${generateVoicePromptInstructions()}`;
           const speechDurationMs = speechStartTime ? Date.now() - speechStartTime : 0;
           speechStartTime = null;
           
+          // Notify TurnController
+          if (turnController) {
+            turnController.onSpeechStopped();
+          }
+          
           // Cancel pending barge-in timer if speech stopped before sustained threshold
           if (bargeInTimer) {
             clearTimeout(bargeInTimer);
@@ -1191,6 +1842,11 @@ ${generateVoicePromptInstructions()}`;
           // BARGE-IN EVALUATION: Caller started speaking
           speechStartTime = Date.now();
           bufferedAudioFrameCount = 0;
+          
+          // Notify TurnController
+          if (turnController) {
+            turnController.onSpeechStarted();
+          }
           
           const now = Date.now();
           const msSinceTtsStart = ttsStartAt ? now - ttsStartAt : null;
@@ -1338,6 +1994,11 @@ ${generateVoicePromptInstructions()}`;
               len: text.length,
               preview: text.substring(0, 50),
             }));
+            
+            // Notify TurnController of FINAL transcript
+            if (turnController) {
+              turnController.onTranscriptFinal(text);
+            }
           }
         } else if (message.type === 'error') {
           console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
@@ -1638,6 +2299,9 @@ ${generateVoicePromptInstructions()}`;
         logElevenLabsKeyStatus();
         logTTSConfig();
         
+        // Initialize TurnController for turn-taking state machine
+        initTurnController();
+        
         initOpenAI();
       } else if (message.event === 'media') {
         if (!authenticated) return;
@@ -1701,6 +2365,12 @@ ${generateVoicePromptInstructions()}`;
     // Reset state on connection close
     openaiResponseActive = false;
     bufferedAudioFrameCount = 0;
+    
+    // Cleanup TurnController
+    if (turnController) {
+      turnController.cleanup();
+      turnController = null;
+    }
     
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
       openAiWs.close(1000, 'Twilio connection closed');
