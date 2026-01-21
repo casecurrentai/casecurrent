@@ -66,10 +66,17 @@ The frontend utilizes a dual setup with Vite + React and Next.js 14 App Router, 
     - `AVERY_LUNA_STYLE` (optional): Set to `true` to enable Luna-style human voice delivery (default: false)
   - **ElevenLabs TTS Environment Variables** (Avery voice):
     - `ELEVENLABS_API_KEY`: ElevenLabs API key (required for TTS)
-    - `ELEVENLABS_VOICE_ID_AVERY` or `ELEVENLABS_VOICE_ID`: Voice ID (default: `WZlYpi1yf6zJhNWXih74` = Hope - Professional, Clear and Natural)
+    - `ELEVENLABS_VOICE_ID_AVERY` or `ELEVENLABS_VOICE_ID`: Voice ID (current: `WyFXw4PzMbRnp8iLMJwY` = Juliet)
     - `ELEVENLABS_FALLBACK_VOICE_ID`: Fallback voice if primary fails (default: `EXAVITQu4vr4xnSDxMaL` = Sarah)
     - `ELEVENLABS_MODEL_ID`: TTS model ID (default: `eleven_turbo_v2_5`)
     - `ELEVENLABS_OUTPUT_FORMAT`: Audio output format (default: `ulaw_8000` for Twilio)
+  - **Barge-In Echo Protection**: Prevents speakerphone echo from causing false interruptions:
+    - Gate 1: Only evaluate barge-in when `ttsSpeaking === true`
+    - Gate 2: 800ms echo ignore window after TTS starts (ignores immediate audio feedback)
+    - Gate 3: 800ms cooldown after a barge-in triggers (prevents rapid re-triggers)
+    - Gate 4: 600ms sustained speech requirement (short echo bursts are ignored)
+    - Logging: All barge-in decisions logged with `event: 'barge_in_decision'` including ttsSpeaking, msSinceTtsStart, durationMs, decision (TRIGGER/IGNORE), and reason
+  - **Diagnostic Endpoint for Voices**: `GET /v1/diag/voices?token=DIAG_TOKEN` - Lists all ElevenLabs voices and verifies configured voice is valid
   - **Webhook Configuration**: Set OpenAI webhook URL to `https://your-domain.com/v1/telephony/openai/webhook`
   - **Twilio Configuration**: Configure Twilio number webhook to `https://your-domain.com/v1/telephony/twilio/voice`
   - **Phone Number Setup**: Each inbound number must exist in `phone_numbers` table with `inboundEnabled=true`
