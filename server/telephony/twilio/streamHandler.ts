@@ -36,16 +36,16 @@ const START_TIMEOUT_MS = 5000;
 // TURN STATE MACHINE - Legal Intake Tuned Thresholds
 // =============================================================================
 const TURN_THRESHOLDS = {
-  postTtsDeadzoneMs: 450,        // Ignore speech after TTS ends to filter echo
+  postTtsDeadzoneMs: 700,        // Ignore speech after TTS ends to filter echo (was 450)
   longNoInputMs: 9000,           // Reprompt after 9s silence (after questions)
   idleNoInputMs: 12000,          // General idle timeout
   endDebounceMs: 450,            // Debounce before finalizing user turn
   finalizeTimeoutMs: 1200,       // Max wait for final transcript
-  minUtteranceMs: 900,           // Minimum speech duration to accept
+  minUtteranceMs: 1200,          // Minimum speech duration to accept (was 900)
   minWords: 2,                   // Minimum word count to accept
   bargeInEchoIgnoreMs: 800,      // Ignore speech for Xms after TTS starts
-  bargeInSustainedSpeechMs: 650, // Require sustained speech before barge-in
-  bargeInCooldownMs: 800,        // Cooldown after barge-in triggers
+  bargeInSustainedSpeechMs: 1000, // Require sustained speech before barge-in (was 650)
+  bargeInCooldownMs: 1200,       // Cooldown after barge-in triggers (was 800)
 } as const;
 
 // Turn states for the state machine
