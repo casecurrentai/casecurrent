@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
 import { Search, Users, Phone, Mail, Calendar, ChevronRight, Plus, Briefcase, Filter, X } from "lucide-react";
 
 interface Contact {
@@ -124,11 +125,53 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function LeadsPage() {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [practiceAreaFilter, setPracticeAreaFilter] = useState("all");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [newLeadSheetOpen, setNewLeadSheetOpen] = useState(false);
+  const [newLeadName, setNewLeadName] = useState("");
+  const [newLeadPhone, setNewLeadPhone] = useState("");
+  const [newLeadEmail, setNewLeadEmail] = useState("");
+
+  const createLeadMutation = useMutation({
+    mutationFn: async (data: { contactName: string; contactPhone?: string; contactEmail?: string }) => {
+      const res = await fetch("/v1/leads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...data,
+          source: "web",
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to create lead");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/v1/leads"] });
+      setNewLeadSheetOpen(false);
+      setNewLeadName("");
+      setNewLeadPhone("");
+      setNewLeadEmail("");
+    },
+  });
+
+  const handleCreateLead = () => {
+    if (!newLeadName.trim()) return;
+    createLeadMutation.mutate({
+      contactName: newLeadName.trim(),
+      contactPhone: newLeadPhone.trim() || undefined,
+      contactEmail: newLeadEmail.trim() || undefined,
+    });
+  };
 
   const { data: practiceAreasData } = useQuery<PracticeAreasResponse>({
     queryKey: ["/v1/practice-areas"],
@@ -180,10 +223,65 @@ export default function LeadsPage() {
             Manage and track your potential clients
           </p>
         </div>
-        <Button className="w-full sm:w-auto" data-testid="button-new-lead">
-          <Plus className="h-4 w-4 mr-2" />
-          New Lead
-        </Button>
+        <Sheet open={newLeadSheetOpen} onOpenChange={setNewLeadSheetOpen}>
+          <SheetTrigger asChild>
+            <Button className="w-full sm:w-auto" data-testid="button-new-lead">
+              <Plus className="h-4 w-4 mr-2" />
+              New Lead
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right">
+            <SheetHeader>
+              <SheetTitle>New Lead</SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-lead-name">Name *</Label>
+                <Input
+                  id="new-lead-name"
+                  placeholder="Contact name"
+                  value={newLeadName}
+                  onChange={(e) => setNewLeadName(e.target.value)}
+                  data-testid="input-new-lead-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-lead-phone">Phone</Label>
+                <Input
+                  id="new-lead-phone"
+                  placeholder="Phone number"
+                  value={newLeadPhone}
+                  onChange={(e) => setNewLeadPhone(e.target.value)}
+                  data-testid="input-new-lead-phone"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-lead-email">Email</Label>
+                <Input
+                  id="new-lead-email"
+                  type="email"
+                  placeholder="Email address"
+                  value={newLeadEmail}
+                  onChange={(e) => setNewLeadEmail(e.target.value)}
+                  data-testid="input-new-lead-email"
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={handleCreateLead}
+                disabled={!newLeadName.trim() || createLeadMutation.isPending}
+                data-testid="button-create-lead"
+              >
+                {createLeadMutation.isPending ? "Creating..." : "Create Lead"}
+              </Button>
+              {createLeadMutation.isError && (
+                <p className="text-sm text-destructive">
+                  {createLeadMutation.error?.message || "Failed to create lead"}
+                </p>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Search and Filters - Mobile optimized */}
