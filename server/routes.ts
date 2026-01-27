@@ -2457,6 +2457,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get('/v1/leads', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = req.user!.orgId;
+
+      // Defensive check: ensure orgId is present to prevent cross-tenant data leakage
+      if (!orgId) {
+        console.error('[LEADS_QUERY] CRITICAL: Missing orgId in authenticated request');
+        return res.status(403).json({ error: 'Organization context required' });
+      }
+
       const { status, priority, practice_area_id, q, from, to, limit, offset } = req.query;
       const take = Math.min(parseInt(limit as string) || 100, 100);
       const skip = parseInt(offset as string) || 0;
@@ -2536,6 +2543,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     async (req: AuthenticatedRequest, res) => {
       try {
         const orgId = req.user!.orgId;
+
+        // Defensive check: ensure orgId is present to prevent orphaned leads
+        if (!orgId) {
+          console.error('[LEAD_CREATE] CRITICAL: Missing orgId in authenticated request');
+          return res.status(403).json({ error: 'Organization context required' });
+        }
+
         const {
           contactId,
           contactName,

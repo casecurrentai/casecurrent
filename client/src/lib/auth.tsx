@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { useLocation } from "wouter";
+import { queryClient } from "./queryClient";
 
 interface User {
   id: string;
@@ -86,11 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await res.json();
+    // Clear any stale cached data before setting new auth context
+    queryClient.clear();
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
     setUser(data.user);
     setOrganization(data.organization);
-    
+
     if (data.organization?.onboardingStatus !== "complete") {
       setLocation("/setup");
     } else {
@@ -99,12 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function setAuthFromToken(newToken: string) {
+    // Clear all cached queries when switching auth context (e.g., org impersonation)
+    // This ensures leads and other org-scoped data are fetched fresh for the new org
+    queryClient.clear();
     localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     await fetchMe(newToken);
   }
 
   function logout() {
+    // Clear all cached queries to prevent data leakage between sessions
+    queryClient.clear();
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
