@@ -24,6 +24,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Search, Users, Phone, Mail, Calendar, ChevronRight, Plus, Briefcase, Filter, X } from "lucide-react";
 
+// Client bundle timestamp - confirms deployment freshness
+const CLIENT_BUILD = "2025-01-27-0345";
+
 interface Contact {
   id: string;
   name: string;
@@ -221,6 +224,7 @@ export default function LeadsPage() {
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight" data-testid="text-page-title">Leads</h1>
           <p className="text-sm text-muted-foreground">
             Manage and track your potential clients
+            <span className="ml-2 text-xs opacity-50 font-mono">({CLIENT_BUILD})</span>
           </p>
         </div>
         <Sheet open={newLeadSheetOpen} onOpenChange={setNewLeadSheetOpen}>
