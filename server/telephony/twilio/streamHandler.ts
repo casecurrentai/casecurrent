@@ -996,12 +996,38 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let callerFromE164: string | null = null;
   let callerToE164: string | null = null;
 
-  // Finalization scheduling (prevents double setTimeouts per call session)
+  // Finalization scheduling with retry for lead-creation race
+  const MAX_FINALIZE_RETRIES = 10;
+  const FINALIZE_RETRY_MS = 500;
   let finalizeTimer: NodeJS.Timeout | null = null;
+  let finalizeAttempt = 0;
   const scheduleFinalize = (source: 'twilio_stop' | 'twilio_close') => {
     if (finalizeTimer) return;
+    const initialDelay = source === 'twilio_stop' ? 2000 : 3000;
     console.log(JSON.stringify({ event: 'finalize_scheduled', requestId, source }));
-    finalizeTimer = setTimeout(() => {
+    const tryFinalize = () => {
+      if (!createdLeadId || !createdOrgId) {
+        finalizeAttempt++;
+        if (finalizeAttempt < MAX_FINALIZE_RETRIES) {
+          console.log(JSON.stringify({
+            tag: '[FINALIZE_RETRY]',
+            requestId,
+            attempt: finalizeAttempt,
+            maxRetries: MAX_FINALIZE_RETRIES,
+            hasLeadId: !!createdLeadId,
+            hasOrgId: !!createdOrgId,
+          }));
+          finalizeTimer = setTimeout(tryFinalize, FINALIZE_RETRY_MS);
+          return;
+        }
+        console.log(JSON.stringify({
+          tag: '[FINALIZE_RETRY_EXHAUSTED]',
+          requestId,
+          attempts: finalizeAttempt,
+          hasLeadId: !!createdLeadId,
+          hasOrgId: !!createdOrgId,
+        }));
+      }
       finalizeTimer = null;
       processCallEnd({
         requestId,
@@ -1021,7 +1047,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
           openAiWs.close(1000, `finalized:${source}`);
         }
       });
-    }, source === 'twilio_stop' ? 2000 : 3000);
+    };
+    finalizeTimer = setTimeout(tryFinalize, initialDelay);
   };
 
   // 600ms fallback mechanism for first TTS response
@@ -2192,9 +2219,13 @@ ${generateVoicePromptInstructions()}`;
             });
             
             if (existingCall?.lead) {
-              console.log(JSON.stringify({ 
-                tag: '[LEAD_EXISTS]', 
-                requestId, 
+              createdLeadId = existingCall.lead.id;
+              createdContactId = existingCall.lead.contactId || null;
+              createdOrgId = existingCall.lead.orgId;
+              callStartTime = callStartTime || existingCall.startedAt || new Date();
+              console.log(JSON.stringify({
+                tag: '[LEAD_EXISTS]',
+                requestId,
                 leadId: existingCall.lead.id,
                 orgId: existingCall.lead.orgId,
                 callSid: maskCallSid(callSid),
