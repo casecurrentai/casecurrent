@@ -247,6 +247,7 @@ async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: str
   const fromNumber = xTwilioFromE164 || (fromHeader ? extractPhoneFromSipHeader(fromHeader) : "unknown");
   const toNumber = xTwilioToE164 || (toHeader ? extractPhoneFromSipHeader(toHeader) : "unknown");
 
+  console.log(JSON.stringify({ marker: "CALL_PATH", path: "OPENAI_REALTIME", callSid: twilioCallSid || null, conversation_id: callId, called_number: toNumber, orgId: null, ts: new Date().toISOString() }));
   console.log(`[OpenAI Webhook] [${requestId}] from=${maskPhone(fromNumber)} to=${maskPhone(toNumber)} twilioCallSid=${twilioCallSid ? maskCallSid(twilioCallSid) : "NONE"}`);
 
   // Quick org lookup
