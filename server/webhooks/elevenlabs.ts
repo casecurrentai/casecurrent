@@ -338,6 +338,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
     const startMs = Date.now();
     const payload = req.body as InboundPayload;
 
+    console.log(JSON.stringify({ marker: 'CALL_PATH', path: 'ELEVENLABS', callSid: payload.call_sid || null, conversation_id: payload.conversation_id || null, called_number: payload.called_number || null, orgId: null, ts: new Date().toISOString() }));
     console.log(JSON.stringify({
       event: 'elevenlabs_inbound_received',
       caller_id: maskPhone(payload.caller_id),

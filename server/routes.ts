@@ -5142,6 +5142,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { CallSid, From, To, CallStatus, Direction, CallerName } = payload;
 
       // === [INBOUND] - Immediate top-of-handler logging ===
+      console.log(JSON.stringify({ marker: 'CALL_PATH', path: 'TWILIO_STREAM', callSid: CallSid || null, called_number: To || null, orgId: null, ts: new Date().toISOString() }));
       console.log(`[INBOUND] callSid=${CallSid || 'UNKNOWN'} from=${maskPhone(From || '')} to=${To || ''} direction=${Direction || 'inbound'} timestamp=${new Date().toISOString()}`);
 
       recordEvent({
