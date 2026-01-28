@@ -995,7 +995,35 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let callStartTime: Date | null = null;
   let callerFromE164: string | null = null;
   let callerToE164: string | null = null;
-  
+
+  // Finalization scheduling (prevents double setTimeouts per call session)
+  let finalizeTimer: NodeJS.Timeout | null = null;
+  const scheduleFinalize = (source: 'twilio_stop' | 'twilio_close') => {
+    if (finalizeTimer) return;
+    console.log(JSON.stringify({ event: 'finalize_scheduled', requestId, source }));
+    finalizeTimer = setTimeout(() => {
+      finalizeTimer = null;
+      processCallEnd({
+        requestId,
+        callSid,
+        leadId: createdLeadId,
+        contactId: createdContactId,
+        orgId: createdOrgId,
+        callStartTime,
+        fromE164: callerFromE164,
+        toE164: callerToE164,
+        transcriptBuffer: [...transcriptBuffer],
+      }).catch(err => {
+        console.error(JSON.stringify({ event: 'post_call_error', requestId, source, error: err?.message }));
+      }).finally(() => {
+        // Close OpenAI ONLY after finalization snapshot is taken
+        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+          openAiWs.close(1000, `finalized:${source}`);
+        }
+      });
+    }, source === 'twilio_stop' ? 2000 : 3000);
+  };
+
   // 600ms fallback mechanism for first TTS response
   const FALLBACK_TIMEOUT_MS = 600;
   const FALLBACK_PHRASE = "Hi—one moment.";
@@ -2324,25 +2352,9 @@ ${generateVoicePromptInstructions()}`;
         // Mark event - no action needed
       } else if (message.event === 'stop') {
         console.log(JSON.stringify({ event: 'twilio_stop', requestId, callSid: maskCallSid(callSid) }));
-        
-        // Run post-call processing (async, don't block)
-        processCallEnd({
-          requestId,
-          callSid,
-          leadId: createdLeadId,
-          contactId: createdContactId,
-          orgId: createdOrgId,
-          callStartTime,
-          fromE164: callerFromE164,
-          toE164: callerToE164,
-          transcriptBuffer: [...transcriptBuffer],
-        }).catch(err => {
-          console.error(JSON.stringify({ event: 'post_call_error', requestId, error: err?.message }));
-        });
-        
-        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-          openAiWs.close(1000, 'Twilio stream ended');
-        }
+
+        // Delay finalization to allow in-flight OpenAI transcriptions to land
+        scheduleFinalize('twilio_stop');
       }
     } catch (err) {
       console.log(JSON.stringify({ event: 'twilio_parse_error', requestId }));
@@ -2372,9 +2384,8 @@ ${generateVoicePromptInstructions()}`;
       turnController = null;
     }
     
-    if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-      openAiWs.close(1000, 'Twilio connection closed');
-    }
+    // Fallback: if stop never arrives, still finalize (processCallEnd has its own dedupe by callSid)
+    scheduleFinalize('twilio_close');
   });
 
   twilioWs.on('error', (err) => {
