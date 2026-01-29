@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> verify: repo root: $(pwd)"
+echo "==> node: $(node -v 2>/dev/null || echo 'node not found')"
+echo "==> npm:  $(npm -v 2>/dev/null || echo 'npm not found')"
+
+# Detect package manager
+if [[ -f "pnpm-lock.yaml" ]]; then PM="pnpm"
+elif [[ -f "yarn.lock" ]]; then PM="yarn"
+else PM="npm"
+fi
+echo "==> package manager: $PM"
+
+# Install deps (fast + consistent)
+if [[ "$PM" == "pnpm" ]]; then
+  command -v pnpm >/dev/null 2>&1 || { echo "pnpm not installed"; exit 1; }
+  pnpm -s install
+elif [[ "$PM" == "yarn" ]]; then
+  command -v yarn >/dev/null 2>&1 || { echo "yarn not installed"; exit 1; }
+  yarn install --silent
+else
+  npm ci || npm install
+fi
+
+# Run common checks if present
+run_if_present () {
+  local script="$1"
+  if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts['$script'] ? 0 : 1)"; then
+    echo "==> running: $script"
+    if [[ "$PM" == "pnpm" ]]; then pnpm -s run "$script"
+    elif [[ "$PM" == "yarn" ]]; then yarn -s "$script"
+    else npm run -s "$script"
+    fi
+  else
+    echo "==> skipping: $script (not defined)"
+  fi
+}
+
+run_if_present lint
+run_if_present typecheck
+run_if_present test
+run_if_present build
+
+echo "✅ verify complete"
