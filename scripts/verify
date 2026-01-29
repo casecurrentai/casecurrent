@@ -28,9 +28,19 @@ run_if_present () {
   local script="$1"
   if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts['$script'] ? 0 : 1)"; then
     echo "==> running: $script"
+    set +e
     if [[ "$PM" == "pnpm" ]]; then pnpm -s run "$script"
     elif [[ "$PM" == "yarn" ]]; then yarn -s "$script"
     else npm run -s "$script"
+    fi
+    rc=$?
+    set -e
+    if [[ $rc -ne 0 ]]; then
+      if [[ "$script" == "check" ]]; then
+        echo "⚠️  check failed (tsc). Continuing because check is advisory for now."
+      else
+        exit $rc
+      fi
     fi
   else
     echo "==> skipping: $script (not defined)"
@@ -38,6 +48,7 @@ run_if_present () {
 }
 
 run_if_present lint
+run_if_present check
 run_if_present typecheck
 run_if_present test
 run_if_present build
