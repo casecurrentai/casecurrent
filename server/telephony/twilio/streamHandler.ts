@@ -36,8 +36,8 @@ const START_TIMEOUT_MS = 5000;
 // TURN STATE MACHINE - Legal Intake Tuned Thresholds
 // =============================================================================
 const TURN_THRESHOLDS = {
-  postTtsDeadzoneMs: 700,        // Ignore speech after TTS ends to filter echo
-  longNoInputMs: 9000,           // Reprompt after 9s silence (after questions)
+  postTtsDeadzoneMs: 400,        // Ignore speech after TTS ends to filter echo (was 700)
+  longNoInputMs: 7000,           // Reprompt after 7s silence (was 9s)
   idleNoInputMs: 12000,          // General idle timeout
   endDebounceMs: 450,            // Debounce before finalizing user turn
   finalizeTimeoutMs: 1200,       // Max wait for final transcript
@@ -64,7 +64,8 @@ type TurnState =
   | 'USER_VALIDATING'
   | 'WAITING_FOR_FINAL_TRANSCRIPT'
   | 'NO_INPUT_REPROMPT'
-  | 'SHORT_UTTER_REPROMPT';
+  | 'SHORT_UTTER_REPROMPT'
+  | 'TRANSCRIPT_MISSING_REPROMPT';
 
 interface TurnControllerConfig {
   requestId: string;
@@ -265,6 +266,19 @@ class TurnController {
    */
   onTranscriptInterim(text: string): void {
     this.pendingInterimTranscript = text;
+
+    // Cancel reprompt timers when we get real interim text — speech is happening
+    if (text.trim().length > 0 && this.noInputTimer) {
+      clearTimeout(this.noInputTimer);
+      this.noInputTimer = null;
+      this.config.onLog({
+        event: 'REPROMPT_CANCELED',
+        requestId: this.config.requestId,
+        reason: 'interim_transcript_arrived',
+        text_preview: text.substring(0, 30),
+      });
+    }
+
     this.config.onLog({
       event: 'transcript_interim',
       requestId: this.config.requestId,
@@ -618,7 +632,7 @@ class TurnController {
       clearTimeout(this.transcriptWaitTimer);
     }
 
-    const TRANSCRIPT_WAIT_MS = 700; // Extra wait for Whisper transcription
+    const TRANSCRIPT_WAIT_MS = 2500; // Extra wait for Whisper transcription (was 700 — too short)
 
     this.transcriptWaitTimer = setTimeout(() => {
       this.transcriptWaitTimer = null;
@@ -635,8 +649,17 @@ class TurnController {
         });
         this.transition('USER_VALIDATING', 'transcript_wait_timeout_interim');
         this.validateUserUtterance(this.pendingInterimTranscript);
+      } else if (this.userSpeechTotalMs >= 700) {
+        // Had real speech (>=700ms) but no transcript — TRANSCRIPT MISSING (not short utterance)
+        this.config.onLog({
+          event: 'TRANSCRIPT_MISSING',
+          requestId: this.config.requestId,
+          userSpeechTotalMs: this.userSpeechTotalMs,
+        });
+        this.transition('TRANSCRIPT_MISSING_REPROMPT', 'transcript_wait_timeout_missing');
+        this.handleTranscriptMissingReprompt();
       } else if (this.userSpeechTotalMs >= TURN_THRESHOLDS.minUtteranceMs) {
-        // Had real speech but no transcript at all — gentle reprompt
+        // Short but non-trivial utterance (450-700ms), no transcript — short utter
         this.config.onLog({
           event: 'TRANSCRIPT_WAIT_TIMEOUT_NO_TEXT',
           requestId: this.config.requestId,
@@ -645,7 +668,7 @@ class TurnController {
         this.transition('SHORT_UTTER_REPROMPT', 'transcript_wait_timeout_no_text');
         this.handleShortUtterReprompt();
       } else {
-        // Very short speech, no transcript — noise, return to waiting
+        // Very short speech (<450ms), no transcript — noise, return to waiting
         this.config.onLog({
           event: 'TRANSCRIPT_WAIT_TIMEOUT_NOISE',
           requestId: this.config.requestId,
@@ -769,6 +792,28 @@ class TurnController {
       requestId: this.config.requestId,
       delayMs: 0,
       reason: 'short_utterance',
+    });
+
+    this.config.onSpeakText(reprompt, true).catch(err => {
+      this.config.onLog({
+        event: 'reprompt_error',
+        requestId: this.config.requestId,
+        error: err.message,
+      });
+    });
+  }
+
+  private handleTranscriptMissingReprompt(): void {
+    this.resetUserState();
+
+    // Real speech occurred but Whisper returned nothing — distinct from short utterance
+    const reprompt = "Sorry — I didn't catch that. Could you repeat your last sentence?";
+
+    this.config.onLog({
+      event: 'REPROMPT_FIRED',
+      requestId: this.config.requestId,
+      delayMs: 0,
+      reason: 'transcript_missing',
     });
 
     this.config.onSpeakText(reprompt, true).catch(err => {
@@ -1202,6 +1247,18 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let callStartTime: Date | null = null;
   let callerFromE164: string | null = null;
   let callerToE164: string | null = null;
+
+  // Close-initiator instrumentation (Section A)
+  const callStartedAt = Date.now();
+  let lastAudioFromTwilioAt: number = Date.now();
+  let lastOpenAIMsgAt: number = Date.now();
+  let openAiPingInterval: NodeJS.Timeout | null = null;
+
+  // OpenAI WS reconnect state (Section C)
+  let openAiReconnectAttempt = 0;
+  const OPENAI_MAX_RECONNECT = 3;
+  const OPENAI_RECONNECT_BACKOFF = [500, 1000, 2000]; // ms
+  let reconnecting = false;
 
   // Finalization scheduling with retry for lead-creation race
   const MAX_FINALIZE_RETRIES = 10;
@@ -1827,6 +1884,16 @@ ${generateVoicePromptInstructions()}`;
 
       openAiWs!.send(JSON.stringify(sessionUpdate));
       openAiReady = true;
+      openAiReconnectAttempt = 0; // Reset reconnect counter on successful connect
+      reconnecting = false;
+
+      // Keepalive ping every 25s to prevent OpenAI idle timeout (~270s)
+      if (openAiPingInterval) clearInterval(openAiPingInterval);
+      openAiPingInterval = setInterval(() => {
+        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+          openAiWs.ping();
+        }
+      }, 25_000);
 
       if (pendingTwilioAudio.length > 0) {
         console.log(JSON.stringify({ event: 'flush_buffered_audio', requestId, count: pendingTwilioAudio.length }));
@@ -1841,6 +1908,7 @@ ${generateVoicePromptInstructions()}`;
     openAiWs.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
+        lastOpenAIMsgAt = Date.now();
 
         if (message.type === 'session.created') {
           console.log(JSON.stringify({ event: 'openai_session_created', requestId }));
@@ -2272,17 +2340,70 @@ ${generateVoicePromptInstructions()}`;
     });
 
     openAiWs.on('close', (code, reason) => {
-      console.log(JSON.stringify({ event: 'openai_close', requestId, code, reason: reason?.toString() }));
+      const callAgeMs = Date.now() - callStartedAt;
+      const msSinceLastTwilioAudio = Date.now() - lastAudioFromTwilioAt;
+      const msSinceLastOpenAIMsg = Date.now() - lastOpenAIMsgAt;
+      console.log(JSON.stringify({
+        event: 'openai_close',
+        requestId,
+        code,
+        reason: reason?.toString(),
+        callAgeMs,
+        msSinceLastTwilioAudio,
+        msSinceLastOpenAIMsg,
+      }));
+
       openAiReady = false;
       openaiResponseActive = false;
       bufferedAudioFrameCount = 0;
-      if (twilioWs.readyState === WebSocket.OPEN) {
+
+      // Clear keepalive on close
+      if (openAiPingInterval) {
+        clearInterval(openAiPingInterval);
+        openAiPingInterval = null;
+      }
+
+      // Reconnect on abnormal closures (1006/1001) if Twilio is still alive
+      const isAbnormal = code === 1006 || code === 1001;
+      if (isAbnormal && twilioWs.readyState === WebSocket.OPEN && openAiReconnectAttempt < OPENAI_MAX_RECONNECT) {
+        const delay = OPENAI_RECONNECT_BACKOFF[openAiReconnectAttempt] || 2000;
+        openAiReconnectAttempt++;
+        reconnecting = true;
+        console.log(JSON.stringify({
+          event: 'openai_reconnect_scheduled',
+          requestId,
+          attempt: openAiReconnectAttempt,
+          maxAttempts: OPENAI_MAX_RECONNECT,
+          delayMs: delay,
+          code,
+        }));
+
+        // Send filler line on first reconnect attempt via ElevenLabs TTS
+        if (openAiReconnectAttempt === 1) {
+          const fillerId = `filler_reconnect_${Date.now()}`;
+          speakElevenLabs('One moment…', fillerId).catch(() => {});
+        }
+
+        setTimeout(() => {
+          if (twilioWs.readyState !== WebSocket.OPEN) {
+            console.log(JSON.stringify({ event: 'openai_reconnect_aborted', requestId, reason: 'twilio_closed' }));
+            return;
+          }
+          console.log(JSON.stringify({ event: 'openai_reconnect_attempt', requestId, attempt: openAiReconnectAttempt }));
+          initOpenAI();
+        }, delay);
+      } else if (twilioWs.readyState === WebSocket.OPEN) {
+        // Normal close or reconnect exhausted — end the call gracefully
+        if (isAbnormal && openAiReconnectAttempt >= OPENAI_MAX_RECONNECT) {
+          console.log(JSON.stringify({ event: 'openai_reconnect_exhausted', requestId, attempts: openAiReconnectAttempt }));
+        }
         twilioWs.close(1000, 'OpenAI connection closed');
       }
     });
 
     openAiWs.on('error', (err) => {
-      console.log(JSON.stringify({ event: 'openai_error', requestId, error: err?.message }));
+      const callAgeMs = Date.now() - callStartedAt;
+      console.log(JSON.stringify({ event: 'openai_error', requestId, error: err?.message, callAgeMs }));
     });
   }
 
@@ -2580,6 +2701,7 @@ ${generateVoicePromptInstructions()}`;
         const audioPayload = message.media?.payload;
         if (audioPayload) {
           twilioFrameCount++;
+          lastAudioFromTwilioAt = Date.now();
           if (twilioFrameCount % LOG_FRAME_INTERVAL === 0) {
             console.log(JSON.stringify({ event: 'audio_from_twilio', requestId, frames: twilioFrameCount }));
           }
@@ -2594,7 +2716,7 @@ ${generateVoicePromptInstructions()}`;
       } else if (message.event === 'mark') {
         // Mark event - no action needed
       } else if (message.event === 'stop') {
-        console.log(JSON.stringify({ event: 'twilio_stop', requestId, callSid: maskCallSid(callSid) }));
+        console.log(JSON.stringify({ event: 'twilio_stop', requestId, callSid: maskCallSid(callSid), callAgeMs: Date.now() - callStartedAt }));
 
         // Delay finalization to allow in-flight OpenAI transcriptions to land
         scheduleFinalize('twilio_stop');
@@ -2615,8 +2737,15 @@ ${generateVoicePromptInstructions()}`;
       reason: reason?.toString() || null,
       twilioFrameCount,
       ttsFrameCount,
+      callAgeMs: Date.now() - callStartedAt,
     }));
-    
+
+    // Clean up keepalive ping
+    if (openAiPingInterval) {
+      clearInterval(openAiPingInterval);
+      openAiPingInterval = null;
+    }
+
     // Reset state on connection close
     openaiResponseActive = false;
     bufferedAudioFrameCount = 0;
@@ -2637,6 +2766,7 @@ ${generateVoicePromptInstructions()}`;
       requestId,
       callSid: maskCallSid(callSid),
       error: err?.message || String(err),
+      callAgeMs: Date.now() - callStartedAt,
     }));
   });
 }
