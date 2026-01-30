@@ -51,7 +51,7 @@ const TURN_THRESHOLDS = {
 } as const;
 
 // Turn states for the state machine
-type TurnState = 
+type TurnState =
   | 'INIT'
   | 'IDLE'
   | 'ASSIST_PLANNING'
@@ -62,6 +62,7 @@ type TurnState =
   | 'USER_END_DEBOUNCE'
   | 'USER_FINALIZING'
   | 'USER_VALIDATING'
+  | 'WAITING_FOR_FINAL_TRANSCRIPT'
   | 'NO_INPUT_REPROMPT'
   | 'SHORT_UTTER_REPROMPT';
 
@@ -105,8 +106,13 @@ class TurnController {
   // Transcript state
   private pendingInterimTranscript: string = '';
   private lastFinalTranscript: string = '';
+  private transcriptFinalReceived: boolean = false;
   private lastQuestionAsked: string = '';
   private waitingForPhoneNumber: boolean = false;
+  private transcriptWaitTimer: NodeJS.Timeout | null = null;
+
+  // Latency tracking
+  private turnAcceptedAt: number | null = null;
   
   constructor(config: TurnControllerConfig) {
     this.config = config;
@@ -205,7 +211,13 @@ class TurnController {
       case 'USER_SPEAKING':
         // Already speaking, just update timing
         break;
-        
+
+      case 'IDLE':
+        // Speech during IDLE (between turn acceptance and response.created).
+        // Track it as user speaking so it isn't lost.
+        this.transition('USER_SPEAKING', 'speech_during_idle');
+        break;
+
       default:
         this.logDecision('IGNORE', 'speech_in_unexpected_state', { state: this.state });
     }
@@ -267,15 +279,32 @@ class TurnController {
    */
   onTranscriptFinal(text: string): void {
     this.lastFinalTranscript = text;
-    
+    this.transcriptFinalReceived = true;
+
     // Cancel finalize timer if running
     if (this.finalizeTimer) {
       clearTimeout(this.finalizeTimer);
       this.finalizeTimer = null;
     }
-    
+
+    // Cancel transcript wait timer if running
+    if (this.transcriptWaitTimer) {
+      clearTimeout(this.transcriptWaitTimer);
+      this.transcriptWaitTimer = null;
+    }
+
     if (this.state === 'USER_END_DEBOUNCE' || this.state === 'USER_FINALIZING') {
       this.transition('USER_VALIDATING', 'final_transcript_received');
+      this.validateUserUtterance(text);
+    } else if (this.state === 'WAITING_FOR_FINAL_TRANSCRIPT') {
+      // Transcript arrived while waiting — validate now
+      this.config.onLog({
+        event: 'TRANSCRIPT_ARRIVED_WHILE_WAITING',
+        requestId: this.config.requestId,
+        len: text.trim().length,
+        preview: text.trim().substring(0, 40),
+      });
+      this.transition('USER_VALIDATING', 'transcript_arrived_after_wait');
       this.validateUserUtterance(text);
     } else if (this.state === 'ASSIST_SPEAKING' || this.state === 'POST_TTS_DEADZONE' || this.state === 'ASSIST_PLANNING') {
       // Transcript-based barge-in rescue: real speech arrived while assistant is talking
@@ -324,7 +353,7 @@ class TurnController {
    * Check if LLM calls are allowed in current state
    */
   canCallLlm(): boolean {
-    const blocked = ['WAITING_FOR_USER_START', 'USER_SPEAKING', 'USER_END_DEBOUNCE', 'USER_FINALIZING', 'USER_VALIDATING'];
+    const blocked = ['WAITING_FOR_USER_START', 'USER_SPEAKING', 'USER_END_DEBOUNCE', 'USER_FINALIZING', 'USER_VALIDATING', 'WAITING_FOR_FINAL_TRANSCRIPT'];
     return !blocked.includes(this.state);
   }
   
@@ -333,6 +362,10 @@ class TurnController {
    */
   getState(): TurnState {
     return this.state;
+  }
+
+  getTurnAcceptedAt(): number | null {
+    return this.turnAcceptedAt;
   }
 
   /**
@@ -548,31 +581,96 @@ class TurnController {
     
     this.finalizeTimer = setTimeout(() => {
       this.finalizeTimer = null;
-      
+
       if (this.state === 'USER_FINALIZING') {
-        // No final transcript received - try to validate with what we have
-        this.config.onLog({
-          event: 'finalize_timeout',
-          requestId: this.config.requestId,
-          pendingInterim: this.pendingInterimTranscript.substring(0, 50),
-        });
-        this.transition('USER_VALIDATING', 'finalize_timeout');
-        this.validateUserUtterance(this.pendingInterimTranscript || '');
+        if (this.transcriptFinalReceived && this.lastFinalTranscript) {
+          // Final transcript already arrived — validate immediately
+          this.transition('USER_VALIDATING', 'finalize_timeout_has_transcript');
+          this.validateUserUtterance(this.lastFinalTranscript);
+        } else if (this.pendingInterimTranscript && this.pendingInterimTranscript.trim().length >= TURN_THRESHOLDS.minTranscriptLen) {
+          // Have a substantial interim transcript — validate with it
+          this.config.onLog({
+            event: 'finalize_timeout_using_interim',
+            requestId: this.config.requestId,
+            interimLen: this.pendingInterimTranscript.trim().length,
+            preview: this.pendingInterimTranscript.trim().substring(0, 50),
+          });
+          this.transition('USER_VALIDATING', 'finalize_timeout_interim');
+          this.validateUserUtterance(this.pendingInterimTranscript);
+        } else {
+          // No usable transcript yet — wait longer before giving up
+          this.config.onLog({
+            event: 'WAITING_FOR_TRANSCRIPT',
+            requestId: this.config.requestId,
+            transcriptFinalReceived: this.transcriptFinalReceived,
+            interimLen: this.pendingInterimTranscript.trim().length,
+            userSpeechTotalMs: this.userSpeechTotalMs,
+          });
+          this.transition('WAITING_FOR_FINAL_TRANSCRIPT', 'finalize_timeout_no_transcript');
+          this.startTranscriptWaitTimer();
+        }
       }
     }, TURN_THRESHOLDS.finalizeTimeoutMs);
   }
   
+  private startTranscriptWaitTimer(): void {
+    if (this.transcriptWaitTimer) {
+      clearTimeout(this.transcriptWaitTimer);
+    }
+
+    const TRANSCRIPT_WAIT_MS = 700; // Extra wait for Whisper transcription
+
+    this.transcriptWaitTimer = setTimeout(() => {
+      this.transcriptWaitTimer = null;
+
+      if (this.state !== 'WAITING_FOR_FINAL_TRANSCRIPT') return;
+
+      // Still no final transcript — fall back to interim or reprompt
+      if (this.pendingInterimTranscript && this.pendingInterimTranscript.trim().length > 0) {
+        this.config.onLog({
+          event: 'TRANSCRIPT_WAIT_TIMEOUT_USING_INTERIM',
+          requestId: this.config.requestId,
+          interimLen: this.pendingInterimTranscript.trim().length,
+          preview: this.pendingInterimTranscript.trim().substring(0, 50),
+        });
+        this.transition('USER_VALIDATING', 'transcript_wait_timeout_interim');
+        this.validateUserUtterance(this.pendingInterimTranscript);
+      } else if (this.userSpeechTotalMs >= TURN_THRESHOLDS.minUtteranceMs) {
+        // Had real speech but no transcript at all — gentle reprompt
+        this.config.onLog({
+          event: 'TRANSCRIPT_WAIT_TIMEOUT_NO_TEXT',
+          requestId: this.config.requestId,
+          userSpeechTotalMs: this.userSpeechTotalMs,
+        });
+        this.transition('SHORT_UTTER_REPROMPT', 'transcript_wait_timeout_no_text');
+        this.handleShortUtterReprompt();
+      } else {
+        // Very short speech, no transcript — noise, return to waiting
+        this.config.onLog({
+          event: 'TRANSCRIPT_WAIT_TIMEOUT_NOISE',
+          requestId: this.config.requestId,
+          userSpeechTotalMs: this.userSpeechTotalMs,
+        });
+        this.resetUserState();
+        this.transition('WAITING_FOR_USER_START', 'transcript_wait_timeout_noise');
+        this.startNoInputTimer();
+      }
+    }, TRANSCRIPT_WAIT_MS);
+  }
+
   private clearAllTimers(): void {
     if (this.bargeInTimer) clearTimeout(this.bargeInTimer);
     if (this.noInputTimer) clearTimeout(this.noInputTimer);
     if (this.endDebounceTimer) clearTimeout(this.endDebounceTimer);
     if (this.finalizeTimer) clearTimeout(this.finalizeTimer);
     if (this.postTtsDeadzoneTimer) clearTimeout(this.postTtsDeadzoneTimer);
+    if (this.transcriptWaitTimer) clearTimeout(this.transcriptWaitTimer);
     this.bargeInTimer = null;
     this.noInputTimer = null;
     this.endDebounceTimer = null;
     this.finalizeTimer = null;
     this.postTtsDeadzoneTimer = null;
+    this.transcriptWaitTimer = null;
   }
   
   // ===========================================================================
@@ -603,6 +701,8 @@ class TurnController {
     // Empty transcript => silently discard (no reprompt, no apology)
     const isNoise = !hasAnyTranscript || (!durationOk && charLen < 3);
 
+    const turnAcceptedAt = isValid ? Date.now() : null;
+
     this.config.onLog({
       event: isValid ? 'USER_TURN_ACCEPTED' : 'USER_TURN_IGNORED',
       requestId: this.config.requestId,
@@ -611,10 +711,13 @@ class TurnController {
       len: charLen,
       words: wordCount,
       preview: trimmed.substring(0, 50),
+      transcriptFinalReceived: this.transcriptFinalReceived,
+      t: turnAcceptedAt,
     });
 
     if (isValid) {
       // Valid utterance - allow LLM to respond
+      this.turnAcceptedAt = turnAcceptedAt;
       this.resetUserState();
       this.transition('IDLE', 'utterance_validated');
       this.config.onRequestLlmResponse();
@@ -680,10 +783,15 @@ class TurnController {
   private resetUserState(): void {
     this.userSpeechTotalMs = 0;
     this.lastFinalTranscript = '';
+    this.transcriptFinalReceived = false;
     this.pendingInterimTranscript = '';
     this.speechStartAt = null;
     this.speechEndAt = null;
     this.waitingForPhoneNumber = false;
+    if (this.transcriptWaitTimer) {
+      clearTimeout(this.transcriptWaitTimer);
+      this.transcriptWaitTimer = null;
+    }
   }
 }
 
@@ -1069,6 +1177,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let activeResponseId: string | null = null;        // only the live response may produce output
   const squelchedResponseIds = new Set<string>();     // cancelled IDs whose deltas/done we ignore
   let lastSpokenResponseId: string | null = null;
+  let firstDeltaAt: number | null = null;             // timestamp of first delta for latency tracking
   let ttsAbortController: AbortController | null = null;
   let ttsSpeaking = false;
   let ttsStartAt: number | null = null;
@@ -1211,11 +1320,15 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       onRequestLlmResponse: (prompt?: string) => {
         // With create_response:false, server_vad no longer auto-creates responses.
         // We must explicitly send response.create after TurnController validates the turn.
+        const now = Date.now();
+        const turnAcceptedAt = turnController?.getTurnAcceptedAt();
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
           console.log(JSON.stringify({
             event: 'LLM_RESPONSE_REQUESTED',
             requestId,
             turnControllerState: turnController?.getState(),
+            t: now,
+            msSinceTurnAccepted: turnAcceptedAt ? now - turnAcceptedAt : null,
           }));
           openAiWs.send(JSON.stringify({
             type: 'response.create',
@@ -1228,6 +1341,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
             event: 'LLM_RESPONSE_REQUEST_FAILED',
             requestId,
             reason: 'openai_ws_not_ready',
+            t: now,
           }));
         }
       },
@@ -1748,16 +1862,21 @@ ${generateVoicePromptInstructions()}`;
           // With create_response:false, responses only arrive when WE send
           // response.create (after validation) or for the initial greeting.
           // No canCallLlm() squelch needed — we control when responses are created.
+          const responseCreatedAt = Date.now();
           responseInProgress = true;
           openaiResponseActive = true;
           currentResponseId = newResponseId;
           activeResponseId = newResponseId;
           pendingText = '';
+          firstDeltaAt = null;
+          const turnAccepted = turnController?.getTurnAcceptedAt();
           console.log(JSON.stringify({
             event: 'response_started',
             requestId,
             responseId: currentResponseId,
             turnState: turnController?.getState(),
+            t: responseCreatedAt,
+            msSinceTurnAccepted: turnAccepted ? responseCreatedAt - turnAccepted : null,
           }));
 
           if (turnController) {
@@ -1765,14 +1884,28 @@ ${generateVoicePromptInstructions()}`;
           }
         } else if (message.type === 'response.text.delta' || message.type === 'response.output_text.delta' || message.type === 'response.content_part.delta') {
           // Gate: ignore deltas from squelched or non-active responses
+          // If deltaResponseId is null (some event formats omit it), allow through
+          // as long as activeResponseId is set (we have an active response).
           const deltaResponseId = message.response_id || message.response?.id || null;
-          if (deltaResponseId && (squelchedResponseIds.has(deltaResponseId) || deltaResponseId !== activeResponseId)) {
+          if (deltaResponseId) {
+            if (squelchedResponseIds.has(deltaResponseId) || deltaResponseId !== activeResponseId) {
+              console.log(JSON.stringify({
+                event: 'DELTA_IGNORED',
+                requestId,
+                responseId: deltaResponseId,
+                activeResponseId,
+                squelched: squelchedResponseIds.has(deltaResponseId),
+              }));
+              return;
+            }
+          } else if (!activeResponseId) {
+            // No delta response ID AND no active response — drop
             console.log(JSON.stringify({
               event: 'DELTA_IGNORED',
               requestId,
-              responseId: deltaResponseId,
-              activeResponseId,
-              squelched: deltaResponseId ? squelchedResponseIds.has(deltaResponseId) : false,
+              responseId: null,
+              activeResponseId: null,
+              reason: 'no_active_response',
             }));
             return;
           }
@@ -1780,6 +1913,17 @@ ${generateVoicePromptInstructions()}`;
           // Accumulate text deltas for TTS
           const textDelta = message.delta?.text || message.delta || '';
           if (textDelta) {
+            if (!firstDeltaAt) {
+              firstDeltaAt = Date.now();
+              const turnAccepted = turnController?.getTurnAcceptedAt();
+              console.log(JSON.stringify({
+                event: 'FIRST_DELTA',
+                requestId,
+                responseId: deltaResponseId,
+                t: firstDeltaAt,
+                msSinceTurnAccepted: turnAccepted ? firstDeltaAt - turnAccepted : null,
+              }));
+            }
             pendingText += textDelta;
           }
         } else if (message.type === 'response.done' || message.type === 'response.cancelled') {
@@ -1826,12 +1970,27 @@ ${generateVoicePromptInstructions()}`;
               preview: textToSpeak.substring(0, 50),
             }));
             
-            console.log(JSON.stringify({ 
-              event: 'tts_trigger', 
-              requestId, 
+            const ttsTriggerAt = Date.now();
+            const turnAccepted = turnController?.getTurnAcceptedAt();
+            console.log(JSON.stringify({
+              event: 'tts_trigger',
+              requestId,
               responseId,
               text_length: textToSpeak.length,
               text_preview: textToSpeak.substring(0, 80),
+            }));
+
+            // One-line latency summary: how long from turn accepted → TTS trigger
+            console.log(JSON.stringify({
+              event: 'TURN_LATENCY_SUMMARY',
+              requestId,
+              responseId,
+              turnAcceptedAt: turnAccepted,
+              firstDeltaAt,
+              ttsTriggerAt,
+              ms_accepted_to_firstDelta: turnAccepted && firstDeltaAt ? firstDeltaAt - turnAccepted : null,
+              ms_firstDelta_to_tts: firstDeltaAt ? ttsTriggerAt - firstDeltaAt : null,
+              ms_accepted_to_tts: turnAccepted ? ttsTriggerAt - turnAccepted : null,
             }));
             
             // Start 600ms fallback timer only for first TTS trigger
@@ -1909,15 +2068,9 @@ ${generateVoicePromptInstructions()}`;
             }));
           }
           
-          // Only commit if we have buffered enough audio (>= 100ms)
-          if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-            if (bufferedAudioFrameCount >= MIN_FRAMES_TO_COMMIT) {
-              openAiWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
-              bufferedAudioFrameCount = 0;
-            } else {
-              console.log(JSON.stringify({ event: 'commit_skipped', requestId, bufferedFrames: bufferedAudioFrameCount, minRequired: MIN_FRAMES_TO_COMMIT }));
-            }
-          }
+          // server_vad auto-commits the audio buffer on speech_stopped.
+          // Do NOT manually commit — double-commit causes input_audio_buffer_commit_empty errors.
+          bufferedAudioFrameCount = 0;
         } else if (message.type === 'input_audio_buffer.speech_started') {
           speechStartTime = Date.now();
           bufferedAudioFrameCount = 0;
@@ -2104,8 +2257,11 @@ ${generateVoicePromptInstructions()}`;
         } else if (message.type === 'error') {
           // Treat "cancel on non-active response" as benign — expected after squelch
           const errCode = message.error?.code || message.error?.type || '';
-          if (errCode === 'response_cancel_not_active' || (typeof message.error?.message === 'string' && message.error.message.includes('cancel'))) {
+          const errMsg = typeof message.error?.message === 'string' ? message.error.message : '';
+          if (errCode === 'response_cancel_not_active' || errMsg.includes('cancel')) {
             console.log(JSON.stringify({ event: 'CANCEL_BENIGN', requestId, error: message.error }));
+          } else if (errCode === 'input_audio_buffer_commit_empty' || errMsg.includes('commit_empty') || errMsg.includes('buffer is empty')) {
+            console.log(JSON.stringify({ event: 'COMMIT_EMPTY_BENIGN', requestId, error: message.error }));
           } else {
             console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
           }
