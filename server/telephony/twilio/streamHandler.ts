@@ -119,6 +119,12 @@ class TurnController {
   private noInputRepromptCount: number = 0;
   private readonly MAX_NO_INPUT_REPROMPTS = 1;
 
+  // Local VAD speech lifecycle (authoritative "user is talking" signal)
+  private localUserSpeaking: boolean = false;
+  private localSpeechStartedAt: number | null = null;
+  private localSpeechEndedAt: number | null = null;
+  private readonly LOCAL_SPEECH_GRACE_MS = 1200; // suppress reprompts for 1.2s after speech start
+
   constructor(config: TurnControllerConfig) {
     this.config = config;
     this.logTransition('INIT', 'INIT', 'controller_created');
@@ -406,6 +412,44 @@ class TurnController {
   }
 
   /**
+   * Local VAD detected speech start on raw Twilio audio.
+   */
+  onLocalSpeechStart(meta?: Record<string, any>): void {
+    if (this.localUserSpeaking) return;
+    this.localUserSpeaking = true;
+    this.localSpeechStartedAt = Date.now();
+    this.localSpeechEndedAt = null;
+    this.cancelNoInputTimer('local_vad_start', meta);
+    // Seed speechStartAt if OpenAI VAD hasn't fired yet
+    if (!this.speechStartAt) {
+      this.speechStartAt = Date.now();
+    }
+    this.config.onLog({
+      event: 'LOCAL_VAD_SPEECH_START',
+      requestId: this.config.requestId,
+      state: this.state,
+      ...meta,
+    });
+  }
+
+  /**
+   * Local VAD detected speech end (hangover expired).
+   */
+  onLocalSpeechEnd(meta?: Record<string, any>): void {
+    if (!this.localUserSpeaking) return;
+    const now = Date.now();
+    this.localUserSpeaking = false;
+    this.localSpeechEndedAt = now;
+    this.config.onLog({
+      event: 'LOCAL_VAD_SPEECH_END',
+      requestId: this.config.requestId,
+      durationMs: this.localSpeechStartedAt ? now - this.localSpeechStartedAt : null,
+      state: this.state,
+      ...meta,
+    });
+  }
+
+  /**
    * Force transition to USER_SPEAKING from the standalone barge-in path.
    * This synchronises the TurnController when the outer executeBargeIn() fires
    * before the TurnController's own sustained-speech timer.
@@ -580,6 +624,19 @@ class TurnController {
       return;
     }
 
+    // Suppress if user is currently speaking (local VAD)
+    const suppCheck = this.shouldSuppressReprompt();
+    if (suppCheck.suppress) {
+      this.config.onLog({
+        event: 'REPROMPT_SUPPRESSED',
+        requestId: this.config.requestId,
+        repromptType: 'no_input_schedule',
+        reason: suppCheck.reason,
+        state: this.state,
+      });
+      return;
+    }
+
     const timeout = this.lastQuestionAsked
       ? TURN_THRESHOLDS.longNoInputMs
       : TURN_THRESHOLDS.idleNoInputMs;
@@ -606,7 +663,17 @@ class TurnController {
       this.noInputTimer = null;
     }
   }
-  
+
+  private shouldSuppressReprompt(now: number = Date.now()): { suppress: boolean; reason?: string } {
+    if (this.localUserSpeaking) {
+      return { suppress: true, reason: 'local_user_speaking' };
+    }
+    if (this.localSpeechStartedAt && (now - this.localSpeechStartedAt) < this.LOCAL_SPEECH_GRACE_MS) {
+      return { suppress: true, reason: 'local_speech_grace' };
+    }
+    return { suppress: false };
+  }
+
   private startEndDebounceTimer(): void {
     if (this.endDebounceTimer) {
       clearTimeout(this.endDebounceTimer);
@@ -792,6 +859,21 @@ class TurnController {
   }
   
   private handleNoInputReprompt(): void {
+    // Final suppression check at fire time (user may have started speaking after timer was set)
+    const suppCheck = this.shouldSuppressReprompt();
+    if (suppCheck.suppress) {
+      this.config.onLog({
+        event: 'REPROMPT_SUPPRESSED',
+        requestId: this.config.requestId,
+        repromptType: 'no_input',
+        reason: suppCheck.reason,
+        state: this.state,
+      });
+      // Return to waiting without speaking — do NOT resetUserState (user is talking)
+      this.transition('WAITING_FOR_USER_START', 'reprompt_suppressed');
+      return;
+    }
+
     this.resetUserState();
 
     // Budget: count this reprompt; subsequent timeouts will be silent
@@ -817,6 +899,19 @@ class TurnController {
   }
 
   private handleShortUtterReprompt(): void {
+    const suppCheck = this.shouldSuppressReprompt();
+    if (suppCheck.suppress) {
+      this.config.onLog({
+        event: 'REPROMPT_SUPPRESSED',
+        requestId: this.config.requestId,
+        repromptType: 'short_utter',
+        reason: suppCheck.reason,
+        state: this.state,
+      });
+      this.transition('WAITING_FOR_USER_START', 'reprompt_suppressed');
+      return;
+    }
+
     this.resetUserState();
 
     // Short but non-trivial utterance — gentle nudge, no apology
@@ -839,6 +934,19 @@ class TurnController {
   }
 
   private handleTranscriptMissingReprompt(): void {
+    const suppCheck = this.shouldSuppressReprompt();
+    if (suppCheck.suppress) {
+      this.config.onLog({
+        event: 'REPROMPT_SUPPRESSED',
+        requestId: this.config.requestId,
+        repromptType: 'transcript_missing',
+        reason: suppCheck.reason,
+        state: this.state,
+      });
+      this.transition('WAITING_FOR_USER_START', 'reprompt_suppressed');
+      return;
+    }
+
     this.resetUserState();
 
     // Real speech occurred but Whisper returned nothing — distinct from short utterance
@@ -1315,11 +1423,15 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
   // Local VAD state
   let localVadConsecSpeech = 0;
+  let localVadConsecSilence = 0;
+  let localVadSpeaking = false;       // true while local VAD considers user speaking
   let localVadNoiseFloor = 0.0;
   const LOCAL_VAD_NOISE_ALPHA = 0.02;
   const LOCAL_VAD_SPEECH_RATIO = 3.0;
   const LOCAL_VAD_ABS_MIN = 0.015;
-  const LOCAL_VAD_FRAMES_REQUIRED = 3; // ~60ms at 20ms/frame
+  const LOCAL_VAD_FRAMES_REQUIRED = 3;   // ~60ms to start
+  const LOCAL_VAD_END_FRAMES = 15;       // ~300ms hangover before speech-end
+  let lastWatchdogFiredAt = 0;           // debounce watchdog to once per 10s
 
   // Barge-in control parameters
   const ECHO_IGNORE_WINDOW_MS = 800;  // Ignore speech for 800ms after TTS starts
@@ -2457,8 +2569,8 @@ ${generateVoicePromptInstructions()}`;
         openAiPingInterval = null;
       }
 
-      // Reconnect on abnormal closures (1006/1001) if Twilio is still alive
-      const isAbnormal = code === 1006 || code === 1001;
+      // Reconnect on abnormal closures (1006/1001/1005) if Twilio is still alive
+      const isAbnormal = code === 1006 || code === 1001 || code === 1005;
       if (isAbnormal && twilioWs.readyState === WebSocket.OPEN && openAiReconnectAttempt < OPENAI_MAX_RECONNECT) {
         const delay = OPENAI_RECONNECT_BACKOFF[openAiReconnectAttempt] || 2000;
         openAiReconnectAttempt++;
@@ -2800,29 +2912,56 @@ ${generateVoicePromptInstructions()}`;
             console.log(JSON.stringify({ event: 'audio_from_twilio', requestId, frames: twilioFrameCount }));
           }
 
-          // Local VAD: μ-law RMS energy detection
+          // Local VAD: μ-law RMS energy detection with start/end lifecycle
           const energy = rmsFromMuLawBase64(audioPayload);
-          const isSpeech = energy > Math.max(LOCAL_VAD_ABS_MIN, localVadNoiseFloor * LOCAL_VAD_SPEECH_RATIO);
+          const threshold = Math.max(LOCAL_VAD_ABS_MIN, localVadNoiseFloor * LOCAL_VAD_SPEECH_RATIO);
+          const isSpeech = energy > threshold;
           if (isSpeech) {
             localVadConsecSpeech++;
-            if (localVadConsecSpeech === LOCAL_VAD_FRAMES_REQUIRED) {
-              console.log(JSON.stringify({
-                event: 'LOCAL_VAD_SPEECH',
-                requestId,
-                energy: +energy.toFixed(4),
-                noiseFloor: +localVadNoiseFloor.toFixed(4),
-              }));
-              turnController?.cancelNoInputTimer('local_vad', {
-                energy: +energy.toFixed(4),
-                noiseFloor: +localVadNoiseFloor.toFixed(4),
-              });
+            localVadConsecSilence = 0;
+            // Speech start: 3 consecutive speech frames (~60ms)
+            if (!localVadSpeaking && localVadConsecSpeech >= LOCAL_VAD_FRAMES_REQUIRED) {
+              localVadSpeaking = true;
+              const meta = { energy: +energy.toFixed(4), noiseFloor: +localVadNoiseFloor.toFixed(4), threshold: +threshold.toFixed(4) };
+              turnController?.onLocalSpeechStart(meta);
             }
           } else {
+            localVadConsecSilence++;
             localVadConsecSpeech = 0;
-            // Update noise floor EMA only when energy is low (silence)
+            // Update noise floor EMA only during silence
             localVadNoiseFloor = localVadNoiseFloor === 0
               ? energy
               : localVadNoiseFloor * (1 - LOCAL_VAD_NOISE_ALPHA) + energy * LOCAL_VAD_NOISE_ALPHA;
+            // Speech end: 15 consecutive silence frames (~300ms hangover)
+            if (localVadSpeaking && localVadConsecSilence >= LOCAL_VAD_END_FRAMES) {
+              localVadSpeaking = false;
+              const meta = { energy: +energy.toFixed(4), noiseFloor: +localVadNoiseFloor.toFixed(4) };
+              turnController?.onLocalSpeechEnd(meta);
+            }
+          }
+
+          // OpenAI silence watchdog: if Twilio audio flows but OpenAI is silent > 8s, force reconnect
+          const OPENAI_WATCHDOG_MS = 8000;
+          const TWILIO_RECENT_MS = 2000;
+          const WATCHDOG_COOLDOWN_MS = 10000;
+          const now = Date.now();
+          if (openAiWs && openAiWs.readyState === WebSocket.OPEN &&
+              (now - lastAudioFromTwilioAt) < TWILIO_RECENT_MS &&
+              (now - lastOpenAIMsgAt) > OPENAI_WATCHDOG_MS &&
+              !reconnecting &&
+              (now - lastWatchdogFiredAt) > WATCHDOG_COOLDOWN_MS) {
+            lastWatchdogFiredAt = now;
+            const msSinceLastOpenAIMsg = now - lastOpenAIMsgAt;
+            const msSinceLastTwilioAudio = now - lastAudioFromTwilioAt;
+            console.log(JSON.stringify({
+              event: 'OPENAI_SILENCE_WATCHDOG',
+              requestId,
+              msSinceLastOpenAIMsg,
+              msSinceLastTwilioAudio,
+              state: turnController?.getState() || null,
+            }));
+            // Force-close with 1006 to trigger existing reconnect logic
+            openAiWs.close(1006, 'watchdog_timeout');
           }
 
           if (openAiReady && openAiWs && openAiWs.readyState === WebSocket.OPEN) {
