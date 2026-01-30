@@ -1209,14 +1209,27 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
       // Request LLM response (signal that user turn is complete)
       onRequestLlmResponse: (prompt?: string) => {
-        // OpenAI Realtime API auto-generates responses after speech_stopped + commit
-        // We don't need to explicitly call response.create - the VAD handles it
-        // But we log that we're now allowing the LLM to respond
-        console.log(JSON.stringify({
-          event: 'llm_response_permitted',
-          requestId,
-          turnControllerState: turnController?.getState(),
-        }));
+        // With create_response:false, server_vad no longer auto-creates responses.
+        // We must explicitly send response.create after TurnController validates the turn.
+        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+          console.log(JSON.stringify({
+            event: 'LLM_RESPONSE_REQUESTED',
+            requestId,
+            turnControllerState: turnController?.getState(),
+          }));
+          openAiWs.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              modalities: ['text'],
+            },
+          }));
+        } else {
+          console.log(JSON.stringify({
+            event: 'LLM_RESPONSE_REQUEST_FAILED',
+            requestId,
+            reason: 'openai_ws_not_ready',
+          }));
+        }
       },
       
       // Clear Twilio audio buffer
@@ -1693,6 +1706,7 @@ ${generateVoicePromptInstructions()}`;
             threshold: 0.80,
             prefix_padding_ms: 300,
             silence_duration_ms: 600,
+            create_response: false,  // We send response.create manually after TurnController validates the turn
           },
         },
       };
@@ -1731,37 +1745,20 @@ ${generateVoicePromptInstructions()}`;
         } else if (message.type === 'response.created') {
           const newResponseId = message.response?.id || null;
 
-          // Guard: If TurnController says we shouldn't be responding
-          // (user is still speaking, or turn hasn't been validated),
-          // cancel this response immediately — this is the root cause of
-          // "I didn't catch that" on noise / phantom turns.
-          if (turnController && !turnController.canCallLlm()) {
-            console.log(JSON.stringify({
-              event: 'LLM_RESPONSE_SQUELCHED',
-              requestId,
-              responseId: newResponseId,
-              turnState: turnController.getState(),
-              reason: 'turn_not_validated',
-            }));
-            if (newResponseId) {
-              squelchedResponseIds.add(newResponseId);
-            }
-            activeResponseId = null;
-            currentResponseId = null;
-            pendingText = '';
-            if (openAiWs && openAiWs.readyState === WebSocket.OPEN && newResponseId) {
-              openAiWs.send(JSON.stringify({ type: 'response.cancel', response_id: newResponseId }));
-            }
-            // Don't set flags — treat as if this response never happened
-            return;
-          }
-
+          // With create_response:false, responses only arrive when WE send
+          // response.create (after validation) or for the initial greeting.
+          // No canCallLlm() squelch needed — we control when responses are created.
           responseInProgress = true;
           openaiResponseActive = true;
           currentResponseId = newResponseId;
           activeResponseId = newResponseId;
           pendingText = '';
-          console.log(JSON.stringify({ event: 'response_started', requestId, responseId: currentResponseId }));
+          console.log(JSON.stringify({
+            event: 'response_started',
+            requestId,
+            responseId: currentResponseId,
+            turnState: turnController?.getState(),
+          }));
 
           if (turnController) {
             turnController.onLlmResponseStarted();
