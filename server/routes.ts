@@ -1714,11 +1714,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             orgId,
             endpointId: endpoint.id,
             eventType,
-            payload: {
+            payload: JSON.parse(JSON.stringify({
               event: eventType,
               timestamp: new Date().toISOString(),
               data: payload,
-            },
+            })) as any,
             status: 'pending',
             attemptCount: 0,
           },
@@ -8085,6 +8085,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await createAuditLog(
         orgId,
         req.user!.userId,
+        'user',
         'policy_test_suite.create',
         'policy_test_suite',
         suite.id,
@@ -8372,6 +8373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await createAuditLog(
         orgId,
         req.user!.userId,
+        'user',
         'followup_sequence.create',
         'followup_sequence',
         sequence.id,
@@ -9052,7 +9054,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           createdAt: true,
           updatedAt: true,
           user: {
-            select: { email: true, firstName: true, lastName: true }
+            select: { email: true }
           }
         },
         orderBy: { updatedAt: 'desc' }
@@ -9069,7 +9071,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!byUser[t.userId]) {
           byUser[t.userId] = {
             email: t.user.email,
-            name: `${t.user.firstName || ''} ${t.user.lastName || ''}`.trim() || 'Unknown',
+            name: t.user.email,
             tokenCount: 0,
             platforms: []
           };
