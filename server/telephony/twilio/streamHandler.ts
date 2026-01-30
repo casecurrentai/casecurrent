@@ -44,8 +44,8 @@ const TURN_THRESHOLDS = {
   minUtteranceMs: 1200,          // Minimum speech duration to accept (was 900)
   minWords: 2,                   // Minimum word count to accept
   bargeInEchoIgnoreMs: 800,      // Ignore speech for Xms after TTS starts
-  bargeInSustainedSpeechMs: 1000, // Require sustained speech before barge-in (was 650)
-  bargeInCooldownMs: 1200,       // Cooldown after barge-in triggers (was 800)
+  bargeInSustainedSpeechMs: 600,  // Require sustained speech before barge-in (was 1000)
+  bargeInCooldownMs: 800,        // Cooldown after barge-in triggers (was 1200)
 } as const;
 
 // Turn states for the state machine
@@ -67,6 +67,7 @@ interface TurnControllerConfig {
   requestId: string;
   onSpeakText: (text: string, isReprompt: boolean) => Promise<void>;
   onStopTts: () => void;
+  onCancelLlmResponse: () => void;
   onRequestLlmResponse: (prompt?: string) => void;
   onClearTwilioAudio: () => void;
   onLog: (data: Record<string, any>) => void;
@@ -298,7 +299,16 @@ class TurnController {
   getState(): TurnState {
     return this.state;
   }
-  
+
+  /**
+   * Force transition to USER_SPEAKING from the standalone barge-in path.
+   * This synchronises the TurnController when the outer executeBargeIn() fires
+   * before the TurnController's own sustained-speech timer.
+   */
+  forceUserSpeaking(): void {
+    this.transition('USER_SPEAKING', 'external_barge_in_sync');
+  }
+
   /**
    * Clean up all timers
    */
@@ -427,13 +437,22 @@ class TurnController {
   
   private executeBargeIn(): void {
     this.lastBargeInAt = Date.now();
-    
+
     // Stop TTS immediately
     this.config.onStopTts();
-    
+
+    // Cancel any in-flight OpenAI response so no new text queues
+    this.config.onCancelLlmResponse();
+
     // Clear Twilio audio buffer
     this.config.onClearTwilioAudio();
-    
+
+    this.config.onLog({
+      event: 'BARGE_IN_TRIGGERED',
+      requestId: this.config.requestId,
+      state: this.state,
+    });
+
     // Transition to user speaking
     this.transition('USER_SPEAKING', 'barge_in_triggered');
   }
@@ -980,7 +999,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   
   // Barge-in control parameters
   const ECHO_IGNORE_WINDOW_MS = 800;  // Ignore speech for 800ms after TTS starts
-  const SUSTAINED_SPEECH_MS = 600;     // Require 600ms sustained speech for barge-in
+  const SUSTAINED_SPEECH_MS = 400;     // Require 400ms sustained speech for barge-in (was 600)
   const SUSTAINED_SPEECH_WITH_ENERGY_MS = 450; // With high energy/confidence, only need 450ms
   const ENERGY_THRESHOLD = 0.60;
   const CONFIDENCE_THRESHOLD = 0.65;
@@ -1091,13 +1110,25 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       // Stop current TTS playback
       onStopTts: () => {
         if (ttsAbortController) {
+          console.log(JSON.stringify({ event: 'TTS_ABORTED', requestId }));
           ttsAbortController.abort();
           ttsAbortController = null;
         }
         ttsSpeaking = false;
         ttsStartAt = null;
       },
-      
+
+      // Cancel in-flight OpenAI response (prevents queued text after barge-in)
+      onCancelLlmResponse: () => {
+        if (openAiWs && openAiWs.readyState === WebSocket.OPEN && openaiResponseActive && currentResponseId) {
+          openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+          console.log(JSON.stringify({ event: 'OPENAI_CANCEL_SENT', requestId, responseId: currentResponseId }));
+        }
+        pendingText = '';
+        openaiResponseActive = false;
+        currentResponseId = null;
+      },
+
       // Request LLM response (signal that user turn is complete)
       onRequestLlmResponse: (prompt?: string) => {
         // OpenAI Realtime API auto-generates responses after speech_stopped + commit
@@ -1160,6 +1191,9 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     if (turnController) {
       turnController.onTtsStarted(text);
     }
+
+    // Track whether TTS was aborted (barge-in) vs completed normally
+    let wasAborted = false;
 
     // Audio buffer for framing
     let audioBuffer = Buffer.alloc(0);
@@ -1240,14 +1274,16 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
         }));
       }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
+      if (err.name === 'AbortError') {
+        wasAborted = true;
+      } else {
         console.error(JSON.stringify({ event: 'tts_stream_error', requestId, responseId, error: err.message }));
-        
+
         // TTS failed - trigger fallback if this was the first response and no audio sent yet
         if (!firstAudioFrameSent && !fallbackPlayed) {
           const msSinceTrigger = firstTTSTriggerTime ? Date.now() - firstTTSTriggerTime : null;
-          console.log(JSON.stringify({ 
-            tag: '[FALLBACK_SAY]', 
+          console.log(JSON.stringify({
+            tag: '[FALLBACK_SAY]',
             requestId,
             reason: 'tts_error',
             ms_since_tts_trigger: msSinceTrigger,
@@ -1263,9 +1299,10 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       clearTimeout(timeoutId);
       ttsSpeaking = false;
       ttsAbortController = null;
-      
-      // Notify TurnController that TTS finished (not aborted)
-      if (turnController && !ttsAbortController) {
+
+      // Only notify TurnController of normal completion — not on abort
+      // (barge-in already transitioned to USER_SPEAKING)
+      if (turnController && !wasAborted) {
         turnController.onTtsFinished();
       }
     }
@@ -1378,48 +1415,47 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
    */
   function executeBargeIn(): void {
     lastBargeInTime = Date.now();
-    
-    console.log(JSON.stringify({ 
-      event: 'barge_in', 
-      requestId, 
-      ttsSpeaking, 
+
+    console.log(JSON.stringify({
+      event: 'BARGE_IN_TRIGGERED',
+      requestId,
+      ttsSpeaking,
       openaiResponseActive,
-      currentResponseId 
+      currentResponseId,
+      turnState: turnController?.getState(),
     }));
-    
+
     // 1. Clear Twilio audio buffer
     if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
       twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
     }
-    
+
     // 2. Cancel OpenAI response (only if one is active AND we have a response ID)
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
       if (openaiResponseActive && currentResponseId) {
         openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
-        console.log(JSON.stringify({ event: 'response_cancelled', requestId, responseId: currentResponseId }));
-      } else {
-        console.log(JSON.stringify({ 
-          event: 'cancel_skipped', 
-          requestId, 
-          reason: 'no_active_response',
-          openaiResponseActive,
-          currentResponseId 
-        }));
+        console.log(JSON.stringify({ event: 'OPENAI_CANCEL_SENT', requestId, responseId: currentResponseId }));
       }
     }
-    
+
     // 3. Abort ElevenLabs TTS
     if (ttsAbortController) {
+      console.log(JSON.stringify({ event: 'TTS_ABORTED', requestId }));
       ttsAbortController.abort();
       ttsAbortController = null;
     }
-    
+
     // 4. Clear state
     pendingText = '';
     currentResponseId = null;
     ttsSpeaking = false;
     ttsStartAt = null;
     openaiResponseActive = false;
+
+    // 5. Sync TurnController into USER_SPEAKING if it's still in ASSIST_SPEAKING
+    if (turnController && turnController.getState() === 'ASSIST_SPEAKING') {
+      turnController.forceUserSpeaking();
+    }
   }
 
   function validateAuth(customParams: Record<string, string> | undefined): boolean {
@@ -1477,7 +1513,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 ## Identity & scope (hard boundaries)
 You are Avery, the virtual assistant for ${firmName}, handling legal intake. You are not a lawyer, paralegal, or a human. You do not provide legal advice, strategy, predictions, or guarantees. Your job is to welcome callers, gather accurate intake details efficiently, and route the matter to ${firmName}.
 
-Opening (mandatory): Your very first sentence MUST be: "Thank you for calling ${firmName}." Then: "This is Avery, the virtual assistant for ${firmName}. How can I help you today?"
+Opening (mandatory): Your very first sentence MUST be: "Thank you for calling ${firmName}, this is Avery. How can I help you today?" Do NOT repeat the firm name again in the greeting. Only mention it again later if the caller asks who they reached.
 
 Never claim to be human, a paralegal, or an attorney.
 
@@ -1917,18 +1953,32 @@ ${generateVoicePromptInstructions()}`;
           
           // Gate 1: Only evaluate barge-in when TTS is speaking
           if (!ttsSpeaking) {
-            console.log(JSON.stringify({ 
-              event: 'barge_in_decision', 
-              requestId, 
+            // TTS not playing, but if OpenAI is still generating text, cancel it
+            // to prevent queued speech from playing after the user starts talking
+            if (openaiResponseActive && currentResponseId && openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+              openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+              console.log(JSON.stringify({
+                event: 'OPENAI_CANCEL_SENT',
+                requestId,
+                responseId: currentResponseId,
+                reason: 'user_speech_during_llm_generation',
+              }));
+              pendingText = '';
+              openaiResponseActive = false;
+              currentResponseId = null;
+            }
+            console.log(JSON.stringify({
+              event: 'barge_in_decision',
+              requestId,
               ttsSpeaking: false,
               msSinceTtsStart,
               durationMs: 0,
-              energy: undefined,
               decision: 'IGNORE',
-              reason: 'tts_not_speaking'
+              reason: 'tts_not_speaking',
+              turnState: turnController?.getState(),
             }));
             // Don't start barge-in timer, just track speech for normal input
-          } 
+          }
           // Gate 2: Echo ignore window (800ms after TTS starts)
           else if (msSinceTtsStart !== null && msSinceTtsStart < ECHO_IGNORE_WINDOW_MS) {
             console.log(JSON.stringify({ 
