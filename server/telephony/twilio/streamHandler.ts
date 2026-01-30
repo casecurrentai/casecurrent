@@ -964,6 +964,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   // OpenAI response state tracking for safe cancellation
   let openaiResponseActive = false;
   let initialGreetingSent = false;
+  let openAiInitStarted = false;
   
   // Audio buffer tracking for commit guard (100ms = 5 frames at 20ms/frame)
   let bufferedAudioFrameCount = 0;
@@ -2367,7 +2368,10 @@ ${generateVoicePromptInstructions()}`;
         // Initialize TurnController for turn-taking state machine
         initTurnController();
         
-        initOpenAI();
+        if (!openAiInitStarted) {
+          openAiInitStarted = true;
+          initOpenAI();
+        }
       } else if (message.event === 'media') {
         if (!authenticated) return;
         
