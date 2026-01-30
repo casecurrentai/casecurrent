@@ -5514,6 +5514,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       <Parameter name="to" value="${xmlEsc(To)}"/>
       <Parameter name="from" value="${xmlEsc(From)}"/>
       <Parameter name="orgId" value="${xmlEsc(orgId)}"/>
+      <Parameter name="orgName" value="${xmlEsc(phoneNumber.organization?.name || '')}"/>
       <Parameter name="phoneNumberId" value="${xmlEsc(phoneNumber.id)}"/>
     </Stream>
   </Connect>
