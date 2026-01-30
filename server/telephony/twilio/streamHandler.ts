@@ -114,7 +114,11 @@ class TurnController {
 
   // Latency tracking
   private turnAcceptedAt: number | null = null;
-  
+
+  // Reprompt budget: max 1 no-input reprompt per question turn
+  private noInputRepromptCount: number = 0;
+  private readonly MAX_NO_INPUT_REPROMPTS = 1;
+
   constructor(config: TurnControllerConfig) {
     this.config = config;
     this.logTransition('INIT', 'INIT', 'controller_created');
@@ -143,14 +147,17 @@ class TurnController {
   onTtsStarted(text: string): void {
     this.ttsStartAt = Date.now();
     this.clearNoInputTimer();
-    
+
+    // New question turn — reset reprompt budget
+    this.noInputRepromptCount = 0;
+
     // Detect if this is a question (ends with ?)
     if (text.trim().endsWith('?')) {
       this.lastQuestionAsked = text;
       // Detect phone number requests
       this.waitingForPhoneNumber = /phone|number|reach|call|callback/i.test(text);
     }
-    
+
     this.transition('ASSIST_SPEAKING', 'tts_started');
   }
   
@@ -383,6 +390,22 @@ class TurnController {
   }
 
   /**
+   * Cancel the no-input timer from outside (e.g. local VAD speech detection).
+   */
+  cancelNoInputTimer(reason: string, meta?: Record<string, any>): void {
+    if (this.noInputTimer) {
+      clearTimeout(this.noInputTimer);
+      this.noInputTimer = null;
+      this.config.onLog({
+        event: 'REPROMPT_CANCELED',
+        requestId: this.config.requestId,
+        reason,
+        ...meta,
+      });
+    }
+  }
+
+  /**
    * Force transition to USER_SPEAKING from the standalone barge-in path.
    * This synchronises the TurnController when the outer executeBargeIn() fires
    * before the TurnController's own sustained-speech timer.
@@ -545,6 +568,17 @@ class TurnController {
   
   private startNoInputTimer(): void {
     this.clearNoInputTimer();
+
+    // Budget check: if we already fired the max reprompts for this question, stay silent
+    if (this.noInputRepromptCount >= this.MAX_NO_INPUT_REPROMPTS) {
+      this.config.onLog({
+        event: 'REPROMPT_BUDGET_EXHAUSTED',
+        requestId: this.config.requestId,
+        reason: 'no_input_timeout',
+        repromptCount: this.noInputRepromptCount,
+      });
+      return;
+    }
 
     const timeout = this.lastQuestionAsked
       ? TURN_THRESHOLDS.longNoInputMs
@@ -739,8 +773,9 @@ class TurnController {
     });
 
     if (isValid) {
-      // Valid utterance - allow LLM to respond
+      // Valid utterance - allow LLM to respond; reset reprompt budget
       this.turnAcceptedAt = turnAcceptedAt;
+      this.noInputRepromptCount = 0;
       this.resetUserState();
       this.transition('IDLE', 'utterance_validated');
       this.config.onRequestLlmResponse();
@@ -759,17 +794,17 @@ class TurnController {
   private handleNoInputReprompt(): void {
     this.resetUserState();
 
-    // Gentle reprompt — NO apology. Apology is only allowed when a
-    // validated turn produced garbled content (handled by OpenAI prompt).
-    const reprompt = this.lastQuestionAsked
-      ? "Take your time — I'm still here."
-      : "Are you still there?";
+    // Budget: count this reprompt; subsequent timeouts will be silent
+    this.noInputRepromptCount++;
+
+    const reprompt = "I didn't catch that — could you say it again?";
 
     this.config.onLog({
       event: 'REPROMPT_FIRED',
       requestId: this.config.requestId,
       delayMs: TURN_THRESHOLDS.longNoInputMs,
       reason: 'no_input_timeout',
+      repromptCount: this.noInputRepromptCount,
     });
 
     this.config.onSpeakText(reprompt, true).catch(err => {
@@ -1226,7 +1261,66 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let ttsAbortController: AbortController | null = null;
   let ttsSpeaking = false;
   let ttsStartAt: number | null = null;
-  
+
+  // =========================================================================
+  // LOCAL VAD — μ-law RMS energy detection on raw Twilio audio
+  // =========================================================================
+  // ITU-T G.711 μ-law decode table (256 entries, maps byte → signed 16-bit PCM)
+  const MULAW_DECODE_TABLE = new Int16Array([
+    -32124,-31100,-30076,-29052,-28028,-27004,-25980,-24956,
+    -23932,-22908,-21884,-20860,-19836,-18812,-17788,-16764,
+    -15996,-15484,-14972,-14460,-13948,-13436,-12924,-12412,
+    -11900,-11388,-10876,-10364, -9852, -9340, -8828, -8316,
+     -7932, -7676, -7420, -7164, -6908, -6652, -6396, -6140,
+     -5884, -5628, -5372, -5116, -4860, -4604, -4348, -4092,
+     -3900, -3772, -3644, -3516, -3388, -3260, -3132, -3004,
+     -2876, -2748, -2620, -2492, -2364, -2236, -2108, -1980,
+     -1884, -1820, -1756, -1692, -1628, -1564, -1500, -1436,
+     -1372, -1308, -1244, -1180, -1116, -1052,  -988,  -924,
+      -876,  -844,  -812,  -780,  -748,  -716,  -684,  -652,
+      -620,  -588,  -556,  -524,  -492,  -460,  -428,  -396,
+      -372,  -356,  -340,  -324,  -308,  -292,  -276,  -260,
+      -244,  -228,  -212,  -196,  -180,  -164,  -148,  -132,
+      -120,  -112,  -104,   -96,   -88,   -80,   -72,   -64,
+       -56,   -48,   -40,   -32,   -24,   -16,    -8,     0,
+     32124, 31100, 30076, 29052, 28028, 27004, 25980, 24956,
+     23932, 22908, 21884, 20860, 19836, 18812, 17788, 16764,
+     15996, 15484, 14972, 14460, 13948, 13436, 12924, 12412,
+     11900, 11388, 10876, 10364,  9852,  9340,  8828,  8316,
+      7932,  7676,  7420,  7164,  6908,  6652,  6396,  6140,
+      5884,  5628,  5372,  5116,  4860,  4604,  4348,  4092,
+      3900,  3772,  3644,  3516,  3388,  3260,  3132,  3004,
+      2876,  2748,  2620,  2492,  2364,  2236,  2108,  1980,
+      1884,  1820,  1756,  1692,  1628,  1564,  1500,  1436,
+      1372,  1308,  1244,  1180,  1116,  1052,   988,   924,
+       876,   844,   812,   780,   748,   716,   684,   652,
+       620,   588,   556,   524,   492,   460,   428,   396,
+       372,   356,   340,   324,   308,   292,   276,   260,
+       244,   228,   212,   196,   180,   164,   148,   132,
+       120,   112,   104,    96,    88,    80,    72,    64,
+        56,    48,    40,    32,    24,    16,     8,     0,
+  ]);
+
+  function rmsFromMuLawBase64(payloadB64: string): number {
+    const buf = Buffer.from(payloadB64, 'base64');
+    if (buf.length === 0) return 0;
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const pcm = MULAW_DECODE_TABLE[buf[i]];
+      sumSq += pcm * pcm;
+    }
+    // Normalize to 0..1 (max PCM = 32124)
+    return Math.sqrt(sumSq / buf.length) / 32124;
+  }
+
+  // Local VAD state
+  let localVadConsecSpeech = 0;
+  let localVadNoiseFloor = 0.0;
+  const LOCAL_VAD_NOISE_ALPHA = 0.02;
+  const LOCAL_VAD_SPEECH_RATIO = 3.0;
+  const LOCAL_VAD_ABS_MIN = 0.015;
+  const LOCAL_VAD_FRAMES_REQUIRED = 3; // ~60ms at 20ms/frame
+
   // Barge-in control parameters
   const ECHO_IGNORE_WINDOW_MS = 800;  // Ignore speech for 800ms after TTS starts
   const SUSTAINED_SPEECH_MS = 400;     // Require 400ms sustained speech for barge-in (was 600)
@@ -2704,6 +2798,31 @@ ${generateVoicePromptInstructions()}`;
           lastAudioFromTwilioAt = Date.now();
           if (twilioFrameCount % LOG_FRAME_INTERVAL === 0) {
             console.log(JSON.stringify({ event: 'audio_from_twilio', requestId, frames: twilioFrameCount }));
+          }
+
+          // Local VAD: μ-law RMS energy detection
+          const energy = rmsFromMuLawBase64(audioPayload);
+          const isSpeech = energy > Math.max(LOCAL_VAD_ABS_MIN, localVadNoiseFloor * LOCAL_VAD_SPEECH_RATIO);
+          if (isSpeech) {
+            localVadConsecSpeech++;
+            if (localVadConsecSpeech === LOCAL_VAD_FRAMES_REQUIRED) {
+              console.log(JSON.stringify({
+                event: 'LOCAL_VAD_SPEECH',
+                requestId,
+                energy: +energy.toFixed(4),
+                noiseFloor: +localVadNoiseFloor.toFixed(4),
+              }));
+              turnController?.cancelNoInputTimer('local_vad', {
+                energy: +energy.toFixed(4),
+                noiseFloor: +localVadNoiseFloor.toFixed(4),
+              });
+            }
+          } else {
+            localVadConsecSpeech = 0;
+            // Update noise floor EMA only when energy is low (silence)
+            localVadNoiseFloor = localVadNoiseFloor === 0
+              ? energy
+              : localVadNoiseFloor * (1 - LOCAL_VAD_NOISE_ALPHA) + energy * LOCAL_VAD_NOISE_ALPHA;
           }
 
           if (openAiReady && openAiWs && openAiWs.readyState === WebSocket.OPEN) {
