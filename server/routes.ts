@@ -3485,9 +3485,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: Invalid or missing secret
    */
   app.post('/v1/admin/seed', async (req, res) => {
-    if (process.env.NODE_ENV !== 'development') {
-      return res.status(404).json({ error: 'Not found' });
-    }
+    const host = (req.headers.host || '').split(':')[0];
+    if (process.env.NODE_ENV !== 'development') return res.status(404).json({ error: 'Not found' });
+    if (host !== '127.0.0.1' && host !== 'localhost') return res.status(404).json({ error: 'Not found' });
 
     try {
       const { secret } = req.body;
