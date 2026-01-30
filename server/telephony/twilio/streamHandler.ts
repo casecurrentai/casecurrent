@@ -963,6 +963,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   
   // OpenAI response state tracking for safe cancellation
   let openaiResponseActive = false;
+  let initialGreetingSent = false;
   
   // Audio buffer tracking for commit guard (100ms = 5 frames at 20ms/frame)
   let bufferedAudioFrameCount = 0;
@@ -1758,12 +1759,14 @@ ${generateVoicePromptInstructions()}`;
         if (message.type === 'session.created') {
           console.log(JSON.stringify({ event: 'openai_session_created', requestId }));
         } else if (message.type === 'session.updated') {
-          if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+          // Send initial greeting once; uses session instructions (AVERY_MASTER_PROMPT)
+          // so the greeting matches the org rather than a hardcoded firm name.
+          if (!initialGreetingSent && openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+            initialGreetingSent = true;
             openAiWs.send(JSON.stringify({
               type: 'response.create',
               response: {
-                modalities: ['text'],  // TEXT ONLY - ElevenLabs generates audio
-                instructions: 'Greet the caller warmly and thank them for calling the Demo Law Firm; ask how you can help them today.',
+                modalities: ['text'],
               },
             }));
           }
