@@ -2613,10 +2613,99 @@ ${generateVoicePromptInstructions()}`;
     });
   }
 
-  twilioWs.on('message', (data) => {
-    try {
-      const message: TwilioMessage = JSON.parse(data.toString());
+  // Parse-error tracking: only close WS on a burst of failures, not a single bad frame
+  let parseErrorCount = 0;
+  let parseErrorWindowStart = 0;
+  const PARSE_ERROR_THRESHOLD = 5;
+  const PARSE_ERROR_WINDOW_MS = 10_000;
 
+  twilioWs.on('message', (data) => {
+    // Robust message parsing: handle Buffer, ArrayBuffer, string
+    let rawStr: string;
+    try {
+      if (typeof data === 'string') {
+        rawStr = data;
+      } else if (Buffer.isBuffer(data)) {
+        rawStr = data.toString('utf8');
+      } else if (data instanceof ArrayBuffer) {
+        rawStr = Buffer.from(data).toString('utf8');
+      } else {
+        // Unknown type — convert best-effort
+        rawStr = String(data);
+      }
+    } catch {
+      // Could not even convert to string — skip this frame silently
+      console.log(JSON.stringify({
+        event: 'twilio_parse_error',
+        requestId,
+        callSid: maskCallSid(callSid),
+        reason: 'toString_failed',
+        dataType: typeof data,
+        isBuffer: Buffer.isBuffer(data),
+      }));
+      return;
+    }
+
+    // Skip non-JSON frames (e.g. empty strings, binary noise) without attempting parse
+    const trimmed = rawStr.trimStart();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      // Not JSON — likely a ping/pong frame or binary payload; ignore silently
+      if (rawStr.length > 0) {
+        console.log(JSON.stringify({
+          event: 'twilio_parse_error',
+          requestId,
+          callSid: maskCallSid(callSid),
+          reason: 'not_json',
+          dataType: typeof data,
+          isBuffer: Buffer.isBuffer(data),
+          byteLen: rawStr.length,
+          preview: rawStr.substring(0, 200),
+          startsWithBrace: false,
+        }));
+      }
+      return;
+    }
+
+    let message: TwilioMessage;
+    try {
+      message = JSON.parse(rawStr);
+    } catch (parseErr) {
+      const now = Date.now();
+      if (now - parseErrorWindowStart > PARSE_ERROR_WINDOW_MS) {
+        parseErrorCount = 0;
+        parseErrorWindowStart = now;
+      }
+      parseErrorCount++;
+
+      console.log(JSON.stringify({
+        event: 'twilio_parse_error',
+        requestId,
+        callSid: maskCallSid(callSid),
+        reason: 'json_parse_failed',
+        dataType: typeof data,
+        isBuffer: Buffer.isBuffer(data),
+        byteLen: rawStr.length,
+        preview: rawStr.substring(0, 200),
+        startsWithBrace: trimmed.startsWith('{'),
+        parseErrorCount,
+        error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      }));
+
+      // Only close on a burst of parse errors (threshold within window)
+      if (parseErrorCount >= PARSE_ERROR_THRESHOLD) {
+        console.log(JSON.stringify({
+          event: 'twilio_parse_error_threshold_close',
+          requestId,
+          callSid: maskCallSid(callSid),
+          parseErrorCount,
+          windowMs: PARSE_ERROR_WINDOW_MS,
+        }));
+        twilioWs.close(1003, 'Persistent parse errors');
+      }
+      return;
+    }
+
+    try {
       if (message.event === 'connected') {
         console.log(JSON.stringify({ event: 'twilio_connected', requestId }));
       } else if (message.event === 'start') {
@@ -2980,8 +3069,13 @@ ${generateVoicePromptInstructions()}`;
         scheduleFinalize('twilio_stop');
       }
     } catch (err) {
-      console.log(JSON.stringify({ event: 'twilio_parse_error', requestId }));
-      twilioWs.close(1003, 'Bad JSON');
+      // Handler logic error (NOT a parse error) — log but do NOT close the WS
+      console.log(JSON.stringify({
+        event: 'twilio_handler_error',
+        requestId,
+        callSid: maskCallSid(callSid),
+        error: err instanceof Error ? err.message : String(err),
+      }));
     }
   });
 
