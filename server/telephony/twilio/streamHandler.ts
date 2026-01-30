@@ -5,6 +5,7 @@ import { generateVoicePromptInstructions } from '../../voice/DisfluencyControlle
 import { streamTTS, streamTTSWithFallback, logTTSConfig, logElevenLabsKeyStatus, isTTSAvailable } from '../../tts/elevenlabs';
 import { prisma } from '../../db';
 import { extractIntakeWithOpenAI, type IntakeExtraction } from '../../intake/extractIntake';
+import { buildInfo } from '../../routes';
 
 // Phone number masking for logs
 function maskPhone(phone: string | null | undefined): string {
@@ -1337,7 +1338,7 @@ export function verifyStreamToken(secret: string, timestamp: number, token: stri
 export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessage): void {
   const requestId = Math.random().toString(36).substring(2, 10).toUpperCase();
   
-  console.log(JSON.stringify({ event: 'ws_connection_accepted', requestId }));
+  console.log(JSON.stringify({ event: 'ws_connection_accepted', requestId, sha: buildInfo.sha, buildTime: buildInfo.buildTime }));
 
   let authenticated = false;
   let streamSid: string | null = null;
@@ -1530,7 +1531,24 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let firstAudioFrameSent = false;
 
   const secret = process.env.STREAM_TOKEN_SECRET;
-  
+
+  // Safe Twilio WS sender: ensures text JSON frames, never binary
+  function sendToTwilio(obj: Record<string, any>): void {
+    if (twilioWs.readyState !== WebSocket.OPEN) return;
+    try {
+      const json = JSON.stringify(obj);
+      twilioWs.send(json);
+    } catch (err) {
+      console.log(JSON.stringify({
+        event: 'twilio_send_error',
+        requestId,
+        callSid: maskCallSid(callSid),
+        error: err instanceof Error ? err.message : String(err),
+        objKeys: Object.keys(obj),
+      }));
+    }
+  }
+
   // ==========================================================================
   // TurnController instance - manages turn-taking state machine
   // ==========================================================================
@@ -1611,8 +1629,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       
       // Clear Twilio audio buffer
       onClearTwilioAudio: () => {
-        if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-          twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
+        if (streamSid) {
+          sendToTwilio({ event: 'clear', streamSid });
         }
       },
       
@@ -1686,14 +1704,10 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
           while (audioBuffer.length >= TWILIO_FRAME_SIZE) {
             const frame = audioBuffer.subarray(0, TWILIO_FRAME_SIZE);
             audioBuffer = audioBuffer.subarray(TWILIO_FRAME_SIZE);
-            
+
             const audioBase64 = frame.toString('base64');
-            if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-              twilioWs.send(JSON.stringify({ 
-                event: 'media', 
-                streamSid, 
-                media: { payload: audioBase64 } 
-              }));
+            if (streamSid) {
+              sendToTwilio({ event: 'media', streamSid, media: { payload: audioBase64 } });
               ttsFrameCount++;
               
               // Track first audio frame and cancel fallback timer
@@ -1720,26 +1734,18 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       );
 
       // Flush any remaining bytes (pad with silence if needed)
-      if (audioBuffer.length > 0 && streamSid && twilioWs.readyState === WebSocket.OPEN) {
+      if (audioBuffer.length > 0 && streamSid) {
         // Pad to 160 bytes with μ-law silence (0xFF)
         const finalFrame = Buffer.alloc(TWILIO_FRAME_SIZE, 0xFF);
         audioBuffer.copy(finalFrame);
         const audioBase64 = finalFrame.toString('base64');
-        twilioWs.send(JSON.stringify({ 
-          event: 'media', 
-          streamSid, 
-          media: { payload: audioBase64 } 
-        }));
+        sendToTwilio({ event: 'media', streamSid, media: { payload: audioBase64 } });
         ttsFrameCount++;
       }
 
       // Send mark event after TTS completes
-      if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-        twilioWs.send(JSON.stringify({ 
-          event: 'mark', 
-          streamSid, 
-          mark: { name: `tts_done_${responseId}` } 
-        }));
+      if (streamSid) {
+        sendToTwilio({ event: 'mark', streamSid, mark: { name: `tts_done_${responseId}` } });
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -1802,14 +1808,10 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
             audioBuffer = audioBuffer.subarray(TWILIO_FRAME_SIZE);
             
             const audioBase64 = frame.toString('base64');
-            if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-              twilioWs.send(JSON.stringify({ 
-                event: 'media', 
-                streamSid, 
-                media: { payload: audioBase64 } 
-              }));
+            if (streamSid) {
+              sendToTwilio({ event: 'media', streamSid, media: { payload: audioBase64 } });
               ttsFrameCount++;
-              
+
               // Mark first audio sent
               if (!firstAudioFrameSent) {
                 firstAudioFrameSent = true;
@@ -1818,17 +1820,13 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
           }
         }
       );
-      
+
       // Flush remaining audio
-      if (audioBuffer.length > 0 && streamSid && twilioWs.readyState === WebSocket.OPEN) {
+      if (audioBuffer.length > 0 && streamSid) {
         const finalFrame = Buffer.alloc(TWILIO_FRAME_SIZE, 0xFF);
         audioBuffer.copy(finalFrame);
         const audioBase64 = finalFrame.toString('base64');
-        twilioWs.send(JSON.stringify({ 
-          event: 'media', 
-          streamSid, 
-          media: { payload: audioBase64 } 
-        }));
+        sendToTwilio({ event: 'media', streamSid, media: { payload: audioBase64 } });
         ttsFrameCount++;
       }
       
@@ -1894,8 +1892,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     }));
 
     // 1. Clear Twilio audio buffer
-    if (streamSid && twilioWs.readyState === WebSocket.OPEN) {
-      twilioWs.send(JSON.stringify({ event: 'clear', streamSid }));
+    if (streamSid) {
+      sendToTwilio({ event: 'clear', streamSid });
     }
 
     // 2. Cancel OpenAI response (only if one is active AND we have a response ID)
@@ -2619,8 +2617,20 @@ ${generateVoicePromptInstructions()}`;
   const PARSE_ERROR_THRESHOLD = 5;
   const PARSE_ERROR_WINDOW_MS = 10_000;
 
-  twilioWs.on('message', (data) => {
-    // Robust message parsing: handle Buffer, ArrayBuffer, string
+  twilioWs.on('message', (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
+    // Binary WebSocket frames are never Twilio JSON — skip immediately
+    if (isBinary) {
+      const byteLen = Buffer.isBuffer(data) ? data.length : (data instanceof ArrayBuffer ? data.byteLength : 0);
+      console.log(JSON.stringify({
+        event: 'twilio_binary_frame_skipped',
+        requestId,
+        callSid: maskCallSid(callSid),
+        byteLen,
+      }));
+      return;
+    }
+
+    // Convert to string safely
     let rawStr: string;
     try {
       if (typeof data === 'string') {
@@ -2630,26 +2640,24 @@ ${generateVoicePromptInstructions()}`;
       } else if (data instanceof ArrayBuffer) {
         rawStr = Buffer.from(data).toString('utf8');
       } else {
-        // Unknown type — convert best-effort
         rawStr = String(data);
       }
     } catch {
-      // Could not even convert to string — skip this frame silently
       console.log(JSON.stringify({
         event: 'twilio_parse_error',
         requestId,
         callSid: maskCallSid(callSid),
         reason: 'toString_failed',
         dataType: typeof data,
+        isBinary,
         isBuffer: Buffer.isBuffer(data),
       }));
       return;
     }
 
-    // Skip non-JSON frames (e.g. empty strings, binary noise) without attempting parse
+    // Skip non-JSON frames without attempting parse
     const trimmed = rawStr.trimStart();
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-      // Not JSON — likely a ping/pong frame or binary payload; ignore silently
       if (rawStr.length > 0) {
         console.log(JSON.stringify({
           event: 'twilio_parse_error',
@@ -2657,6 +2665,7 @@ ${generateVoicePromptInstructions()}`;
           callSid: maskCallSid(callSid),
           reason: 'not_json',
           dataType: typeof data,
+          isBinary,
           isBuffer: Buffer.isBuffer(data),
           byteLen: rawStr.length,
           preview: rawStr.substring(0, 200),
@@ -2683,6 +2692,7 @@ ${generateVoicePromptInstructions()}`;
         callSid: maskCallSid(callSid),
         reason: 'json_parse_failed',
         dataType: typeof data,
+        isBinary,
         isBuffer: Buffer.isBuffer(data),
         byteLen: rawStr.length,
         preview: rawStr.substring(0, 200),
@@ -3090,6 +3100,8 @@ ${generateVoicePromptInstructions()}`;
       twilioFrameCount,
       ttsFrameCount,
       callAgeMs: Date.now() - callStartedAt,
+      sha: buildInfo.sha,
+      parseErrorCount,
     }));
 
     // Clean up keepalive ping
