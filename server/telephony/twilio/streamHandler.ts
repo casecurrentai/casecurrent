@@ -151,12 +151,14 @@ class TurnController {
   /**
    * Called when TTS starts speaking
    */
-  onTtsStarted(text: string): void {
+  onTtsStarted(text: string, isReprompt: boolean = false): void {
     this.ttsStartAt = Date.now();
     this.clearNoInputTimer();
 
-    // New question turn — reset reprompt budget
-    this.noInputRepromptCount = 0;
+    // Only reset reprompt budget on NEW assistant question turns, not on reprompts
+    if (!isReprompt) {
+      this.noInputRepromptCount = 0;
+    }
 
     // Detect if this is a question (ends with ?)
     if (text.trim().endsWith('?')) {
@@ -1570,7 +1572,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
           len: text.length,
           isReprompt,
         }));
-        await speakElevenLabs(text, responseId);
+        await speakElevenLabs(text, responseId, isReprompt);
       },
       
       // Stop current TTS playback
@@ -1659,7 +1661,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   const TWILIO_FRAME_SIZE = 160; // 20ms at 8kHz, 1 byte per sample in μ-law
   const TTS_TIMEOUT_MS = 30000; // 30 second timeout for TTS
   
-  async function speakElevenLabs(text: string, responseId: string): Promise<void> {
+  async function speakElevenLabs(text: string, responseId: string, isReprompt: boolean = false): Promise<void> {
     if (!isTTSAvailable()) {
       console.error(JSON.stringify({ event: 'tts_unavailable', requestId, responseId }));
       return;
@@ -1675,7 +1677,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     
     // Notify TurnController that TTS is starting
     if (turnController) {
-      turnController.onTtsStarted(text);
+      turnController.onTtsStarted(text, isReprompt);
     }
 
     // Track whether TTS was aborted (barge-in) vs completed normally
@@ -2614,7 +2616,7 @@ ${generateVoicePromptInstructions()}`;
   // Parse-error tracking: only close WS on a burst of failures, not a single bad frame
   let parseErrorCount = 0;
   let parseErrorWindowStart = 0;
-  const PARSE_ERROR_THRESHOLD = 5;
+  const PARSE_ERROR_THRESHOLD = 3;
   const PARSE_ERROR_WINDOW_MS = 10_000;
 
   twilioWs.on('message', (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
@@ -3039,25 +3041,29 @@ ${generateVoicePromptInstructions()}`;
             }
           }
 
-          // OpenAI silence watchdog: if Twilio audio flows but OpenAI is silent > 8s, force reconnect
+          // OpenAI silence watchdog: if user is speaking but OpenAI is silent > 8s, force reconnect
+          // Only fire when local VAD detects speech AND we're in a user-facing turn state
           const OPENAI_WATCHDOG_MS = 8000;
-          const TWILIO_RECENT_MS = 2000;
           const WATCHDOG_COOLDOWN_MS = 10000;
           const now = Date.now();
+          const turnState = turnController?.getState() || null;
+          const watchdogBlockedStates = new Set([
+            'ASSIST_SPEAKING', 'POST_TTS_DEADZONE', 'INIT', 'IDLE',
+          ]);
+          const watchdogAllowed = localVadSpeaking && !watchdogBlockedStates.has(turnState as string);
           if (openAiWs && openAiWs.readyState === WebSocket.OPEN &&
-              (now - lastAudioFromTwilioAt) < TWILIO_RECENT_MS &&
+              watchdogAllowed &&
               (now - lastOpenAIMsgAt) > OPENAI_WATCHDOG_MS &&
               !reconnecting &&
               (now - lastWatchdogFiredAt) > WATCHDOG_COOLDOWN_MS) {
             lastWatchdogFiredAt = now;
             const msSinceLastOpenAIMsg = now - lastOpenAIMsgAt;
-            const msSinceLastTwilioAudio = now - lastAudioFromTwilioAt;
             console.log(JSON.stringify({
               event: 'OPENAI_SILENCE_WATCHDOG',
               requestId,
               msSinceLastOpenAIMsg,
-              msSinceLastTwilioAudio,
-              state: turnController?.getState() || null,
+              localVadSpeaking,
+              state: turnState,
             }));
             // Force-close with 1006 to trigger existing reconnect logic
             openAiWs.close(1006, 'watchdog_timeout');
