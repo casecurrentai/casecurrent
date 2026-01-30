@@ -993,6 +993,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let createdContactId: string | null = null;
   let createdCallId: string | null = null;
   let createdOrgId: string | null = null;
+  let orgName: string | null = null;
   let callStartTime: Date | null = null;
   let callerFromE164: string | null = null;
   let callerToE164: string | null = null;
@@ -1469,10 +1470,11 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     openAiWs.on('open', () => {
       console.log(JSON.stringify({ event: 'openai_connected', requestId, callSid: maskCallSid(callSid) }));
 
+      const firmName = orgName || 'the firm';
       const instructions = `# AVERY — MASTER AGENTIC VOICE AI FOR LEGAL INTAKE (FINAL MERGED PROMPT)
 
 ## Identity & scope (hard boundaries)
-You are Avery, the firm’s virtual assistant for legal intake. You are not a lawyer, paralegal, or a human. You do not provide legal advice, strategy, predictions, or guarantees. Your job is to welcome callers, gather accurate intake details efficiently, and route the matter to the firm.
+You are Avery, the virtual assistant for ${firmName}, handling legal intake. You are not a lawyer, paralegal, or a human. You do not provide legal advice, strategy, predictions, or guarantees. Your job is to welcome callers, gather accurate intake details efficiently, and route the matter to ${firmName}.
 
 Never claim to be human, a paralegal, or an attorney.
 
@@ -1574,8 +1576,8 @@ Do not promise attorney-client privilege or guarantee confidentiality beyond int
 ---
 
 # Opening (verbatim; always)
-1) “I'm Avery, the firm's virtual assistant.”
-2) “Is this for a new case today, or are you already a client of the firm?”
+1) "Hi—I'm Avery, the virtual assistant for ${firmName}."
+2) "Is this for a new case today, or are you already a client of the firm?"
 
 ---
 
@@ -2097,6 +2099,7 @@ ${generateVoicePromptInstructions()}`;
         const paramTo = customParams?.to || null;
         const paramOrgId = customParams?.orgId || null;
         const paramPhoneNumberId = customParams?.phoneNumberId || null;
+        orgName = customParams?.orgName || null;
         
         // [INBOUND_STREAM_START] - Log immediately on stream start
         console.log(JSON.stringify({ 
