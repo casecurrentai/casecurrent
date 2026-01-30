@@ -1,0 +1,20 @@
+stages:
+  - verify
+
+verify:
+  stage: verify
+  image: node:20-bullseye
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - node_modules/
+  script:
+    - node -v
+    - npm -v
+    - chmod +x ./scripts/verify
+    - ./scripts/verify
