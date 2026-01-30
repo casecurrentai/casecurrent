@@ -277,6 +277,39 @@ class TurnController {
     if (this.state === 'USER_END_DEBOUNCE' || this.state === 'USER_FINALIZING') {
       this.transition('USER_VALIDATING', 'final_transcript_received');
       this.validateUserUtterance(text);
+    } else if (this.state === 'ASSIST_SPEAKING' || this.state === 'POST_TTS_DEADZONE' || this.state === 'ASSIST_PLANNING') {
+      // Transcript-based barge-in rescue: real speech arrived while assistant is talking
+      const trimmed = text.trim();
+      const charLen = trimmed.length;
+      const wordCount = charLen > 0 ? trimmed.split(/\s+/).filter((w: string) => w.length > 0).length : 0;
+
+      if (charLen >= 8 || wordCount >= 2) {
+        this.config.onLog({
+          event: 'DEADZONE_REAL_SPEECH',
+          requestId: this.config.requestId,
+          state: this.state,
+          charLen,
+          wordCount,
+          preview: trimmed.substring(0, 40),
+        });
+        // Execute barge-in to stop TTS and cancel response
+        this.config.onCancelLlmResponse();
+        this.config.onStopTts();
+        this.config.onClearTwilioAudio();
+        this.forceUserSpeaking();
+        // Validate the utterance directly
+        this.transition('USER_VALIDATING', 'transcript_bargein_rescue');
+        this.validateUserUtterance(text);
+      } else {
+        this.config.onLog({
+          event: 'transcript_final_ignored',
+          requestId: this.config.requestId,
+          state: this.state,
+          reason: 'too_short_for_bargein',
+          charLen,
+          wordCount,
+        });
+      }
     } else {
       this.config.onLog({
         event: 'transcript_final_ignored',
@@ -1033,6 +1066,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   // ElevenLabs TTS state
   let pendingText = '';
   let currentResponseId: string | null = null;
+  let activeResponseId: string | null = null;        // only the live response may produce output
+  const squelchedResponseIds = new Set<string>();     // cancelled IDs whose deltas/done we ignore
   let lastSpokenResponseId: string | null = null;
   let ttsAbortController: AbortController | null = null;
   let ttsSpeaking = false;
@@ -1162,11 +1197,13 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       // Cancel in-flight OpenAI response (prevents queued text after barge-in)
       onCancelLlmResponse: () => {
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN && openaiResponseActive && currentResponseId) {
-          openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+          squelchedResponseIds.add(currentResponseId);
+          openAiWs.send(JSON.stringify({ type: 'response.cancel', response_id: currentResponseId }));
           console.log(JSON.stringify({ event: 'OPENAI_CANCEL_SENT', requestId, responseId: currentResponseId }));
         }
         pendingText = '';
         openaiResponseActive = false;
+        activeResponseId = null;
         currentResponseId = null;
       },
 
@@ -1474,7 +1511,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     // 2. Cancel OpenAI response (only if one is active AND we have a response ID)
     if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
       if (openaiResponseActive && currentResponseId) {
-        openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
+        squelchedResponseIds.add(currentResponseId);
+        openAiWs.send(JSON.stringify({ type: 'response.cancel', response_id: currentResponseId }));
         console.log(JSON.stringify({ event: 'OPENAI_CANCEL_SENT', requestId, responseId: currentResponseId }));
       }
     }
@@ -1488,6 +1526,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
     // 4. Clear state
     pendingText = '';
+    activeResponseId = null;
     currentResponseId = null;
     ttsSpeaking = false;
     ttsStartAt = null;
@@ -1704,6 +1743,12 @@ ${generateVoicePromptInstructions()}`;
               turnState: turnController.getState(),
               reason: 'turn_not_validated',
             }));
+            if (newResponseId) {
+              squelchedResponseIds.add(newResponseId);
+            }
+            activeResponseId = null;
+            currentResponseId = null;
+            pendingText = '';
             if (openAiWs && openAiWs.readyState === WebSocket.OPEN && newResponseId) {
               openAiWs.send(JSON.stringify({ type: 'response.cancel', response_id: newResponseId }));
             }
@@ -1714,6 +1759,7 @@ ${generateVoicePromptInstructions()}`;
           responseInProgress = true;
           openaiResponseActive = true;
           currentResponseId = newResponseId;
+          activeResponseId = newResponseId;
           pendingText = '';
           console.log(JSON.stringify({ event: 'response_started', requestId, responseId: currentResponseId }));
 
@@ -1721,6 +1767,19 @@ ${generateVoicePromptInstructions()}`;
             turnController.onLlmResponseStarted();
           }
         } else if (message.type === 'response.text.delta' || message.type === 'response.output_text.delta' || message.type === 'response.content_part.delta') {
+          // Gate: ignore deltas from squelched or non-active responses
+          const deltaResponseId = message.response_id || message.response?.id || null;
+          if (deltaResponseId && (squelchedResponseIds.has(deltaResponseId) || deltaResponseId !== activeResponseId)) {
+            console.log(JSON.stringify({
+              event: 'DELTA_IGNORED',
+              requestId,
+              responseId: deltaResponseId,
+              activeResponseId,
+              squelched: deltaResponseId ? squelchedResponseIds.has(deltaResponseId) : false,
+            }));
+            return;
+          }
+
           // Accumulate text deltas for TTS
           const textDelta = message.delta?.text || message.delta || '';
           if (textDelta) {
@@ -1730,7 +1789,29 @@ ${generateVoicePromptInstructions()}`;
           responseInProgress = false;
           openaiResponseActive = false;
           const responseId = message.response?.id || currentResponseId;
-          
+
+          // Gate: ignore done from squelched responses
+          if (responseId && squelchedResponseIds.has(responseId)) {
+            console.log(JSON.stringify({
+              event: 'DONE_IGNORED',
+              requestId,
+              responseId,
+              reason: 'squelched',
+              pendingTextLen: pendingText.length,
+            }));
+            pendingText = '';
+            currentResponseId = null;
+            if (responseId === activeResponseId) {
+              activeResponseId = null;
+            }
+            return;
+          }
+
+          // Clear active response since this one is done
+          if (responseId === activeResponseId) {
+            activeResponseId = null;
+          }
+
           // Speak the accumulated text via ElevenLabs TTS
           if (pendingText && pendingText.trim() && responseId !== lastSpokenResponseId) {
             lastSpokenResponseId = responseId;
@@ -1783,10 +1864,20 @@ ${generateVoicePromptInstructions()}`;
               }));
             }
             
-            // Speak via ElevenLabs TTS (async, don't await)
-            speakElevenLabs(textToSpeak, responseId).catch((err) => {
-              console.error(JSON.stringify({ event: 'tts_speak_error', requestId, error: err.message }));
-            });
+            // Final squelch gate: re-check before speaking
+            if (responseId && squelchedResponseIds.has(responseId)) {
+              console.log(JSON.stringify({
+                event: 'TTS_TRIGGER_SQUELCHED',
+                requestId,
+                responseId,
+                text_length: textToSpeak.length,
+              }));
+            } else {
+              // Speak via ElevenLabs TTS (async, don't await)
+              speakElevenLabs(textToSpeak, responseId).catch((err) => {
+                console.error(JSON.stringify({ event: 'tts_speak_error', requestId, error: err.message }));
+              });
+            }
           } else {
             pendingText = '';
           }
@@ -2014,7 +2105,13 @@ ${generateVoicePromptInstructions()}`;
             }
           }
         } else if (message.type === 'error') {
-          console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
+          // Treat "cancel on non-active response" as benign — expected after squelch
+          const errCode = message.error?.code || message.error?.type || '';
+          if (errCode === 'response_cancel_not_active' || (typeof message.error?.message === 'string' && message.error.message.includes('cancel'))) {
+            console.log(JSON.stringify({ event: 'CANCEL_BENIGN', requestId, error: message.error }));
+          } else {
+            console.log(JSON.stringify({ event: 'openai_error', requestId, error: message.error }));
+          }
         }
       } catch (err) {
         console.log(JSON.stringify({ event: 'openai_parse_error', requestId }));
