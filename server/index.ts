@@ -14,8 +14,9 @@ process.on("uncaughtException", (error) => {
   console.error(`[CRASH_GUARD] Uncaught Exception:`, error);
 });
 
-const GIT_SHA = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || "local";
-console.log(`[BOOT] SHA=${GIT_SHA} NODE_ENV=${process.env.NODE_ENV || "undefined"} PID=${process.pid}`);
+const DEPLOY_ID = process.env.REPL_SLUG_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || `local-${Date.now()}`;
+const BOOT_TS = new Date().toISOString();
+console.log(`=== AVERY STARTUP === DEPLOY_ID=${DEPLOY_ID} time=${BOOT_TS} NODE_ENV=${process.env.NODE_ENV || "undefined"} PID=${process.pid}`);
 
 const app = express();
 const httpServer = createServer(app);
