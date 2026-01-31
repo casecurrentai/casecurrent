@@ -507,15 +507,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  // Simple version endpoint (requested for deployment verification)
-  // Must be public, no auth, with cache-busting headers
-  app.get('/api/version', (_req, res) => {
-    // Prevent any caching
+  // Deployment verification endpoint — public, no auth, no cache
+  // Aliases: /api/version and /version (for quick curl checks)
+  const versionHandler = (_req: any, res: any) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
     res.set('Surrogate-Control', 'no-store');
-    
+
     res.json({
       sha: buildInfo.sha,
       buildTime: buildInfo.buildTime,
@@ -524,7 +523,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       host: buildInfo.host,
       source: buildInfo.source,
     });
-  });
+  };
+  app.get('/api/version', versionHandler);
+  app.get('/version', versionHandler);
 
   // Token-gated production phone number seeding endpoint
   // TODO: Remove or disable this endpoint after initial production seeding is verified
@@ -5522,6 +5523,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       <Parameter name="phoneNumberId" value="${xmlEsc(phoneNumber.id)}"/>
     </Stream>
   </Connect>
+  <Pause length="3600"/>
 </Response>`;
 
           const durationMs = Date.now() - startTime;

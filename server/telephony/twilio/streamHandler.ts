@@ -6,6 +6,7 @@ import { streamTTS, streamTTSWithFallback, logTTSConfig, logElevenLabsKeyStatus,
 import { prisma } from '../../db';
 import { extractIntakeWithOpenAI, type IntakeExtraction } from '../../intake/extractIntake';
 import { buildInfo } from '../../routes';
+import { attachKeepAlive, type KeepAliveHandle } from '../../lib/wsKeepAlive';
 
 // Phone number masking for logs
 function maskPhone(phone: string | null | undefined): string {
@@ -1462,11 +1463,14 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let lastAudioFromTwilioAt: number = Date.now();
   let lastOpenAIMsgAt: number = Date.now();
   let openAiPingInterval: NodeJS.Timeout | null = null;
+  let twilioKA: KeepAliveHandle | null = null;
+  let openAiKA: KeepAliveHandle | null = null;
+  let heartbeatInterval: NodeJS.Timeout | null = null;
 
   // OpenAI WS reconnect state (Section C)
   let openAiReconnectAttempt = 0;
-  const OPENAI_MAX_RECONNECT = 3;
-  const OPENAI_RECONNECT_BACKOFF = [500, 1000, 2000]; // ms
+  const OPENAI_MAX_RECONNECT = 5;
+  const OPENAI_RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000]; // ms — exponential to survive longer outages
   let reconnecting = false;
 
   // Finalization scheduling with retry for lead-creation race
@@ -1649,6 +1653,32 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
       twilioWs.close(1008, 'No start event received');
     }
   }, START_TIMEOUT_MS);
+
+  // Twilio WS keepalive: 10s ping, 35s stale detection (defeats proxy idle kill)
+  twilioKA = attachKeepAlive(twilioWs, {
+    label: 'twilio-downstream',
+    id: requestId,
+    intervalMs: 10_000,
+    staleMs: 35_000,
+    log: (m) => console.log(JSON.stringify(m)),
+  });
+
+  // Heartbeat: log both WS states every 10s for post-mortem
+  heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+    console.log(JSON.stringify({
+      event: 'ws_heartbeat',
+      requestId,
+      callSid: callSid ? `****${callSid.slice(-8)}` : null,
+      callAgeS: Math.round((now - callStartedAt) / 1000),
+      twilio: { readyState: twilioWs.readyState, lastSeenAgoMs: twilioKA ? now - twilioKA.getLastSeen() : null },
+      openai: { readyState: openAiWs?.readyState ?? null, lastSeenAgoMs: openAiKA ? now - openAiKA.getLastSeen() : null },
+      lastAudioFromTwilioAgoMs: now - lastAudioFromTwilioAt,
+      lastOpenAIMsgAgoMs: now - lastOpenAIMsgAt,
+      turnState: turnController?.getState() || null,
+    }));
+  }, 10_000);
+  heartbeatInterval.unref?.();
 
   const maskCallSid = (sid: string | null) => sid ? `****${sid.slice(-8)}` : null;
 
@@ -2093,13 +2123,23 @@ ${generateVoicePromptInstructions()}`;
       openAiReconnectAttempt = 0; // Reset reconnect counter on successful connect
       reconnecting = false;
 
-      // Keepalive ping every 25s to prevent OpenAI idle timeout (~270s)
+      // Keepalive ping every 15s to prevent OpenAI idle timeout (~270s)
       if (openAiPingInterval) clearInterval(openAiPingInterval);
       openAiPingInterval = setInterval(() => {
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
           openAiWs.ping();
         }
-      }, 25_000);
+      }, 15_000);
+
+      // Attach structured keepalive tracking for OpenAI
+      if (openAiKA) openAiKA.stop();
+      openAiKA = attachKeepAlive(openAiWs!, {
+        label: 'openai-upstream',
+        id: requestId,
+        intervalMs: 15_000,
+        staleMs: 45_000,
+        log: (m) => console.log(JSON.stringify(m)),
+      });
 
       if (pendingTwilioAudio.length > 0) {
         console.log(JSON.stringify({ event: 'flush_buffered_audio', requestId, count: pendingTwilioAudio.length }));
@@ -2568,6 +2608,7 @@ ${generateVoicePromptInstructions()}`;
         clearInterval(openAiPingInterval);
         openAiPingInterval = null;
       }
+      if (openAiKA) { openAiKA.stop(); openAiKA = null; }
 
       // Reconnect on abnormal closures (1006/1001/1005) if Twilio is still alive
       const isAbnormal = code === 1006 || code === 1001 || code === 1005;
@@ -2600,10 +2641,25 @@ ${generateVoicePromptInstructions()}`;
         }, delay);
       } else if (twilioWs.readyState === WebSocket.OPEN) {
         // Normal close or reconnect exhausted — end the call gracefully
+        const closeReason = isAbnormal
+          ? `openai_reconnect_exhausted_${openAiReconnectAttempt}of${OPENAI_MAX_RECONNECT}`
+          : `openai_normal_close_${code}`;
         if (isAbnormal && openAiReconnectAttempt >= OPENAI_MAX_RECONNECT) {
-          console.log(JSON.stringify({ event: 'openai_reconnect_exhausted', requestId, attempts: openAiReconnectAttempt }));
+          console.log(JSON.stringify({
+            event: 'openai_reconnect_exhausted',
+            requestId,
+            attempts: openAiReconnectAttempt,
+            callAgeMs: Date.now() - callStartedAt,
+          }));
         }
-        twilioWs.close(1000, 'OpenAI connection closed');
+        console.log(JSON.stringify({
+          tag: '[CALL_END_REASON]',
+          requestId,
+          reason: closeReason,
+          callAgeMs: Date.now() - callStartedAt,
+          openAiCloseCode: code,
+        }));
+        twilioWs.close(1000, closeReason);
       }
     });
 
@@ -3041,10 +3097,10 @@ ${generateVoicePromptInstructions()}`;
             }
           }
 
-          // OpenAI silence watchdog: if user is speaking but OpenAI is silent > 8s, force reconnect
+          // OpenAI silence watchdog: if user is speaking but OpenAI is silent > 15s, force reconnect
           // Only fire when local VAD detects speech AND we're in a user-facing turn state
-          const OPENAI_WATCHDOG_MS = 8000;
-          const WATCHDOG_COOLDOWN_MS = 10000;
+          const OPENAI_WATCHDOG_MS = 15000;
+          const WATCHDOG_COOLDOWN_MS = 20000;
           const now = Date.now();
           const turnState = turnController?.getState() || null;
           const watchdogBlockedStates = new Set([
@@ -3110,10 +3166,16 @@ ${generateVoicePromptInstructions()}`;
       parseErrorCount,
     }));
 
-    // Clean up keepalive ping
+    // Clean up keepalive pings and heartbeat
     if (openAiPingInterval) {
       clearInterval(openAiPingInterval);
       openAiPingInterval = null;
+    }
+    if (twilioKA) { twilioKA.stop(); twilioKA = null; }
+    if (openAiKA) { openAiKA.stop(); openAiKA = null; }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
     }
 
     // Reset state on connection close
