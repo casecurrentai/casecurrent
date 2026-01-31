@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.organization?.onboardingStatus !== "complete") {
       setLocation("/setup");
     } else {
-      setLocation("/leads");
+      setLocation("/cases");
     }
   }
 

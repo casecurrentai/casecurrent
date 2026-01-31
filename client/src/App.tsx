@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation, useRoute } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,8 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { AppLayout } from "@/components/app-layout";
 import LoginPage from "@/pages/login";
-import LeadsPage from "@/pages/leads";
-import LeadDetailPage from "@/pages/lead-detail";
+import CasesPage from "@/pages/cases";
+import CaseDetailPage from "@/pages/case-detail";
 import ContactSubmissionsPage from "@/pages/admin/contact-submissions";
 import AdminOrgsPage from "@/pages/admin/orgs";
 import AdminOrgsNewPage from "@/pages/admin/orgs-new";
@@ -20,6 +20,7 @@ import ExperimentDetailPage from "@/pages/experiment-detail";
 import PolicyTestsPage from "@/pages/policy-tests";
 import PIDashboardPage from "@/pages/pi-dashboard";
 import DebugPage from "@/pages/debug";
+import MenuPage from "@/pages/menu";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
@@ -35,7 +36,7 @@ import InstallPage from "@/pages/marketing/install";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -43,18 +44,18 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (user) {
     return <Redirect to="/dashboard" />;
   }
-  
+
   return <>{children}</>;
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, organization } = useAuth();
   const [location, setLocation] = useLocation();
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -62,7 +63,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Redirect to="/login" />;
   }
@@ -70,13 +71,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (organization?.onboardingStatus !== "complete" && !location.startsWith("/setup") && !location.startsWith("/admin")) {
     return <Redirect to="/setup" />;
   }
-  
+
   return <>{children}</>;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isPlatformAdmin } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -84,21 +85,21 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Redirect to="/login" />;
   }
 
   if (!isPlatformAdmin) {
-    return <Redirect to="/leads" />;
+    return <Redirect to="/cases" />;
   }
-  
+
   return <>{children}</>;
 }
 
 function AdminOrOwnerRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, organization } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -106,21 +107,30 @@ function AdminOrOwnerRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Redirect to="/login" />;
   }
 
   const isAdminOrOwner = user.role === "admin" || user.role === "owner";
   if (!isAdminOrOwner) {
-    return <Redirect to="/leads" />;
+    return <Redirect to="/cases" />;
   }
 
   if (organization?.onboardingStatus !== "complete") {
     return <Redirect to="/setup" />;
   }
-  
+
   return <>{children}</>;
+}
+
+// Redirect wrapper that forwards dynamic params (Wouter <Redirect> doesn't support params)
+function LeadDetailRedirect() {
+  const [, params] = useRoute("/leads/:id");
+  if (params?.id) {
+    return <Redirect to={`/cases/${params.id}`} />;
+  }
+  return <Redirect to="/cases" />;
 }
 
 function Router() {
@@ -168,17 +178,29 @@ function Router() {
           </AppLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/leads">
+      <Route path="/cases">
         <ProtectedRoute>
           <AppLayout>
-            <LeadsPage />
+            <CasesPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/leads/:id">
+      <Route path="/cases/:id">
         <ProtectedRoute>
           <AppLayout>
-            <LeadDetailPage />
+            <CaseDetailPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      {/* Legacy /leads redirects */}
+      <Route path="/leads/:id" component={LeadDetailRedirect} />
+      <Route path="/leads">
+        <Redirect to="/cases" />
+      </Route>
+      <Route path="/menu">
+        <ProtectedRoute>
+          <AppLayout>
+            <MenuPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>

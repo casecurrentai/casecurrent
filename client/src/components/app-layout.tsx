@@ -10,28 +10,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { 
-  Users, 
-  Settings, 
-  LogOut, 
-  ChevronDown, 
-  MessageSquare, 
-  Webhook, 
-  FlaskConical, 
+import {
+  Users,
+  LogOut,
+  ChevronDown,
+  MessageSquare,
+  Webhook,
+  FlaskConical,
   ShieldCheck,
-  Menu,
-  X,
-  MoreHorizontal,
   Home,
-  BarChart3,
   Bug,
+  Menu as MenuIcon,
+  Briefcase,
+  PanelLeft,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -58,26 +64,32 @@ function useVersion(): BuildInfo | null {
   return buildInfo;
 }
 
-// Primary navigation - shown in bottom nav on mobile
-const PRIMARY_NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-  { href: "/leads", label: "Leads", icon: Users },
-  { href: "/experiments", label: "Experiments", icon: FlaskConical },
-  { href: "/policy-tests", label: "Tests", icon: ShieldCheck },
+// Sidebar nav structure
+const MAIN_NAV = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/cases", label: "Cases", icon: Briefcase },
 ];
 
-// Secondary navigation - shown in "More" menu on mobile
-const SECONDARY_NAV = [
+const FIRM_OPS_NAV = [
+  { href: "/policy-tests", label: "Safety Checks", icon: ShieldCheck },
+  { href: "/settings/webhooks", label: "Integrations", icon: Webhook },
   { href: "/admin/contact-submissions", label: "Inquiries", icon: MessageSquare },
-  { href: "/settings/webhooks", label: "Webhooks", icon: Webhook },
 ];
 
-// Admin-only navigation items
-const ADMIN_NAV = [
-  { href: "/debug", label: "Debug", icon: Bug },
+const INTAKE_LAB_NAV = [
+  { href: "/experiments", label: "Experiments", icon: FlaskConical },
 ];
 
-const ALL_NAV_ITEMS = [...PRIMARY_NAV, ...SECONDARY_NAV];
+const SYSTEM_NAV = [
+  { href: "/debug", label: "Activity Log", icon: Bug },
+];
+
+// Mobile bottom nav - exactly 3 items
+const MOBILE_NAV = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/cases", label: "Cases", icon: Briefcase },
+  { href: "/menu", label: "Menu", icon: MenuIcon },
+];
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return <AppLayoutInner>{children}</AppLayoutInner>;
@@ -85,26 +97,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
 function MobileBottomNav() {
   const [location] = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const { user } = useAuth();
-  const isAdmin = user?.role === "owner" || user?.role === "admin";
-  
-  // Combine secondary nav with admin nav items if user is admin/owner
-  const moreNavItems = isAdmin ? [...SECONDARY_NAV, ...ADMIN_NAV] : SECONDARY_NAV;
 
   return (
     <>
       {/* Bottom navigation bar - fixed at bottom on mobile */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t md:hidden pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-stretch justify-around px-2">
-          {PRIMARY_NAV.map((item) => {
-            const isActive = location.startsWith(item.href);
+          {MOBILE_NAV.map((item) => {
+            const isActive = item.href === "/menu"
+              ? location === "/menu"
+              : location.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}>
                 <button
                   className={`flex flex-col items-center justify-center gap-0.5 px-4 min-h-[56px] min-w-[72px] transition-colors ${
-                    isActive 
-                      ? "text-primary bg-primary/10" 
+                    isActive
+                      ? "text-primary bg-primary/10"
                       : "text-muted-foreground"
                   }`}
                   data-testid={`mobile-nav-${item.label.toLowerCase()}`}
@@ -115,49 +123,6 @@ function MobileBottomNav() {
               </Link>
             );
           })}
-          
-          {/* More menu for secondary items */}
-          <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-            <SheetTrigger asChild>
-              <button
-                className={`flex flex-col items-center justify-center gap-0.5 px-4 min-h-[56px] min-w-[72px] transition-colors ${
-                  moreNavItems.some(item => location.startsWith(item.href))
-                    ? "text-primary bg-primary/10" 
-                    : "text-muted-foreground"
-                }`}
-                data-testid="mobile-nav-more"
-              >
-                <MoreHorizontal className="h-6 w-6" />
-                <span className="text-[11px] font-medium">More</span>
-              </button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-auto max-h-[50vh] rounded-t-xl">
-              <SheetHeader className="pb-4">
-                <SheetTitle>More Options</SheetTitle>
-              </SheetHeader>
-              <div className="space-y-1 pb-safe">
-                {moreNavItems.map((item) => {
-                  const isActive = location.startsWith(item.href);
-                  return (
-                    <Link key={item.href} href={item.href}>
-                      <button
-                        onClick={() => setMoreOpen(false)}
-                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg transition-colors ${
-                          isActive 
-                            ? "bg-primary/10 text-primary" 
-                            : "text-foreground hover-elevate"
-                        }`}
-                        data-testid={`mobile-more-${item.label.toLowerCase()}`}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        <span className="font-medium">{item.label}</span>
-                      </button>
-                    </Link>
-                  );
-                })}
-              </div>
-            </SheetContent>
-          </Sheet>
         </div>
       </nav>
 
@@ -167,111 +132,137 @@ function MobileBottomNav() {
   );
 }
 
-function DesktopNav() {
+function AppSidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
-  const isAdmin = user?.role === "owner" || user?.role === "admin";
-  
-  // Include admin nav items for admin/owner users
-  const navItems = isAdmin ? [...ALL_NAV_ITEMS, ...ADMIN_NAV] : ALL_NAV_ITEMS;
-
-  return (
-    <nav className="hidden md:flex items-center gap-1 flex-1">
-      {navItems.map((item) => {
-        const isActive = location.startsWith(item.href);
-        return (
-          <Link key={item.href} href={item.href}>
-            <Button
-              variant={isActive ? "secondary" : "ghost"}
-              size="sm"
-              data-testid={`nav-${item.label.toLowerCase()}`}
-            >
-              <item.icon className="h-4 w-4 mr-2" />
-              {item.label}
-            </Button>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-function MobileHeader() {
   const { user, organization, logout } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
   const isAdmin = user?.role === "owner" || user?.role === "admin";
-  
-  // Include admin nav items for admin/owner users
-  const allNavItems = isAdmin ? [...ALL_NAV_ITEMS, ...ADMIN_NAV] : ALL_NAV_ITEMS;
 
   return (
-    <div className="flex items-center gap-2 md:hidden">
-      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-[280px] p-0">
-          <div className="flex flex-col h-full">
-            <SheetHeader className="p-4 border-b">
-              <SheetTitle className="text-left">CaseCurrent</SheetTitle>
-            </SheetHeader>
-            
-            {/* User info */}
-            <div className="p-4 border-b bg-muted/30">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-lg font-semibold">
-                  {user?.name?.charAt(0).toUpperCase() || "U"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{user?.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{organization?.name}</p>
-                </div>
-              </div>
-            </div>
+    <Sidebar collapsible="icon" className="hidden md:flex">
+      <SidebarHeader className="p-4">
+        <Link href="/cases">
+          <span className="font-bold text-lg tracking-tight cursor-pointer group-data-[collapsible=icon]:hidden" data-testid="text-header-logo">
+            CaseCurrent
+          </span>
+          <span className="font-bold text-lg tracking-tight cursor-pointer hidden group-data-[collapsible=icon]:block">
+            CC
+          </span>
+        </Link>
+      </SidebarHeader>
 
-            {/* Navigation */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
-              {allNavItems.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  <button
-                    onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover-elevate text-left"
-                    data-testid={`mobile-menu-${item.label.toLowerCase()}`}
-                  >
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </button>
-                </Link>
-              ))}
-            </div>
+      <SidebarContent>
+        {/* Main */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {MAIN_NAV.map((item) => {
+                const isActive = location.startsWith(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-            {/* Footer actions */}
-            <div className="p-4 border-t space-y-1">
-              <button
-                className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover-elevate text-left"
-                data-testid="mobile-menu-settings"
-              >
-                <Settings className="h-5 w-5" />
-                <span>Settings</span>
-              </button>
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  logout();
-                }}
-                className="flex items-center gap-3 w-full px-3 py-3 rounded-lg hover-elevate text-left text-destructive"
-                data-testid="mobile-menu-logout"
-              >
-                <LogOut className="h-5 w-5" />
-                <span>Log out</span>
-              </button>
-            </div>
+        {/* Firm Ops */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Firm Ops</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {FIRM_OPS_NAV.map((item) => {
+                const isActive = location.startsWith(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Intake Lab */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Intake Lab</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {INTAKE_LAB_NAV.map((item) => {
+                const isActive = location.startsWith(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* System (admin/owner only) */}
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>System</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {SYSTEM_NAV.map((item) => {
+                  const isActive = location.startsWith(item.href);
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                        <Link href={item.href}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+      </SidebarContent>
+
+      <SidebarFooter className="p-4">
+        <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
+          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
+            {user?.name?.charAt(0).toUpperCase() || "U"}
           </div>
-        </SheetContent>
-      </Sheet>
-    </div>
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+            <p className="text-sm font-medium truncate">{user?.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{organization?.name}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 flex-shrink-0 group-data-[collapsible=icon]:hidden"
+            onClick={logout}
+            data-testid="sidebar-logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      </SidebarFooter>
+    </Sidebar>
   );
 }
 
@@ -302,11 +293,6 @@ function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem data-testid="menu-settings">
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} data-testid="menu-logout">
           <LogOut className="h-4 w-4 mr-2" />
           Log out
@@ -320,8 +306,7 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const buildInfo = useVersion();
   const isAdmin = user?.role === "owner" || user?.role === "admin";
-  
-  // Format buildTime for display
+
   const formatBuildTime = (isoTime: string) => {
     if (!isoTime) return '';
     try {
@@ -339,47 +324,47 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-14 items-center gap-2 px-4 md:container md:px-4">
-          {/* Mobile menu button */}
-          <MobileHeader />
-          
-          {/* Logo */}
-          <Link href="/leads">
-            <span className="font-bold text-lg tracking-tight cursor-pointer" data-testid="text-header-logo">
-              CaseCurrent
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="bg-[#F3F4F6] dark:bg-background">
+        {/* Thin top bar inside SidebarInset */}
+        <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex h-12 items-center gap-2 px-4">
+            {/* Sidebar toggle (desktop only) */}
+            <SidebarTrigger className="hidden md:flex" />
+
+            {/* Mobile: Logo */}
+            <Link href="/cases" className="md:hidden">
+              <span className="font-bold text-lg tracking-tight cursor-pointer" data-testid="text-header-logo-mobile">
+                CaseCurrent
+              </span>
+            </Link>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* User menu */}
+            <UserMenu />
+          </div>
+        </header>
+
+        {/* Main content with bottom padding for mobile nav */}
+        <main className="flex-1 px-4 py-4 md:py-6 md:px-6 pb-24 md:pb-6">
+          {children}
+        </main>
+
+        {/* Mobile bottom navigation */}
+        <MobileBottomNav />
+
+        {/* Footer with version SHA + buildTime for admin users */}
+        {isAdmin && buildInfo && buildInfo.sha !== "local" && (
+          <footer className="hidden md:block border-t py-2 px-4 text-center">
+            <span className="text-xs text-muted-foreground font-mono" data-testid="text-version-sha">
+              Build: {buildInfo.sha} @ {formatBuildTime(buildInfo.buildTime)}
             </span>
-          </Link>
-
-          {/* Desktop navigation */}
-          <DesktopNav />
-
-          {/* Spacer on mobile */}
-          <div className="flex-1 md:hidden" />
-
-          {/* User menu */}
-          <UserMenu />
-        </div>
-      </header>
-
-      {/* Main content with bottom padding for mobile nav */}
-      <main className="flex-1 px-4 py-4 md:py-6 md:container md:px-4 pb-24 md:pb-6">
-        {children}
-      </main>
-
-      {/* Mobile bottom navigation */}
-      <MobileBottomNav />
-
-      {/* Footer with version SHA + buildTime for admin users */}
-      {isAdmin && buildInfo && buildInfo.sha !== "local" && (
-        <footer className="hidden md:block border-t py-2 px-4 text-center">
-          <span className="text-xs text-muted-foreground font-mono" data-testid="text-version-sha">
-            Build: {buildInfo.sha} @ {formatBuildTime(buildInfo.buildTime)}
-          </span>
-        </footer>
-      )}
-    </div>
+          </footer>
+        )}
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

@@ -85,7 +85,7 @@ export default function InviteAcceptPage() {
       if (result.organization.onboardingStatus !== "complete") {
         setLocation("/setup");
       } else {
-        setLocation("/leads");
+        setLocation("/cases");
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
