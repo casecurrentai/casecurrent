@@ -166,7 +166,7 @@ export default function SetupWizardPage() {
   useEffect(() => {
     // Only redirect if onboarding is complete AND not in edit mode
     if (setupData?.onboardingStatus === "complete" && !isEditMode) {
-      setLocation("/leads");
+      setLocation("/cases");
     }
   }, [setupData, setLocation, isEditMode]);
 
@@ -206,7 +206,7 @@ export default function SetupWizardPage() {
     },
     onSuccess: () => {
       toast({ title: "Setup complete", description: "Your account is now ready to use" });
-      setLocation("/leads");
+      setLocation("/cases");
     },
   });
 
