@@ -1540,9 +1540,26 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
   // Safe Twilio WS sender: ensures text JSON frames, never binary
   function sendToTwilio(obj: Record<string, any>): void {
+    if (!obj || typeof obj !== 'object') {
+      console.log(JSON.stringify({
+        event: 'twilio_send_invalid_obj',
+        requestId,
+        callSid: maskCallSid(callSid),
+        type: typeof obj,
+      }));
+      return;
+    }
     if (twilioWs.readyState !== WebSocket.OPEN) return;
     try {
       const json = JSON.stringify(obj);
+      // Dev sanity: prove round-trip is valid JSON
+      if (process.env.NODE_ENV !== 'production') JSON.parse(json);
+      console.log(JSON.stringify({
+        event: 'twilio_send',
+        requestId,
+        kind: obj.event,
+        bytes: json.length,
+      }));
       twilioWs.send(json);
     } catch (err) {
       console.log(JSON.stringify({
@@ -1550,7 +1567,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
         requestId,
         callSid: maskCallSid(callSid),
         error: err instanceof Error ? err.message : String(err),
-        objKeys: Object.keys(obj),
+        objKeys: obj ? Object.keys(obj) : [],
       }));
     }
   }
