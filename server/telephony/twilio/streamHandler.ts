@@ -2627,19 +2627,36 @@ ${generateVoicePromptInstructions()}`;
       }
       if (openAiKA) { openAiKA.stop(); openAiKA = null; }
 
-      // Reconnect on abnormal closures (1006/1001/1005) if Twilio is still alive
-      const isAbnormal = code === 1006 || code === 1001 || code === 1005;
-      if (isAbnormal && twilioWs.readyState === WebSocket.OPEN && openAiReconnectAttempt < OPENAI_MAX_RECONNECT) {
+      // Determine if this close was intentionally initiated by our finalization
+      const reasonStr = reason?.toString() || '';
+      const isIntentionalClose = code === 1000 && reasonStr.startsWith('finalized:');
+
+      if (isIntentionalClose) {
+        // We closed OpenAI on purpose after finalization — do NOT touch Twilio
+        console.log(JSON.stringify({
+          event: 'openai_closed_intentional',
+          requestId,
+          code,
+          reason: reasonStr,
+          callAgeMs,
+        }));
+      } else if (twilioWs.readyState === WebSocket.OPEN && openAiReconnectAttempt < OPENAI_MAX_RECONNECT) {
+        // Unexpected close (1006, 1011 keepalive, 1001, etc.) — attempt reconnect
         const delay = OPENAI_RECONNECT_BACKOFF[openAiReconnectAttempt] || 2000;
         openAiReconnectAttempt++;
         reconnecting = true;
+
         console.log(JSON.stringify({
-          event: 'openai_reconnect_scheduled',
+          event: 'openai_closed_unexpected',
           requestId,
+          code,
+          reason: reasonStr,
+          callAgeMs,
+          msSinceLastTwilioAudio,
+          msSinceLastOpenAIMsg,
           attempt: openAiReconnectAttempt,
           maxAttempts: OPENAI_MAX_RECONNECT,
           delayMs: delay,
-          code,
         }));
 
         // Send filler line on first reconnect attempt via ElevenLabs TTS
@@ -2651,32 +2668,44 @@ ${generateVoicePromptInstructions()}`;
         setTimeout(() => {
           if (twilioWs.readyState !== WebSocket.OPEN) {
             console.log(JSON.stringify({ event: 'openai_reconnect_aborted', requestId, reason: 'twilio_closed' }));
+            reconnecting = false;
             return;
           }
-          console.log(JSON.stringify({ event: 'openai_reconnect_attempt', requestId, attempt: openAiReconnectAttempt }));
+          console.log(JSON.stringify({ event: 'openai_reconnect_attempt', requestId, attempt: openAiReconnectAttempt, callAgeMs: Date.now() - callStartedAt }));
           initOpenAI();
         }, delay);
       } else if (twilioWs.readyState === WebSocket.OPEN) {
-        // Normal close or reconnect exhausted — end the call gracefully
-        const closeReason = isAbnormal
-          ? `openai_reconnect_exhausted_${openAiReconnectAttempt}of${OPENAI_MAX_RECONNECT}`
-          : `openai_normal_close_${code}`;
-        if (isAbnormal && openAiReconnectAttempt >= OPENAI_MAX_RECONNECT) {
-          console.log(JSON.stringify({
-            event: 'openai_reconnect_exhausted',
-            requestId,
-            attempts: openAiReconnectAttempt,
-            callAgeMs: Date.now() - callStartedAt,
-          }));
-        }
+        // Reconnect attempts exhausted — speak goodbye and end call gracefully
+        const closeReason = `openai_reconnect_exhausted_${openAiReconnectAttempt}of${OPENAI_MAX_RECONNECT}`;
         console.log(JSON.stringify({
-          tag: '[CALL_END_REASON]',
+          event: 'openai_reconnect_exhausted',
           requestId,
-          reason: closeReason,
+          attempts: openAiReconnectAttempt,
           callAgeMs: Date.now() - callStartedAt,
-          openAiCloseCode: code,
+          lastCode: code,
+          lastReason: reasonStr,
         }));
-        twilioWs.close(1000, closeReason);
+
+        // Speak a short failure message before ending
+        const goodbyeId = `goodbye_reconnect_${Date.now()}`;
+        speakElevenLabs(
+          "I'm sorry, I'm experiencing a technical issue. Please call back in a moment.",
+          goodbyeId,
+        ).catch(() => {}).finally(() => {
+          // Give TTS a moment to flush audio to Twilio before closing
+          setTimeout(() => {
+            if (twilioWs.readyState === WebSocket.OPEN) {
+              console.log(JSON.stringify({
+                tag: '[CALL_END_REASON]',
+                requestId,
+                reason: closeReason,
+                callAgeMs: Date.now() - callStartedAt,
+                openAiCloseCode: code,
+              }));
+              twilioWs.close(1000, closeReason);
+            }
+          }, 3000);
+        });
       }
     });
 
