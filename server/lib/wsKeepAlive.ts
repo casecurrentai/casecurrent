@@ -7,7 +7,7 @@ export interface KeepAliveOptions {
   id: string;
   /** Ping interval in ms (default 15000) */
   intervalMs?: number;
-  /** Mark socket stale after this many ms without any inbound frame (default 45000) */
+  /** Mark socket stale after this many ms without any inbound frame (default 5 min) */
   staleMs?: number;
   /** Structured logger — defaults to console.log with JSON */
   log?: (msg: Record<string, unknown>) => void;
@@ -31,7 +31,7 @@ export interface KeepAliveHandle {
  */
 export function attachKeepAlive(ws: WebSocket, opts: KeepAliveOptions): KeepAliveHandle {
   const intervalMs = opts.intervalMs ?? 15_000;
-  const staleMs = opts.staleMs ?? 45_000;
+  const staleMs = opts.staleMs ?? 5 * 60_000; // 5 minutes default
   const log = opts.log ?? ((m: Record<string, unknown>) => console.log(JSON.stringify(m)));
 
   const startedAt = Date.now();
@@ -83,26 +83,16 @@ export function attachKeepAlive(ws: WebSocket, opts: KeepAliveOptions): KeepAliv
 
     const idleMs = Date.now() - lastSeen;
     if (idleMs > staleMs) {
-      log({
-        event: 'ws_ka_stale',
-        ...meta,
-        idleMs,
-        staleMs,
-        action: 'terminate',
-      });
-      try { ws.terminate(); } catch { /* already dead */ }
+      log({ event: 'ws_ka_stale', ...meta, idleMs, staleMs, action: 'close' });
+      try { ws.close(4000, 'keepalive_stale'); } catch { /* already dead */ }
       return;
     }
 
     try {
       ws.ping();
     } catch (e) {
-      log({
-        event: 'ws_ka_ping_failed',
-        ...meta,
-        error: (e as Error)?.message ?? String(e),
-      });
-      try { ws.terminate(); } catch { /* already dead */ }
+      log({ event: 'ws_ka_ping_failed', ...meta, error: (e as Error)?.message ?? String(e), action: 'close' });
+      try { ws.close(4001, 'keepalive_ping_failed'); } catch { /* already dead */ }
     }
   }, intervalMs);
 

@@ -1540,9 +1540,26 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
   // Safe Twilio WS sender: ensures text JSON frames, never binary
   function sendToTwilio(obj: Record<string, any>): void {
+    if (!obj || typeof obj !== 'object') {
+      console.log(JSON.stringify({
+        event: 'twilio_send_invalid_obj',
+        requestId,
+        callSid: maskCallSid(callSid),
+        type: typeof obj,
+      }));
+      return;
+    }
     if (twilioWs.readyState !== WebSocket.OPEN) return;
     try {
       const json = JSON.stringify(obj);
+      // Dev sanity: prove round-trip is valid JSON
+      if (process.env.NODE_ENV !== 'production') JSON.parse(json);
+      console.log(JSON.stringify({
+        event: 'twilio_send',
+        requestId,
+        kind: obj.event,
+        bytes: json.length,
+      }));
       twilioWs.send(json);
     } catch (err) {
       console.log(JSON.stringify({
@@ -1550,7 +1567,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
         requestId,
         callSid: maskCallSid(callSid),
         error: err instanceof Error ? err.message : String(err),
-        objKeys: Object.keys(obj),
+        objKeys: obj ? Object.keys(obj) : [],
       }));
     }
   }
@@ -1659,8 +1676,8 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     label: 'twilio-downstream',
     id: requestId,
     intervalMs: 10_000,
-    staleMs: 35_000,
-    log: (m) => console.log(JSON.stringify(m)),
+    staleMs: 5 * 60_000, // 5 min — avoid killing Twilio WS during sparse inbound
+    log: (m) => console.log(JSON.stringify({ requestId, ...m })),
   });
 
   // Heartbeat: log both WS states every 10s for post-mortem
@@ -2137,8 +2154,8 @@ ${generateVoicePromptInstructions()}`;
         label: 'openai-upstream',
         id: requestId,
         intervalMs: 15_000,
-        staleMs: 45_000,
-        log: (m) => console.log(JSON.stringify(m)),
+        staleMs: 10 * 60_000, // 10 min — OpenAI can be silent during long AI responses
+        log: (m) => console.log(JSON.stringify({ requestId, ...m })),
       });
 
       if (pendingTwilioAudio.length > 0) {
@@ -3153,15 +3170,17 @@ ${generateVoicePromptInstructions()}`;
 
   twilioWs.on('close', (code, reason) => {
     clearTimeout(startTimeout);
+    const now = Date.now();
     console.log(JSON.stringify({
-      event: 'ws_close',
+      event: 'twilio_ws_close',
       requestId,
       callSid: maskCallSid(callSid),
       code,
       reason: reason?.toString() || null,
       twilioFrameCount,
       ttsFrameCount,
-      callAgeMs: Date.now() - callStartedAt,
+      callAgeMs: now - callStartedAt,
+      lastAudioFromTwilioAgoMs: now - lastAudioFromTwilioAt,
       sha: buildInfo.sha,
       parseErrorCount,
     }));
