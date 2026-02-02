@@ -352,8 +352,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const now = Date.now();
     const staleThreshold = 5 * 60 * 1000; // 5 minutes
     for (const [clientId, client] of wsClients) {
-      if (now - client.lastPing > staleThreshold) {
-        console.log(`[WS] Removing stale client: ${clientId}`);
+      const ageMs = now - client.lastPing;
+      if (ageMs > staleThreshold) {
+        console.log(JSON.stringify({
+          event: 'ws_stale_client_removed',
+          clientId,
+          ageMs,
+          thresholdMs: staleThreshold,
+        }));
         client.ws.close(4003, 'Connection stale');
         wsClients.delete(clientId);
       }
