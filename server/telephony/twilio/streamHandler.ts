@@ -1194,7 +1194,18 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
         scoreLabel: extraction.score.label,
         scoreReasons: extraction.score.reasons,
         urgency: extraction.urgency,
-        incidentDate: extraction.incidentDate ? new Date(extraction.incidentDate) : undefined,
+        incidentDate: (() => {
+          if (!extraction.incidentDate) return undefined;
+          const d = new Date(extraction.incidentDate);
+          if (!isNaN(d.getTime())) return d;
+          console.log(JSON.stringify({
+            event: 'finalize_invalid_incident_date',
+            requestId,
+            raw: extraction.incidentDate,
+            action: 'omitted',
+          }));
+          return undefined;
+        })(),
         incidentLocation: extraction.location,
         intakeData: flatIntakeData as any,
         status: 'new',
@@ -1466,6 +1477,9 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   let twilioKA: KeepAliveHandle | null = null;
   let openAiKA: KeepAliveHandle | null = null;
   let heartbeatInterval: NodeJS.Timeout | null = null;
+
+  // Pong-based timeout for proactive reconnect
+  let lastOpenAiPongAt = 0;
 
   // OpenAI WS reconnect state (Section C)
   let openAiReconnectAttempt = 0;
@@ -2006,6 +2020,39 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
     return true;
   }
 
+  function rehydrateAndResume(): void {
+    if (!openAiWs || openAiWs.readyState !== WebSocket.OPEN) return;
+
+    // Replay recent transcript turns so OpenAI has conversation context
+    const replayEntries = transcriptBuffer.slice(-15);
+    for (const entry of replayEntries) {
+      openAiWs.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: entry.role === 'ai' ? 'assistant' : 'user',
+          content: [{ type: 'input_text', text: entry.text }],
+        },
+      }));
+    }
+
+    // Resume with instruction override to prevent re-greeting
+    openAiWs.send(JSON.stringify({
+      type: 'response.create',
+      response: {
+        modalities: ['text'],
+        instructions: 'You are continuing an existing call. Do not reintroduce yourself. Continue from the last user message.',
+      },
+    }));
+
+    console.log(JSON.stringify({
+      event: 'openai_reconnect_context_replayed',
+      requestId,
+      replayCount: replayEntries.length,
+      callAgeMs: Date.now() - callStartedAt,
+    }));
+  }
+
   function initOpenAI(): void {
     const openAiKey = process.env.OPENAI_API_KEY;
     if (!openAiKey) {
@@ -2140,11 +2187,23 @@ ${generateVoicePromptInstructions()}`;
       openAiReconnectAttempt = 0; // Reset reconnect counter on successful connect
       reconnecting = false;
 
-      // Keepalive ping every 15s to prevent OpenAI idle timeout (~270s)
+      // Pong-based keepalive: ping every 15s, proactive reconnect if no pong for 45s
+      lastOpenAiPongAt = Date.now();
+      openAiWs!.on('pong', () => { lastOpenAiPongAt = Date.now(); });
+
       if (openAiPingInterval) clearInterval(openAiPingInterval);
       openAiPingInterval = setInterval(() => {
-        if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
-          openAiWs.ping();
+        if (!openAiWs || openAiWs.readyState !== WebSocket.OPEN) return;
+        openAiWs.ping();
+        const msSinceLastPong = Date.now() - lastOpenAiPongAt;
+        if (msSinceLastPong > 45_000 && !reconnecting) {
+          console.log(JSON.stringify({
+            event: 'openai_pong_timeout',
+            requestId,
+            msSinceLastPong,
+            action: 'proactive_reconnect',
+          }));
+          openAiWs.close(4002, 'pong_timeout');
         }
       }, 15_000);
 
@@ -2186,6 +2245,14 @@ ${generateVoicePromptInstructions()}`;
                 modalities: ['text'],
               },
             }));
+          } else if (initialGreetingSent && openAiReconnectAttempt > 0) {
+            // Reconnect path — greeting already sent, replay context instead
+            console.log(JSON.stringify({
+              event: 'greeting_suppressed_on_reconnect',
+              requestId,
+              attempt: openAiReconnectAttempt,
+            }));
+            rehydrateAndResume();
           }
         } else if (message.type === 'response.created') {
           const newResponseId = message.response?.id || null;
