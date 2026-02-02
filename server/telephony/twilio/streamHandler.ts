@@ -1483,6 +1483,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
 
   // OpenAI WS reconnect state (Section C)
   let openAiReconnectAttempt = 0;
+  let pendingReconnectRehydrate = false; // true between on('open') and session.updated on reconnect
   const OPENAI_MAX_RECONNECT = 5;
   const OPENAI_RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000]; // ms — exponential to survive longer outages
   let reconnecting = false;
@@ -1659,8 +1660,21 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
             event: 'LLM_RESPONSE_REQUEST_FAILED',
             requestId,
             reason: 'openai_ws_not_ready',
+            reconnecting,
             t: now,
           }));
+          // Retry once after 3s if we're reconnecting — prevents IDLE wedge
+          if (reconnecting) {
+            setTimeout(() => {
+              if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
+                console.log(JSON.stringify({ event: 'LLM_RESPONSE_RETRY', requestId, t: Date.now() }));
+                openAiWs.send(JSON.stringify({
+                  type: 'response.create',
+                  response: { modalities: ['text'] },
+                }));
+              }
+            }, 3000);
+          }
         }
       },
       
@@ -2184,6 +2198,7 @@ ${generateVoicePromptInstructions()}`;
 
       openAiWs!.send(JSON.stringify(sessionUpdate));
       openAiReady = true;
+      pendingReconnectRehydrate = openAiReconnectAttempt > 0;
       openAiReconnectAttempt = 0; // Reset reconnect counter on successful connect
       reconnecting = false;
 
@@ -2245,12 +2260,14 @@ ${generateVoicePromptInstructions()}`;
                 modalities: ['text'],
               },
             }));
-          } else if (initialGreetingSent && openAiReconnectAttempt > 0) {
+          } else if (initialGreetingSent && pendingReconnectRehydrate) {
             // Reconnect path — greeting already sent, replay context instead
+            pendingReconnectRehydrate = false;
             console.log(JSON.stringify({
               event: 'greeting_suppressed_on_reconnect',
               requestId,
-              attempt: openAiReconnectAttempt,
+              turnState: turnController?.getState(),
+              transcriptLen: transcriptBuffer.length,
             }));
             rehydrateAndResume();
           }
@@ -2433,6 +2450,17 @@ ${generateVoicePromptInstructions()}`;
               });
             }
           } else {
+            // Empty response — recover TurnController from ASSIST_PLANNING wedge
+            const turnState = turnController?.getState();
+            if (turnState === 'ASSIST_PLANNING') {
+              console.log(JSON.stringify({
+                event: 'empty_response_recovery',
+                requestId,
+                responseId,
+                action: 'force_waiting_for_user',
+              }));
+              turnController!.onTtsFinished(); // transitions to POST_TTS_DEADZONE → WAITING_FOR_USER_START
+            }
             pendingText = '';
           }
         } else if (message.type === 'input_audio_buffer.speech_stopped') {
@@ -2681,6 +2709,10 @@ ${generateVoicePromptInstructions()}`;
         callAgeMs,
         msSinceLastTwilioAudio,
         msSinceLastOpenAIMsg,
+        turnState: turnController?.getState(),
+        msSinceLastPong: lastOpenAiPongAt ? Date.now() - lastOpenAiPongAt : null,
+        ttsSpeaking,
+        responseInProgress,
       }));
 
       openAiReady = false;
