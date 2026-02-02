@@ -2686,11 +2686,12 @@ ${generateVoicePromptInstructions()}`;
     });
   }
 
-  // Parse-error tracking: only close WS on a burst of failures, not a single bad frame
+  // Parse-error tracking: only close WS on a sustained burst, not occasional bad frames
   let parseErrorCount = 0;
   let parseErrorWindowStart = 0;
-  const PARSE_ERROR_THRESHOLD = 3;
-  const PARSE_ERROR_WINDOW_MS = 10_000;
+  let lastParseErrorAt = 0;
+  const PARSE_ERROR_THRESHOLD = 20;
+  const PARSE_ERROR_WINDOW_MS = 2_000;
 
   twilioWs.on('message', (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
     // Binary WebSocket frames are never Twilio JSON — skip immediately
@@ -2760,6 +2761,7 @@ ${generateVoicePromptInstructions()}`;
         parseErrorWindowStart = now;
       }
       parseErrorCount++;
+      lastParseErrorAt = now;
 
       console.log(JSON.stringify({
         event: 'twilio_parse_error',
@@ -2773,19 +2775,21 @@ ${generateVoicePromptInstructions()}`;
         preview: rawStr.substring(0, 200),
         startsWithBrace: trimmed.startsWith('{'),
         parseErrorCount,
+        callAgeMs: now - callStartedAt,
         error: parseErr instanceof Error ? parseErr.message : String(parseErr),
       }));
 
-      // Only close on a burst of parse errors (threshold within window)
+      // Only close on a sustained burst of parse errors (>=20 in 2s)
       if (parseErrorCount >= PARSE_ERROR_THRESHOLD) {
         console.log(JSON.stringify({
-          event: 'twilio_parse_error_threshold_close',
+          event: 'twilio_parse_error_burst_close',
           requestId,
           callSid: maskCallSid(callSid),
           parseErrorCount,
           windowMs: PARSE_ERROR_WINDOW_MS,
+          callAgeMs: now - callStartedAt,
         }));
-        twilioWs.close(1003, 'Persistent parse errors');
+        twilioWs.close(1011, 'twilio_parse_error_burst');
       }
       return;
     }
@@ -3181,6 +3185,7 @@ ${generateVoicePromptInstructions()}`;
       ttsFrameCount,
       callAgeMs: now - callStartedAt,
       lastAudioFromTwilioAgoMs: now - lastAudioFromTwilioAt,
+      lastParseErrorAgoMs: lastParseErrorAt ? now - lastParseErrorAt : null,
       sha: buildInfo.sha,
       parseErrorCount,
     }));
