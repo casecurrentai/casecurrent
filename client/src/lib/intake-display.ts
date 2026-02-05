@@ -116,8 +116,16 @@ export function getIntakeDisplayData(
     result.callerName = callerName.trim();
   }
 
-  // Caller phone
-  const callerPhone = caller.phone || caller.callerPhone || data.phone || data.callerPhone;
+  // Caller phone - check many possible field names with priority order
+  const callerPhone =
+    caller.phone ||
+    caller.callerPhone ||
+    caller.phoneNumber ||
+    data.phone ||
+    data.callerPhone ||
+    data.phoneNumber ||
+    data.from ||
+    data.fromNumber;
   if (typeof callerPhone === "string" && callerPhone.trim()) {
     result.callerPhone = callerPhone.trim();
   }
