@@ -181,63 +181,52 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 // PART 2: Best available display name/practice area resolution
-function getBestDisplayName(lead: Lead): string {
-  // 1) lead.displayName
-  if (lead.displayName && lead.displayName.trim()) {
-    return lead.displayName;
-  }
-  // 2) contact.name
-  if (lead.contact?.name && lead.contact.name.trim() && lead.contact.name !== "Unknown Caller") {
-    return lead.contact.name;
-  }
-  // 3) intakeData.callerName (flat field from extraction)
+// Must be defined before getBestDisplayName since it's called there
+function getBestPhone(lead: Lead): string | null {
+  // Priority: contact primaryPhone > various intakeData fields
+  if (lead.contact?.primaryPhone) return lead.contact.primaryPhone;
   const intakeData = lead.intakeData as Record<string, any> | null;
-  if (intakeData?.callerName && typeof intakeData.callerName === "string" && intakeData.callerName.trim()) {
-    return intakeData.callerName;
+  if (!intakeData) return null;
+  // Check various phone field names
+  const phoneFields = [
+    intakeData.phoneNumber,
+    intakeData.callerPhone,
+    intakeData.phone,
+    intakeData.from,
+    intakeData.fromNumber,
+    intakeData.caller?.phone,
+    intakeData.caller?.phoneNumber,
+  ];
+  for (const phone of phoneFields) {
+    if (typeof phone === "string" && phone.trim()) return phone.trim();
   }
-  // 4) intakeData.caller?.fullName (nested legacy)
-  if (intakeData?.caller?.fullName && typeof intakeData.caller.fullName === "string" && intakeData.caller.fullName.trim()) {
-    return intakeData.caller.fullName;
+  return null;
+}
+
+function getBestDisplayName(lead: Lead): string {
+  // Priority: explicit displayName > contact name > intake callerName > intake caller.fullName > phone
+  if (lead.displayName && lead.displayName.trim()) return lead.displayName;
+  if (lead.contact?.name && lead.contact.name.trim() && lead.contact.name !== "Unknown Caller") return lead.contact.name;
+  const intakeData = lead.intakeData as Record<string, any> | null;
+  if (intakeData?.callerName && typeof intakeData.callerName === "string" && intakeData.callerName.trim()) return intakeData.callerName;
+  if (intakeData?.caller?.fullName && typeof intakeData.caller.fullName === "string" && intakeData.caller.fullName.trim()) return intakeData.caller.fullName;
+  if (intakeData?.caller?.firstName && typeof intakeData.caller.firstName === "string") {
+    const first = intakeData.caller.firstName.trim();
+    const last = intakeData.caller?.lastName && typeof intakeData.caller.lastName === "string" ? intakeData.caller.lastName.trim() : "";
+    if (first) return last ? `${first} ${last}` : first;
   }
-  // 5) Fallback
+  // Fallback to phone number if available - better than "Unknown Caller"
+  const phone = getBestPhone(lead);
+  if (phone) return phone;
   return "Unknown Caller";
 }
 
 function getBestPracticeArea(lead: Lead): string {
-  // 1) lead.practiceArea (relation)
-  if (lead.practiceArea?.name && lead.practiceArea.name.trim()) {
-    return lead.practiceArea.name;
-  }
-  // 2) intakeData.practiceAreaGuess
+  if (lead.practiceArea?.name && lead.practiceArea.name.trim()) return lead.practiceArea.name;
   const intakeData = lead.intakeData as Record<string, any> | null;
-  if (intakeData?.practiceAreaGuess && typeof intakeData.practiceAreaGuess === "string" && intakeData.practiceAreaGuess.trim()) {
-    return intakeData.practiceAreaGuess;
-  }
-  // 3) intakeData.practiceArea (legacy/nested)
-  if (intakeData?.practiceArea && typeof intakeData.practiceArea === "string" && intakeData.practiceArea.trim()) {
-    return intakeData.practiceArea;
-  }
-  // 4) Fallback
+  if (intakeData?.practiceAreaGuess && typeof intakeData.practiceAreaGuess === "string" && intakeData.practiceAreaGuess.trim()) return intakeData.practiceAreaGuess;
+  if (intakeData?.practiceArea && typeof intakeData.practiceArea === "string" && intakeData.practiceArea.trim()) return intakeData.practiceArea;
   return "Not assigned";
-}
-
-function getBestPhone(lead: Lead): string | null {
-  // From contact
-  if (lead.contact?.primaryPhone) {
-    return lead.contact.primaryPhone;
-  }
-  // From intakeData
-  const intakeData = lead.intakeData as Record<string, any> | null;
-  if (intakeData?.phoneNumber) {
-    return intakeData.phoneNumber;
-  }
-  if (intakeData?.callerPhone) {
-    return intakeData.callerPhone;
-  }
-  if (intakeData?.caller?.phone) {
-    return intakeData.caller.phone;
-  }
-  return null;
 }
 
 // Section definitions for mobile swipe cards
