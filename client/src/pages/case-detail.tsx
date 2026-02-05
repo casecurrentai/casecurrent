@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
+import { IntakeAnalysisCard } from "@/components/intake-analysis-card";
 import {
   ArrowLeft,
   Phone,
@@ -418,9 +419,10 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
           </span>
         )}
       </div>
-      <div className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto" data-testid="text-intake-answers">
-        <pre className="whitespace-pre-wrap break-all">{JSON.stringify(currentAnswers, null, 2)}</pre>
-      </div>
+      <IntakeAnalysisCard
+        answers={currentAnswers}
+        data-testid="text-intake-answers"
+      />
       {!isComplete && (
         <>
           <Textarea

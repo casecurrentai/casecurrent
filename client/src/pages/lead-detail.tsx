@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { IntakeAnalysisCard } from "@/components/intake-analysis-card";
 import {
   ArrowLeft,
   Phone,
@@ -747,12 +748,10 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
         )}
       </CardHeader>
       <CardContent className="space-y-4 px-3 sm:px-6">
-        <div className="space-y-2">
-          <label className="text-xs sm:text-sm font-medium">Current Answers</label>
-          <div className="bg-muted p-2 sm:p-3 rounded-md text-xs sm:text-sm font-mono overflow-x-auto" data-testid="text-intake-answers">
-            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(currentAnswers, null, 2)}</pre>
-          </div>
-        </div>
+        <IntakeAnalysisCard
+          answers={currentAnswers}
+          data-testid="text-intake-answers"
+        />
 
         {!isComplete && (
           <>
