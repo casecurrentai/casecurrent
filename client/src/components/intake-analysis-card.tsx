@@ -1,5 +1,6 @@
-import { AlertTriangle, FileText, List, MapPin, Phone, User, Calendar, ChevronDown } from "lucide-react";
+import { AlertTriangle, FileText, List, MapPin, Phone, User, Calendar, ChevronDown, PhoneCall, MessageSquare, ClipboardList, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getIntakeDisplayData, IntakeDisplayData } from "@/lib/intake-display";
 import { useState } from "react";
@@ -65,10 +66,10 @@ function IntakeField({
 function DebugPayload({ data }: { data: unknown }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Only show in development
+  // Only show in development - use Vite's import.meta.env
   const isDev = typeof window !== "undefined" &&
-    (process.env.NODE_ENV !== "production" ||
-      process.env.NEXT_PUBLIC_SHOW_DEBUG_PAYLOAD === "1");
+    import.meta.env.DEV &&
+    import.meta.env.VITE_SHOW_DEBUG_PAYLOAD === "1";
 
   if (!isDev) return null;
 
@@ -96,6 +97,54 @@ function DebugPayload({ data }: { data: unknown }) {
   );
 }
 
+/** Premium empty state for incomplete intakes */
+function IncompleteIntakeCard({ className, testId }: { className?: string; testId: string }) {
+  return (
+    <div
+      className={cn("rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-4", className)}
+      data-testid={testId}
+    >
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center flex-shrink-0">
+          <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-medium mb-1">Incomplete Intake</h4>
+          <p className="text-xs text-muted-foreground mb-3">
+            We captured this call, but key details are still missing. Follow up to gather the information needed for case evaluation.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="text-xs gap-1">
+              <PhoneCall className="h-3 w-3" />
+              Call back
+            </Badge>
+            <Badge variant="outline" className="text-xs gap-1">
+              <MessageSquare className="h-3 w-3" />
+              Send intake link
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Determines if the intake data is too sparse to be useful */
+function isDataTooSparse(data: IntakeDisplayData): boolean {
+  // Count populated fields
+  let populatedCount = 0;
+  if (data.summary && data.summary.length > 20) populatedCount++;
+  if (data.callerName) populatedCount++;
+  if (data.callerPhone) populatedCount++;
+  if (data.practiceArea || data.practiceAreaGuess) populatedCount++;
+  if (data.keyFacts && data.keyFacts.length > 0) populatedCount++;
+  if (data.incidentDate) populatedCount++;
+  if (data.injuryDescription) populatedCount++;
+
+  // If less than 2 meaningful fields, consider it too sparse
+  return populatedCount < 2;
+}
+
 export function IntakeAnalysisCard({
   answers,
   className,
@@ -103,23 +152,27 @@ export function IntakeAnalysisCard({
 }: IntakeAnalysisCardProps) {
   const displayData = getIntakeDisplayData(answers);
 
-  // If no meaningful data, show a placeholder
+  // If no meaningful data, show premium incomplete state
   if (!displayData) {
-    return (
-      <div
-        className={cn("text-sm text-muted-foreground", className)}
-        data-testid={testId}
-      >
-        No intake data available.
-      </div>
-    );
+    return <IncompleteIntakeCard className={className} testId={testId} />;
   }
 
+  // If data is too sparse, show incomplete state with partial info
+  const tooSparse = isDataTooSparse(displayData);
+
   const practiceArea =
-    displayData.practiceArea || displayData.practiceAreaGuess || "Unknown";
+    displayData.practiceArea || displayData.practiceAreaGuess || null;
 
   return (
     <div className={cn("space-y-4", className)} data-testid={testId}>
+      {/* Sparse data warning banner */}
+      {tooSparse && (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs">
+          <Info className="h-4 w-4 flex-shrink-0" />
+          <span>Limited information captured. Follow up recommended to complete intake.</span>
+        </div>
+      )}
+
       {/* Header with urgency badge */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h4 className="text-sm font-medium flex items-center gap-2">
@@ -132,20 +185,22 @@ export function IntakeAnalysisCard({
       </div>
 
       {/* Summary */}
-      <div data-testid="intake-summary">
-        <span className="text-xs text-muted-foreground">Summary</span>
-        <p className="text-sm mt-1">
-          {displayData.summary || "No summary provided."}
-        </p>
-      </div>
+      {displayData.summary && (
+        <div data-testid="intake-summary">
+          <span className="text-xs text-muted-foreground">Summary</span>
+          <p className="text-sm mt-1">{displayData.summary}</p>
+        </div>
+      )}
 
-      {/* Practice Area */}
-      <div className="flex items-center gap-2" data-testid="intake-practice-area">
-        <Badge variant="outline">{practiceArea}</Badge>
-        {displayData.practiceAreaGuess && !displayData.practiceArea && (
-          <span className="text-xs text-muted-foreground">(detected)</span>
-        )}
-      </div>
+      {/* Practice Area - only show if we have one */}
+      {practiceArea && (
+        <div className="flex items-center gap-2" data-testid="intake-practice-area">
+          <Badge variant="outline">{practiceArea}</Badge>
+          {displayData.practiceAreaGuess && !displayData.practiceArea && (
+            <span className="text-xs text-muted-foreground">(detected)</span>
+          )}
+        </div>
+      )}
 
       {/* Injury Description */}
       {displayData.injuryDescription && (
