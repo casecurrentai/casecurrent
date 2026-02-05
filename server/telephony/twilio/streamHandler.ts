@@ -1163,13 +1163,34 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     // Step 6: Update Lead with extraction data
     // Store intakeData with FLAT field names matching dashboard expectations
     currentStep = 'lead_update';
+
+    // DEFENSIVE: Ensure phone is NEVER null if we have fromE164
+    // extraction.caller.phone may be null/undefined/empty string - always fall back to fromE164
+    const extractedPhone = extraction.caller?.phone;
+    const canonicalPhone = (extractedPhone && extractedPhone.trim()) ? extractedPhone.trim() : fromE164;
+
+    // Log phone resolution for debugging
+    console.log(JSON.stringify({
+      tag: '[PHONE_RESOLUTION]',
+      requestId,
+      extractedPhone: extractedPhone || null,
+      fromE164: fromE164 || null,
+      canonicalPhone: canonicalPhone || null,
+    }));
+
     const flatIntakeData = {
       // Original nested extraction data
       ...extraction,
-      // FLAT KEYS for dashboard compatibility
-      callerName: extraction.caller.fullName,
-      phoneNumber: extraction.caller.phone || fromE164,
-      phone: extraction.caller.phone || fromE164, // Both for compatibility
+      // OVERRIDE: Ensure caller.phone is populated even if extraction missed it
+      caller: {
+        ...(extraction.caller || {}),
+        phone: canonicalPhone,
+      },
+      // FLAT KEYS for dashboard compatibility - use canonicalPhone consistently
+      callerName: extraction.caller?.fullName || null,
+      phoneNumber: canonicalPhone,
+      phone: canonicalPhone,
+      from: canonicalPhone, // Additional field some UIs check
       practiceAreaGuess: extraction.practiceArea,
       incidentDate: extraction.incidentDate,
       incidentLocation: extraction.location,
@@ -1188,7 +1209,7 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        displayName: extraction.caller.fullName || undefined,
+        displayName: extraction.caller?.fullName || undefined,
         summary: extraction.summary,
         score: extraction.score.value,
         scoreLabel: extraction.score.label,
@@ -1213,16 +1234,58 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
     });
     
     // [LEAD_UPDATE_OK] - Lead enrichment complete
-    console.log(JSON.stringify({ 
-      tag: '[LEAD_UPDATE_OK]', 
+    console.log(JSON.stringify({
+      tag: '[LEAD_UPDATE_OK]',
       requestId,
       callSid: maskSid(callSid),
       leadId,
-      displayName: extraction.caller.fullName || null,
+      displayName: extraction.caller?.fullName || null,
       practiceArea: extraction.practiceArea,
       score: extraction.score.value,
+      canonicalPhone: canonicalPhone || null,
     }));
-    
+
+    // Step 6b: Update Contact if we have better data than "Unknown Caller"
+    // This ensures contact.primaryPhone is populated even if initial creation missed it
+    if (contactId && canonicalPhone) {
+      try {
+        const contact = await prisma.contact.findUnique({
+          where: { id: contactId },
+          select: { name: true, primaryPhone: true },
+        });
+
+        // Update contact if phone or name is missing/default
+        const updateData: any = {};
+        if (!contact?.primaryPhone) {
+          updateData.primaryPhone = canonicalPhone;
+        }
+        if (contact?.name === 'Unknown Caller' && extraction.caller?.fullName) {
+          updateData.name = extraction.caller.fullName;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await prisma.contact.update({
+            where: { id: contactId },
+            data: updateData,
+          });
+          console.log(JSON.stringify({
+            tag: '[CONTACT_ENRICHED]',
+            requestId,
+            contactId,
+            updates: Object.keys(updateData),
+          }));
+        }
+      } catch (contactErr: any) {
+        // Non-fatal - log but continue
+        console.warn(JSON.stringify({
+          tag: '[CONTACT_ENRICH_WARN]',
+          requestId,
+          contactId,
+          error: contactErr?.message,
+        }));
+      }
+    }
+
     // Step 7: Store transcript in Call record
     currentStep = 'transcript_store';
     if (callSid) {
