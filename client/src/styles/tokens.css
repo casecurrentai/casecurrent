@@ -1,0 +1,42 @@
+/*
+ * Design System — Semantic Tokens
+ *
+ * Extends the base HSL variable system with semantic colors and motion tokens.
+ * All color values are raw HSL (no hsl() wrapper) to support Tailwind alpha.
+ *
+ * Usage in Tailwind:  bg-success, text-warning-foreground, border-info
+ * Usage in CSS:       hsl(var(--success))
+ */
+
+/* ── Light Mode ────────────────────────────────────────── */
+:root {
+  /* Semantic status colors */
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 14%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 100%;
+
+  /* Elevated surface (subtle lift from background) */
+  --surface-elevated: 0 0% 99%;
+
+  /* Motion tokens */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-default: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* ── Dark Mode ─────────────────────────────────────────── */
+.dark {
+  --success: 142 71% 45%;
+  --success-foreground: 142 76% 96%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 38 92% 96%;
+  --info: 217 91% 65%;
+  --info-foreground: 217 91% 96%;
+
+  --surface-elevated: 222 47% 11%;
+}
