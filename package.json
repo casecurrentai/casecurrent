@@ -9,6 +9,7 @@
     "postinstall": "prisma generate --schema=apps/api/prisma/schema.prisma",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "node --import tsx --test client/src/lib/**/*.test.ts",
     "db:push": "drizzle-kit push"
   },
   "prisma": {
