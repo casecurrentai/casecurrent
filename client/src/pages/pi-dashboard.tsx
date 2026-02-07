@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
@@ -13,12 +12,9 @@ import {
   CheckCircle,
   AlertTriangle,
   Target,
-  Zap,
   ArrowRight,
-  CalendarCheck,
-  FileSignature,
-  UserCheck,
   MoreVertical,
+  BarChart3,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,6 +22,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { KPIStrip } from "@/components/dashboard/kpi-strip";
+import { IntakeFeed } from "@/components/dashboard/intake-feed";
 
 interface FunnelStage {
   name: string;
@@ -150,22 +148,7 @@ export default function PIDashboardPage() {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-48" />
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Skeleton className="h-24" />
-          <Skeleton className="h-24" />
-          <Skeleton className="h-24" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
+  if (error && !data) {
     return (
       <div>
         <Card>
@@ -180,19 +163,9 @@ export default function PIDashboardPage() {
     );
   }
 
-  // Extract key metrics from funnel
-  const newCases24h = data.funnel.find(s => s.name === "New" || s.name === "new")?.count ?? 0;
-  const qualifiedCount = data.funnel.find(s => s.name === "Qualified" || s.name === "qualified")?.count ?? 0;
-  const missedBacklog = data.speed.missedCallBacklog;
-
-  // Pipeline metrics from funnel
-  const consultsScheduled = data.funnel.find(s => s.name === "Consult Scheduled" || s.name === "consult_scheduled")?.count ?? 0;
-  const retainersSent = data.funnel.find(s => s.name === "Retainer Sent" || s.name === "retainer_sent")?.count ?? 0;
-  const retainersSigned = data.funnel.find(s => s.name === "Signed" || s.name === "signed" || s.name === "Converted" || s.name === "converted")?.count ?? 0;
-
   return (
     <div className="space-y-6 pb-20 md:pb-6">
-      {/* Greeting */}
+      {/* Sticky greeting header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-dashboard-title">
@@ -205,138 +178,204 @@ export default function PIDashboardPage() {
         </div>
       </div>
 
-      {/* Pulse Card - Hero metric */}
-      <Link href="/cases?filter=new">
-        <Card className="bg-primary text-primary-foreground cursor-pointer hover-elevate" data-testid="card-pulse">
-          <CardContent className="p-5">
-            <p className="text-sm opacity-80">New Cases (30d)</p>
-            <p className="text-4xl font-bold mt-1">{newCases24h}</p>
-            <p className="text-sm opacity-80 mt-2">
-              Qualified: {qualifiedCount} &middot; Missed calls: {missedBacklog}
-            </p>
-          </CardContent>
-        </Card>
-      </Link>
+      {/* KPI Strip — replaces Pulse Card + Pipeline Snapshot */}
+      <KPIStrip dashboardData={data} isLoading={isLoading} />
 
-      {/* Daily Worklist - Rescue queue */}
-      <Card data-testid="card-worklist">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Priority Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.rescueQueue.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <CheckCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">All caught up</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {data.rescueQueue.slice(0, 5).map((call) => (
-                <div
-                  key={call.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                  data-testid={`rescue-item-${call.id}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <PhoneMissed className="h-4 w-4 text-destructive flex-shrink-0" />
-                      <p className="font-medium text-sm truncate">{call.contactName}</p>
+      {/* Two-column layout: IntakeFeed (left) + Analytics Panel (right) */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        {/* Left column: Intake Feed */}
+        <div className="space-y-6">
+          <IntakeFeed />
+
+          {/* Rescue Queue — missed calls requiring action */}
+          {data && data.rescueQueue.length > 0 && (
+            <Card data-testid="card-worklist">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <PhoneMissed className="h-4 w-4 text-destructive" />
+                  Missed Calls ({data.rescueQueue.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {data.rescueQueue.slice(0, 5).map((call) => (
+                    <div
+                      key={call.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      data-testid={`rescue-item-${call.id}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <PhoneMissed className="h-4 w-4 text-destructive flex-shrink-0" />
+                          <p className="font-medium text-sm truncate">{call.contactName}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground ml-6">
+                          Missed call &middot; {formatWaitTime(call.waitingMinutes)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <a href={`tel:${call.phone}`}>
+                          <Button size="sm" variant="outline" data-testid={`button-callback-${call.id}`}>
+                            <Phone className="h-3 w-3 mr-1" />
+                            Call Back
+                          </Button>
+                        </a>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <MoreVertical className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => resolveMutation.mutate(call.id)}
+                              disabled={resolveMutation.isPending}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Mark done
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/cases/${call.leadId}`}>
+                                <ArrowRight className="h-4 w-4 mr-2" />
+                                View case
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground ml-6">
-                      Missed call &middot; {formatWaitTime(call.waitingMinutes)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <a href={`tel:${call.phone}`}>
-                      <Button size="sm" variant="outline" data-testid={`button-callback-${call.id}`}>
-                        <Phone className="h-3 w-3 mr-1" />
-                        Call Back
-                      </Button>
-                    </a>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => resolveMutation.mutate(call.id)}
-                          disabled={resolveMutation.isPending}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Mark done
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/cases/${call.leadId}`}>
-                            <ArrowRight className="h-4 w-4 mr-2" />
-                            View case
-                          </Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Pipeline Snapshot - 3 compact cards */}
-      <div className="grid gap-3 grid-cols-3">
-        <Card data-testid="card-pipeline-consults">
-          <CardContent className="p-3 text-center">
-            <CalendarCheck className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{consultsScheduled}</p>
-            <p className="text-[10px] text-muted-foreground">Consults</p>
-          </CardContent>
-        </Card>
-        <Card data-testid="card-pipeline-retainers-sent">
-          <CardContent className="p-3 text-center">
-            <FileSignature className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{retainersSent}</p>
-            <p className="text-[10px] text-muted-foreground">Retainers Sent</p>
-          </CardContent>
-        </Card>
-        <Card data-testid="card-pipeline-signed">
-          <CardContent className="p-3 text-center">
-            <UserCheck className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{retainersSigned}</p>
-            <p className="text-[10px] text-muted-foreground">Signed</p>
-          </CardContent>
-        </Card>
+        {/* Right column: Analytics Panel */}
+        <div className="space-y-6">
+          {/* Source ROI */}
+          <Card data-testid="card-source-roi">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Source Performance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-8 w-full" />
+                  ))}
+                </div>
+              ) : !data?.sourceROI.length ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No source data yet
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {data.sourceROI.map((src) => (
+                    <div key={src.source} className="flex items-center justify-between text-sm">
+                      <span className="font-medium capitalize truncate">{src.source}</span>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{src.calls} calls</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          {src.qualifiedRate}% qual
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {src.signed} signed
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Conversion Funnel */}
+          <Card data-testid="card-conversion-funnel">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Conversion Funnel</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-6 w-full" />
+                  ))}
+                </div>
+              ) : !data?.funnel.length ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No funnel data yet
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {data.funnel.map((stage, i) => {
+                    const maxCount = Math.max(...data.funnel.map((s) => s.count), 1);
+                    const pct = (stage.count / maxCount) * 100;
+                    return (
+                      <div key={stage.name}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="capitalize">{stage.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{stage.count}</span>
+                            {stage.conversion != null && (
+                              <span className="text-xs text-muted-foreground">
+                                ({stage.conversion}%)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Intake Health */}
+          <Card data-testid="card-intake-health">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Intake Health</span>
+                </div>
+                {data && (
+                  <span className="text-lg font-bold">
+                    {data.intakeCompleteness.overallPercentage}%
+                  </span>
+                )}
+              </div>
+              {isLoading ? (
+                <Skeleton className="h-2 w-full" />
+              ) : data ? (
+                <>
+                  <Progress value={data.intakeCompleteness.overallPercentage} className="mb-2" />
+                  {data.intakeCompleteness.dropOffStep && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                      <span>
+                        Top drop-off:{" "}
+                        {FIELD_LABELS[data.intakeCompleteness.dropOffStep] ||
+                          data.intakeCompleteness.dropOffStep}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-
-      {/* Intake Health */}
-      <Card data-testid="card-intake-health">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Intake Health</span>
-            </div>
-            <span className="text-lg font-bold">{data.intakeCompleteness.overallPercentage}%</span>
-          </div>
-          <Progress value={data.intakeCompleteness.overallPercentage} className="mb-2" />
-          {data.intakeCompleteness.dropOffStep && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-              <span>
-                Top drop-off: {FIELD_LABELS[data.intakeCompleteness.dropOffStep] || data.intakeCompleteness.dropOffStep}
-              </span>
-            </div>
-          )}
-          <Link href="/experiments">
-            <Button variant="ghost" size="sm" className="px-0 mt-2 h-auto text-xs text-primary">
-              Improve intake <ArrowRight className="h-3 w-3 ml-1" />
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
     </div>
   );
 }
