@@ -3,14 +3,19 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
+import { getBestPhone, getBestDisplayName, getBestPracticeArea } from "@/lib/lead-utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CaseProgressBar, type Milestone } from "@/components/ui/case-progress-bar";
 import { useToast } from "@/hooks/use-toast";
 import { IntakeAnalysisCard } from "@/components/intake-analysis-card";
+import { SummaryTab } from "@/components/case/summary-tab";
+import { TranscriptTab } from "@/components/case/transcript-tab";
+import { ActivityTab } from "@/components/case/activity-tab";
 import {
   ArrowLeft,
   Phone,
@@ -24,8 +29,6 @@ import {
   Bell,
   FileText,
   User,
-  PhoneIncoming,
-  PhoneOutgoing,
   Clock,
   Play,
   Save,
@@ -78,28 +81,6 @@ interface Lead {
   rejectedAt: string | null;
 }
 
-interface Call {
-  id: string;
-  direction: string;
-  provider: string;
-  fromE164: string;
-  toE164: string;
-  startedAt: string;
-  endedAt: string | null;
-  durationSeconds: number | null;
-  recordingUrl: string | null;
-}
-
-interface Message {
-  id: string;
-  direction: string;
-  channel: string;
-  from: string;
-  to: string;
-  body: string;
-  createdAt: string;
-}
-
 interface Interaction {
   id: string;
   channel: string;
@@ -107,27 +88,43 @@ interface Interaction {
   startedAt: string;
   endedAt: string | null;
   metadata: any;
-  call: Call | null;
-  messages: Message[];
-}
-
-interface Intake {
-  id: string;
-  leadId: string;
-  questionSetId: string | null;
-  practiceAreaId: string | null;
-  answers: Record<string, any> | null;
-  completionStatus: string;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  questionSet: { id: string; name: string; schema: any; version: number } | null;
-  practiceArea: { id: string; name: string } | null;
+  call: {
+    id: string;
+    direction: string;
+    provider: string;
+    fromE164: string;
+    toE164: string;
+    startedAt: string;
+    endedAt: string | null;
+    durationSeconds: number | null;
+    recordingUrl: string | null;
+  } | null;
+  messages: {
+    id: string;
+    direction: string;
+    channel: string;
+    from: string;
+    to: string;
+    body: string;
+    createdAt: string;
+  }[];
 }
 
 interface IntakeResponse {
   exists: boolean;
-  intake: Intake | null;
+  intake: {
+    id: string;
+    leadId: string;
+    questionSetId: string | null;
+    practiceAreaId: string | null;
+    answers: Record<string, any> | null;
+    completionStatus: string;
+    completedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    questionSet: { id: string; name: string; schema: any; version: number } | null;
+    practiceArea: { id: string; name: string } | null;
+  } | null;
 }
 
 interface ScoreFactor {
@@ -146,20 +143,18 @@ interface QualificationReasons {
   explanations: string[];
 }
 
-interface Qualification {
-  id: string;
-  leadId: string;
-  score: number;
-  disposition: string;
-  confidence: number;
-  reasons: QualificationReasons | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface QualificationResponse {
   exists: boolean;
-  qualification: Qualification | null;
+  qualification: {
+    id: string;
+    leadId: string;
+    score: number;
+    disposition: string;
+    confidence: number;
+    reasons: QualificationReasons | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -171,148 +166,24 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "bg-muted text-muted-foreground",
 };
 
-// Must be defined before getBestDisplayName since it's called there
-function getBestPhone(lead: Lead): string | null {
-  // Priority: contact primaryPhone > various intakeData fields
-  if (lead.contact?.primaryPhone) return lead.contact.primaryPhone;
-  const intakeData = lead.intakeData as Record<string, any> | null;
-  if (!intakeData) return null;
-  // Check various phone field names
-  const phoneFields = [
-    intakeData.phoneNumber,
-    intakeData.callerPhone,
-    intakeData.phone,
-    intakeData.from,
-    intakeData.fromNumber,
-    intakeData.caller?.phone,
-    intakeData.caller?.phoneNumber,
-  ];
-  for (const phone of phoneFields) {
-    if (typeof phone === "string" && phone.trim()) return phone.trim();
-  }
-  return null;
-}
+const MILESTONE_STEPS = [
+  { key: "firstContactAt", label: "First Contact", icon: Phone },
+  { key: "consultScheduledAt", label: "Consult Scheduled", icon: CalendarCheck },
+  { key: "consultCompletedAt", label: "Consult Completed", icon: UserCheck },
+  { key: "retainerSentAt", label: "Retainer Sent", icon: FileSignature },
+  { key: "retainerSignedAt", label: "Signed", icon: CheckCircle },
+] as const;
 
-function getBestDisplayName(lead: Lead): string {
-  // Priority: explicit displayName > contact name > intake callerName > intake caller.fullName > phone
-  if (lead.displayName && lead.displayName.trim()) return lead.displayName;
-  if (lead.contact?.name && lead.contact.name.trim() && lead.contact.name !== "Unknown Caller") return lead.contact.name;
-  const intakeData = lead.intakeData as Record<string, any> | null;
-  if (intakeData?.callerName && typeof intakeData.callerName === "string" && intakeData.callerName.trim()) return intakeData.callerName;
-  if (intakeData?.caller?.fullName && typeof intakeData.caller.fullName === "string" && intakeData.caller.fullName.trim()) return intakeData.caller.fullName;
-  if (intakeData?.caller?.firstName && typeof intakeData.caller.firstName === "string") {
-    const first = intakeData.caller.firstName.trim();
-    const last = intakeData.caller?.lastName && typeof intakeData.caller.lastName === "string" ? intakeData.caller.lastName.trim() : "";
-    if (first) return last ? `${first} ${last}` : first;
-  }
-  // Fallback to phone number if available - better than "Unknown Caller"
-  const phone = getBestPhone(lead);
-  if (phone) return phone;
-  return "Unknown Caller";
-}
-
-function getBestPracticeArea(lead: Lead): string {
-  if (lead.practiceArea?.name && lead.practiceArea.name.trim()) return lead.practiceArea.name;
-  const intakeData = lead.intakeData as Record<string, any> | null;
-  if (intakeData?.practiceAreaGuess && typeof intakeData.practiceAreaGuess === "string" && intakeData.practiceAreaGuess.trim()) return intakeData.practiceAreaGuess;
-  if (intakeData?.practiceArea && typeof intakeData.practiceArea === "string" && intakeData.practiceArea.trim()) return intakeData.practiceArea;
-  return "Not assigned";
-}
-
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return "N/A";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-function InteractionTimeline({ interactions }: { interactions: Interaction[] }) {
-  if (interactions.length === 0) {
-    return (
-      <div className="py-6 text-center">
-        <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">No interactions yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {interactions.map((interaction) => (
-        <Card key={interaction.id} data-testid={`interaction-${interaction.id}`}>
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                {interaction.channel === "call" && (
-                  interaction.call?.direction === "inbound"
-                    ? <PhoneIncoming className="w-4 h-4 text-primary" />
-                    : <PhoneOutgoing className="w-4 h-4 text-primary" />
-                )}
-                {interaction.channel === "sms" && <MessageSquare className="w-4 h-4 text-primary" />}
-                {interaction.channel === "webchat" && <MessageSquare className="w-4 h-4 text-primary" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium capitalize text-sm">{interaction.channel}</span>
-                  <Badge variant={interaction.status === "active" ? "default" : "secondary"} className="text-xs">
-                    {interaction.status}
-                  </Badge>
-                  {interaction.call && (
-                    <Badge variant="outline" className="text-xs">
-                      {interaction.call.direction}
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {new Date(interaction.startedAt).toLocaleString()}
-                  </span>
-                  {interaction.call?.durationSeconds && (
-                    <span>{formatDuration(interaction.call.durationSeconds)}</span>
-                  )}
-                </div>
-
-                {interaction.call && (
-                  <div className="mt-2 text-xs">
-                    <span className="text-muted-foreground">From: </span>
-                    <span className="break-all">{interaction.call.fromE164}</span>
-                    <span className="text-muted-foreground mx-1">To: </span>
-                    <span className="break-all">{interaction.call.toE164}</span>
-                  </div>
-                )}
-
-                {interaction.messages.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {interaction.messages.slice(0, 3).map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`p-2 rounded-lg text-xs ${
-                          msg.direction === "inbound"
-                            ? "bg-muted"
-                            : "bg-primary/10 ml-4"
-                        }`}
-                      >
-                        <p className="text-[10px] text-muted-foreground mb-1">
-                          {msg.direction === "inbound" ? msg.from : "You"} - {new Date(msg.createdAt).toLocaleTimeString()}
-                        </p>
-                        <p>{msg.body}</p>
-                      </div>
-                    ))}
-                    {interaction.messages.length > 3 && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        +{interaction.messages.length - 3} more messages
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
+function buildProgressMilestones(lead: Lead): Milestone[] {
+  return MILESTONE_STEPS.map((step) => {
+    const value = lead[step.key as keyof Lead] as string | null;
+    return {
+      key: step.key,
+      label: step.label,
+      completed: !!value,
+      date: value,
+    };
+  });
 }
 
 function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
@@ -357,7 +228,7 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
       const res = await fetch(`/v1/leads/${leadId}/intake`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers }), // guardrail-allow: json-dump
       });
       if (!res.ok) {
         const data = await res.json();
@@ -397,7 +268,7 @@ function IntakePanel({ leadId, token }: { leadId: string; token: string }) {
 
   const handleSave = () => {
     try {
-      const parsed = JSON.parse(answersJson || "{}");
+      const parsed = JSON.parse(answersJson || "{}"); // guardrail-allow: json-dump
       setJsonError(null);
       saveMutation.mutate(parsed);
     } catch {
@@ -638,14 +509,6 @@ function QualificationPanel({ leadId, token }: { leadId: string; token: string }
   );
 }
 
-const MILESTONE_STEPS = [
-  { key: "firstContactAt", label: "First Contact", icon: Phone },
-  { key: "consultScheduledAt", label: "Consult Scheduled", icon: CalendarCheck },
-  { key: "consultCompletedAt", label: "Consult Completed", icon: UserCheck },
-  { key: "retainerSentAt", label: "Retainer Sent", icon: FileSignature },
-  { key: "retainerSignedAt", label: "Signed", icon: CheckCircle },
-] as const;
-
 function FunnelMilestonesPanel({ lead, leadId, token }: { lead: Lead; leadId: string; token: string }) {
   const { toast } = useToast();
 
@@ -654,7 +517,7 @@ function FunnelMilestonesPanel({ lead, leadId, token }: { lead: Lead; leadId: st
       const res = await fetch(`/v1/leads/${leadId}/milestones`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ [milestone]: value }),
+        body: JSON.stringify({ [milestone]: value }), // guardrail-allow: json-dump
       });
       if (!res.ok) throw new Error("Failed to update milestone");
       return res.json();
@@ -673,7 +536,7 @@ function FunnelMilestonesPanel({ lead, leadId, token }: { lead: Lead; leadId: st
       const res = await fetch(`/v1/leads/${leadId}/milestones`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ rejectedAt: new Date().toISOString() }),
+        body: JSON.stringify({ rejectedAt: new Date().toISOString() }), // guardrail-allow: json-dump
       });
       if (!res.ok) throw new Error("Failed to reject case");
       return res.json();
@@ -846,6 +709,7 @@ export default function CaseDetailPage() {
   }
 
   const phone = getBestPhone(lead);
+  const milestones = buildProgressMilestones(lead);
 
   return (
     <div className="space-y-4 pb-20 md:pb-0">
@@ -886,153 +750,116 @@ export default function CaseDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Compact progress bar below header */}
+        <div className="mt-2">
+          <CaseProgressBar milestones={milestones} />
+        </div>
       </div>
 
-      {/* Main content */}
+      {/* Main content with tabs */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Main column */}
-        <div className="lg:col-span-2 space-y-4">
-          <Accordion type="multiple" defaultValue={["activity", "contact", "intake"]} className="space-y-3">
-            {/* Activity */}
-            <AccordionItem value="activity" className="border rounded-lg px-4">
-              <AccordionTrigger className="text-sm font-medium">
-                <span className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Activity
-                  {interactions.length > 0 && (
-                    <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">{interactions.length}</Badge>
-                  )}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <InteractionTimeline interactions={interactions} />
-              </AccordionContent>
-            </AccordionItem>
+        {/* Main column with tabs */}
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="summary" data-testid="case-tabs">
+            <TabsList className="w-full">
+              <TabsTrigger value="summary" className="flex-1">Summary</TabsTrigger>
+              <TabsTrigger value="transcript" className="flex-1">Transcript</TabsTrigger>
+              <TabsTrigger value="activity" className="flex-1">
+                Activity
+                {interactions.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 ml-1">{interactions.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="intake" className="flex-1">Intake</TabsTrigger>
+              <TabsTrigger value="score" className="flex-1">Score</TabsTrigger>
+            </TabsList>
 
-            {/* Contact Info */}
-            <AccordionItem value="contact" className="border rounded-lg px-4">
-              <AccordionTrigger className="text-sm font-medium">
-                <span className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Contact Info
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
-                      {getBestDisplayName(lead).charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-semibold">{getBestDisplayName(lead)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Contact since {new Date(lead.contact.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  {phone && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      <a href={`tel:${phone}`} className="hover:underline">{phone}</a>
-                    </div>
-                  )}
-                  {lead.contact.primaryEmail && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <a href={`mailto:${lead.contact.primaryEmail}`} className="hover:underline truncate">{lead.contact.primaryEmail}</a>
-                    </div>
-                  )}
-                  <div className="grid gap-3 grid-cols-2 pt-2 border-t">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Source</p>
-                      <p className="text-sm font-medium capitalize">{lead.source}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Practice Area</p>
-                      <p className="text-sm font-medium">{getBestPracticeArea(lead)}</p>
-                    </div>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
+            <TabsContent value="summary">
+              <SummaryTab leadId={leadId!} />
+            </TabsContent>
 
-            {/* Incident Details */}
-            {(lead.incidentDate || lead.incidentLocation || lead.summary) && (
-              <AccordionItem value="incident" className="border rounded-lg px-4">
-                <AccordionTrigger className="text-sm font-medium">
-                  <span className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Incident Details
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-3">
-                    {lead.incidentDate && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span>{new Date(lead.incidentDate).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {lead.incidentLocation && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <span>{lead.incidentLocation}</span>
-                      </div>
-                    )}
-                    {lead.summary && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Summary</p>
-                        <p className="text-sm">{lead.summary}</p>
-                      </div>
-                    )}
-                    {lead.scoreReasons && lead.scoreReasons.length > 0 && (
-                      <div className="pt-2 border-t">
-                        <p className="text-xs text-muted-foreground mb-1">Score Factors</p>
-                        <ul className="text-sm space-y-0.5">
-                          {lead.scoreReasons.map((reason, idx) => (
-                            <li key={idx} className="flex items-start gap-1.5">
-                              <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                              <span>{reason}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
+            <TabsContent value="transcript">
+              <TranscriptTab leadId={leadId!} />
+            </TabsContent>
 
-            {/* Intake */}
-            <AccordionItem value="intake" className="border rounded-lg px-4">
-              <AccordionTrigger className="text-sm font-medium">
-                <span className="flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  Intake
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <IntakePanel leadId={leadId!} token={token!} />
-              </AccordionContent>
-            </AccordionItem>
+            <TabsContent value="activity">
+              <ActivityTab interactions={interactions} />
+            </TabsContent>
 
-            {/* Score */}
-            <AccordionItem value="score" className="border rounded-lg px-4">
-              <AccordionTrigger className="text-sm font-medium">
-                <span className="flex items-center gap-2">
-                  <Target className="h-4 w-4" />
-                  Score
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <QualificationPanel leadId={leadId!} token={token!} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+            <TabsContent value="intake">
+              <IntakePanel leadId={leadId!} token={token!} />
+            </TabsContent>
+
+            <TabsContent value="score">
+              <QualificationPanel leadId={leadId!} token={token!} />
+            </TabsContent>
+          </Tabs>
         </div>
 
         {/* Sidebar - Desktop only */}
         <div className="hidden lg:block space-y-4">
+          {/* Contact Info Card */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Contact
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                  {getBestDisplayName(lead).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{getBestDisplayName(lead)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Since {new Date(lead.contact.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              {phone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <a href={`tel:${phone}`} className="hover:underline">{phone}</a>
+                </div>
+              )}
+              {lead.contact.primaryEmail && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <a href={`mailto:${lead.contact.primaryEmail}`} className="hover:underline truncate">{lead.contact.primaryEmail}</a>
+                </div>
+              )}
+              <div className="grid gap-3 grid-cols-2 pt-2 border-t">
+                <div>
+                  <p className="text-xs text-muted-foreground">Source</p>
+                  <p className="text-sm font-medium capitalize">{lead.source}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Practice Area</p>
+                  <p className="text-sm font-medium">{getBestPracticeArea(lead)}</p>
+                </div>
+              </div>
+              {(lead.incidentDate || lead.incidentLocation) && (
+                <div className="pt-2 border-t space-y-2">
+                  {lead.incidentDate && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span>{new Date(lead.incidentDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {lead.incidentLocation && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span>{lead.incidentLocation}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <FunnelMilestonesPanel lead={lead} leadId={leadId!} token={token!} />
 
           <Card>
