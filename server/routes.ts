@@ -49,6 +49,7 @@ import {
 } from './analytics/experiments';
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
+import aiRouter from './routes/ai';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5130,6 +5131,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use('/v1/webhooks/elevenlabs', createElevenLabsWebhookRouter(prisma));
 
   // ============================================
+  // ROUTE MODULES (mounted routers)
+  // ============================================
+  app.use(aiRouter);
+
+  // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
   // ============================================
 
@@ -7344,61 +7350,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Stub: Summarization job
-  app.post('/v1/ai/summarize/:callId', authMiddleware, async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
-      const { callId } = req.params;
-
-      const call = await prisma.call.findFirst({
-        where: { id: callId, orgId: user.orgId },
-      });
-
-      if (!call) {
-        return res.status(404).json({ error: 'Call not found' });
-      }
-
-      if (!call.transcriptText) {
-        return res.status(400).json({ error: 'No transcript available. Run transcription first.' });
-      }
-
-      // Stub: In production, this would call an LLM for summarization
-      const stubSummary = `[STUB SUMMARY] Call summary for ${callId}. Caller discussed their case. Key points extracted from transcript.`;
-
-      await prisma.call.update({
-        where: { id: callId },
-        data: {
-          aiSummary: stubSummary,
-          aiFlags: {
-            urgency: 'medium',
-            sentiment: 'neutral',
-            keyTopics: ['case discussion', 'initial contact'],
-            provider: 'stub',
-            model: 'summarization-v1',
-            processedAt: new Date().toISOString(),
-          },
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          orgId: user.orgId,
-          actorUserId: user.userId,
-          actorType: 'user',
-          action: 'ai.summarize.stub',
-          entityType: 'call',
-          entityId: callId,
-          details: { provider: 'stub', model: 'summarization-v1' },
-        },
-      });
-
-      console.log(`[AI PIPELINE STUB] summarization completed for call ${callId}`);
-      res.json({ success: true, message: 'Summarization stub completed' });
-    } catch (error) {
-      console.error('Summarization error:', error);
-      res.status(500).json({ error: 'Failed to summarize' });
-    }
-  });
+  // Summarization endpoint moved to server/routes/ai.ts
 
   // Stub: Intake extraction job
   app.post('/v1/ai/extract/:leadId', authMiddleware, async (req: AuthenticatedRequest, res) => {
