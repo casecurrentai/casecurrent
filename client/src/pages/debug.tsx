@@ -288,20 +288,22 @@ export default function DebugPage() {
                 </CardContent>
               </Card>
 
-              {/* Raw JSON */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Raw JSON</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <pre 
-                    className="text-xs bg-muted p-3 rounded overflow-x-auto max-h-[300px] overflow-y-auto"
-                    data-testid="text-debug-json"
-                  >
-                    {JSON.stringify(data, null, 2)}
-                  </pre>
-                </CardContent>
-              </Card>
+              {/* Raw JSON — DEV only */}
+              {import.meta.env.DEV && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Raw JSON</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <pre
+                      className="text-xs bg-muted p-3 rounded overflow-x-auto max-h-[300px] overflow-y-auto"
+                      data-testid="text-debug-json"
+                    >
+                      {JSON.stringify(data, null, 2)}
+                    </pre>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </>
