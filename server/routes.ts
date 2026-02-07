@@ -49,6 +49,7 @@ import {
 } from './analytics/experiments';
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
+import analyticsTrendsRouter from './routes/analytics-trends';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5128,6 +5129,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: Call not found
    */
   app.use('/v1/webhooks/elevenlabs', createElevenLabsWebhookRouter(prisma));
+
+  // ============================================
+  // ROUTE MODULES (mounted routers)
+  // ============================================
+  app.use(analyticsTrendsRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
