@@ -55,6 +55,44 @@ Do not attempt workarounds. Report and wait for human input.
 5. Runs `test` — must pass if defined.
 6. Runs `build` — must pass.
 
+## Design System
+
+Reusable primitives live in `client/src/components/ui/`:
+
+| Component | Purpose |
+|---|---|
+| `MetricCard` | Compact KPI tile with value, trend arrow, optional sparkline |
+| `StatusPill` | Colored dot + label for lead status or urgency |
+| `ConfidenceBadge` | Numeric score with green/yellow/red color gradient (`value` prop) |
+| `TrendSparkline` | Tiny inline Recharts line chart for time-series data |
+| `CaseProgressBar` | Horizontal segmented milestone bar with tooltips |
+
+**Tokens:** Semantic colors (success, warning, info, surface-elevated) and motion tokens defined in `client/src/styles/tokens.css`, imported by `index.css`. Extended in `tailwind.config.ts`.
+
+## Route Module Pattern
+
+New API endpoints use route modules instead of adding to `server/routes.ts` directly:
+
+1. Create an Express Router in `server/routes/<name>.ts`
+2. Mount via `app.use(router)` in `server/routes.ts` (one-line addition)
+3. One import + mount per module to minimize merge conflicts
+
+Existing route modules: `ai.ts`, `summary.ts`, `transcript.ts`, `analytics-trends.ts`.
+
+## Data Pipeline Endpoints
+
+| Method | Path | Module | Purpose |
+|---|---|---|---|
+| `POST` | `/v1/ai/summarize/:callId` | `server/routes/ai.ts` | LLM summarization with rule-based fallback |
+| `GET` | `/v1/leads/:id/summary` | `server/routes/summary.ts` | Aggregated AI summary across all calls |
+| `GET` | `/v1/leads/:id/transcript` | `server/routes/transcript.ts` | Speaker-attributed transcript with `?search=` |
+| `GET` | `/v1/analytics/pi-dashboard/trends` | `server/routes/analytics-trends.ts` | Daily trend counts for sparklines |
+
+## P0 Guardrails
+
+- `scripts/no-json-dump.sh` — CI check that greps `client/src/` for unguarded `JSON.stringify` / `<pre>` tags. Override with `// guardrail-allow: json-dump` comment.
+- Debug payloads only render when `import.meta.env.DEV && import.meta.env.VITE_SHOW_DEBUG_PAYLOAD === "1"`.
+
 ## GitLab CI
 
 `.gitlab-ci.yml` runs `./scripts/verify` automatically on:
