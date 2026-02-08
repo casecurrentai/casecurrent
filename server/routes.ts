@@ -52,6 +52,7 @@ import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
 import aiRouter from './routes/ai';
 import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
+import analyticsTrendsRouter from './routes/analytics-trends';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5138,6 +5139,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(aiRouter);
   app.use(summaryRouter);
   app.use(transcriptRouter);
+  app.use(analyticsTrendsRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
