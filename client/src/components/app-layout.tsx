@@ -31,13 +31,14 @@ import {
   ChevronDown,
   MessageSquare,
   Webhook,
-  FlaskConical,
   ShieldCheck,
   Home,
   Bug,
   Menu as MenuIcon,
   Briefcase,
   PanelLeft,
+  BarChart3,
+  ListChecks,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -70,14 +71,13 @@ const MAIN_NAV = [
   { href: "/cases", label: "Cases", icon: Briefcase },
 ];
 
-const FIRM_OPS_NAV = [
-  { href: "/policy-tests", label: "Safety Checks", icon: ShieldCheck },
-  { href: "/settings/webhooks", label: "Integrations", icon: Webhook },
-  { href: "/admin/contact-submissions", label: "Inquiries", icon: MessageSquare },
+const INSIGHTS_NAV = [
+  { href: "/dashboard", label: "Analytics", icon: BarChart3 },
 ];
 
-const INTAKE_LAB_NAV = [
-  { href: "/experiments", label: "Experiments", icon: FlaskConical },
+const TASKS_NAV = [
+  { href: "/admin/contact-submissions", label: "Inquiries", icon: MessageSquare },
+  { href: "/settings/webhooks", label: "Integrations", icon: Webhook },
 ];
 
 const SYSTEM_NAV = [
@@ -173,12 +173,12 @@ function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Firm Ops */}
+        {/* Insights */}
         <SidebarGroup>
-          <SidebarGroupLabel>Firm Ops</SidebarGroupLabel>
+          <SidebarGroupLabel>Insights</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {FIRM_OPS_NAV.map((item) => {
+              {INSIGHTS_NAV.map((item) => {
                 const isActive = location.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
@@ -195,12 +195,12 @@ function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Intake Lab */}
+        {/* Tasks */}
         <SidebarGroup>
-          <SidebarGroupLabel>Intake Lab</SidebarGroupLabel>
+          <SidebarGroupLabel>Tasks</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {INTAKE_LAB_NAV.map((item) => {
+              {TASKS_NAV.map((item) => {
                 const isActive = location.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
