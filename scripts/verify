@@ -48,6 +48,13 @@ run_if_present () {
 }
 
 run_if_present lint
+
+# P0 guardrail: ban raw JSON dumps in client UI
+if [[ -x "./scripts/no-json-dump.sh" ]]; then
+  echo "==> running: no-json-dump guard"
+  ./scripts/no-json-dump.sh
+fi
+
 run_if_present check
 run_if_present typecheck
 run_if_present test
