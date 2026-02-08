@@ -50,6 +50,7 @@ import {
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
 import aiRouter from './routes/ai';
+import summaryRouter from './routes/summary';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5134,6 +5135,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ROUTE MODULES (mounted routers)
   // ============================================
   app.use(aiRouter);
+  app.use(summaryRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
