@@ -23,18 +23,8 @@ export async function getLeadTranscript(
   const lead = await prisma.lead.findFirst({
     where: { id: leadId, orgId },
     include: {
-      interactions: {
-        include: {
-          calls: {
-            where: {
-              OR: [
-                { transcriptJson: { not: null } },
-                { transcriptText: { not: null } },
-              ],
-            },
-            orderBy: { startedAt: 'asc' },
-          },
-        },
+      calls: {
+        orderBy: { startedAt: 'asc' },
       },
     },
   });
@@ -43,7 +33,7 @@ export async function getLeadTranscript(
     throw new Error('Lead not found');
   }
 
-  const allCalls = lead.interactions.flatMap((i) => i.calls);
+  const allCalls = lead.calls;
   const messages: TranscriptMessage[] = [];
 
   for (const call of allCalls) {

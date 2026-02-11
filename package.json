@@ -9,7 +9,7 @@
     "postinstall": "prisma generate --schema=apps/api/prisma/schema.prisma",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "test": "node --import tsx --test client/src/lib/**/*.test.ts",
+    "test": "FILES=$(find client/src/lib -type f \\( -name \"*.test.ts\" -o -name \"*.test.tsx\" \\) 2>/dev/null); if [ -z \"$FILES\" ]; then echo \"No tests found\"; exit 0; else node --import tsx --test $FILES; fi",
     "db:push": "drizzle-kit push"
   },
   "prisma": {

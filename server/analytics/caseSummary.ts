@@ -40,12 +40,8 @@ export async function getCaseSummary(
   const lead = await prisma.lead.findFirst({
     where: { id: leadId, orgId },
     include: {
-      interactions: {
-        include: {
-          calls: {
-            orderBy: { startedAt: 'desc' },
-          },
-        },
+      calls: {
+        orderBy: { startedAt: 'desc' },
       },
     },
   });
@@ -54,8 +50,8 @@ export async function getCaseSummary(
     throw new Error('Lead not found');
   }
 
-  // Collect all calls across interactions
-  const allCalls = lead.interactions.flatMap((i) => i.calls);
+  // Collect all calls from lead
+  const allCalls = lead.calls;
 
   // Find the best summary from calls (most recent with aiSummary)
   let snapshot: string | null = null;
