@@ -53,6 +53,7 @@ import aiRouter from './routes/ai';
 import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
 import analyticsTrendsRouter from './routes/analytics-trends';
+import callDebugRouter from './routes/call-debug';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -2512,7 +2513,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ]);
 
       // === [LEADS_QUERY] - Dashboard leads fetch logging ===
-      console.log(`[LEADS_QUERY] orgId=${orgId} limit=${take} offset=${skip} returnedCount=${leads.length} total=${total}`);
+      console.log(JSON.stringify({
+        event: 'api_fetch',
+        endpoint: '/v1/leads',
+        orgId,
+        filters: { status: status || null, priority: priority || null, practiceAreaId: practice_area_id || null, q: q || null, from: from || null, to: to || null },
+        limit: take,
+        offset: skip,
+        returnedCount: leads.length,
+        total,
+        newestLeadId: leads[0]?.id || null,
+        newestLeadCreatedAt: leads[0]?.createdAt || null,
+      }));
 
       res.json({ leads, total });
     } catch (error) {
@@ -5140,6 +5152,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(summaryRouter);
   app.use(transcriptRouter);
   app.use(analyticsTrendsRouter);
+  app.use(callDebugRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
@@ -5364,21 +5377,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       });
 
-      const call = await prisma.call.create({
-        data: {
-          orgId,
-          leadId: lead.id,
-          interactionId: interaction.id,
-          phoneNumberId: phoneNumber.id,
-          direction: Direction?.toLowerCase() === 'outbound-api' ? 'outbound' : 'inbound',
-          provider: 'twilio',
-          twilioCallSid: CallSid,
-          fromE164: From,
-          toE164: To,
-          startedAt: new Date(),
-          transcriptJson: { rawPayload: payload },
-        },
-      });
+      console.log(JSON.stringify({ event: 'db_write_attempt', model: 'Call', traceId: CallSid, orgId, leadId: lead.id }));
+      let call;
+      try {
+        call = await prisma.call.create({
+          data: {
+            orgId,
+            leadId: lead.id,
+            interactionId: interaction.id,
+            phoneNumberId: phoneNumber.id,
+            direction: Direction?.toLowerCase() === 'outbound-api' ? 'outbound' : 'inbound',
+            provider: 'twilio',
+            twilioCallSid: CallSid,
+            fromE164: From,
+            toE164: To,
+            startedAt: new Date(),
+            transcriptJson: { rawPayload: payload },
+          },
+        });
+        console.log(JSON.stringify({ event: 'db_write_success', model: 'Call', traceId: CallSid, callId: call.id, orgId, leadId: lead.id }));
+      } catch (dbErr: any) {
+        console.error(JSON.stringify({ event: 'db_write_error', model: 'Call', traceId: CallSid, orgId, error: dbErr?.message, code: dbErr?.code }));
+        throw dbErr;
+      }
 
       await prisma.auditLog.create({
         data: {
@@ -5783,11 +5804,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: 'Missing CallSid' });
       }
 
+      // Look up by twilioCallSid first (primary), fall back to providerCallId
       const call = await prisma.call.findFirst({
-        where: { providerCallId: CallSid },
+        where: {
+          OR: [
+            { twilioCallSid: CallSid },
+            { providerCallId: CallSid },
+          ],
+        },
       });
 
+      console.log(JSON.stringify({
+        event: 'webhook_received',
+        route: '/v1/telephony/twilio/status',
+        traceId: CallSid,
+        callStatus: CallStatus,
+        callFound: !!call,
+        callId: call?.id || null,
+        orgId: call?.orgId || null,
+      }));
+
       if (!call) {
+        console.warn(JSON.stringify({ event: 'status_callback_miss', traceId: CallSid, callStatus: CallStatus }));
         return res.status(404).json({ error: 'Call not found' });
       }
 

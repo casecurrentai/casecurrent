@@ -417,21 +417,30 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         },
       });
 
-      const call = await prisma.call.create({
-        data: {
-          orgId,
-          leadId: lead.id,
-          interactionId: interaction.id,
-          phoneNumberId,
-          direction: 'inbound',
-          provider: 'elevenlabs',
-          elevenLabsId: payload.conversation_id || null,
-          twilioCallSid: payload.call_sid || null,
-          fromE164,
-          toE164,
-          startedAt: new Date(),
-        },
-      });
+      const traceId = payload.call_sid || payload.conversation_id || 'unknown';
+      console.log(JSON.stringify({ event: 'db_write_attempt', model: 'Call', traceId, orgId, leadId: lead.id, provider: 'elevenlabs' }));
+      let call;
+      try {
+        call = await prisma.call.create({
+          data: {
+            orgId,
+            leadId: lead.id,
+            interactionId: interaction.id,
+            phoneNumberId,
+            direction: 'inbound',
+            provider: 'elevenlabs',
+            elevenLabsId: payload.conversation_id || null,
+            twilioCallSid: payload.call_sid || null,
+            fromE164,
+            toE164,
+            startedAt: new Date(),
+          },
+        });
+        console.log(JSON.stringify({ event: 'db_write_success', model: 'Call', traceId, callId: call.id, orgId, leadId: lead.id }));
+      } catch (dbErr: any) {
+        console.error(JSON.stringify({ event: 'db_write_error', model: 'Call', traceId, orgId, error: dbErr?.message, code: dbErr?.code }));
+        throw dbErr;
+      }
 
       await prisma.lead.update({
         where: { id: lead.id },
@@ -444,6 +453,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         leadId: lead.id,
         orgId,
         interactionId: interaction.id,
+        traceId,
         durationMs: Date.now() - startMs,
       }));
 

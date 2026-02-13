@@ -3128,12 +3128,17 @@ ${generateVoicePromptInstructions()}`;
               createdContactId = existingCall.lead.contactId || null;
               createdOrgId = existingCall.lead.orgId;
               callStartTime = callStartTime || existingCall.startedAt || new Date();
+              // Populate caller E.164 from existing call so processCallEnd can use them
+              callerFromE164 = existingCall.fromE164 || callerFromE164;
+              callerToE164 = existingCall.toE164 || callerToE164;
               console.log(JSON.stringify({
                 tag: '[LEAD_EXISTS]',
                 requestId,
                 leadId: existingCall.lead.id,
                 orgId: existingCall.lead.orgId,
                 callSid: maskCallSid(callSid),
+                fromE164: maskPhone(existingCall.fromE164),
+                toE164: maskPhone(existingCall.toE164),
               }));
               return;
             }

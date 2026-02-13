@@ -597,21 +597,30 @@ async function createCallRecords(
     },
   });
 
-  const call = await prisma.call.create({
-    data: {
-      orgId,
-      leadId: lead.id,
-      interactionId: interaction.id,
-      phoneNumberId: phoneNumber.id,
-      direction: "inbound",
-      provider: "openai_realtime",
-      providerCallId: callId,
-      twilioCallSid: twilioCallSid || null,
-      fromE164: fromNumber.startsWith("+") ? fromNumber : `+${fromNumber.replace(/\D/g, "")}`,
-      toE164: phoneNumber.e164,
-      startedAt: new Date(),
-    },
-  });
+  const traceId = twilioCallSid || callId;
+  console.log(JSON.stringify({ event: 'db_write_attempt', model: 'Call', traceId, orgId, leadId: lead.id, provider: 'openai_realtime' }));
+  let call;
+  try {
+    call = await prisma.call.create({
+      data: {
+        orgId,
+        leadId: lead.id,
+        interactionId: interaction.id,
+        phoneNumberId: phoneNumber.id,
+        direction: "inbound",
+        provider: "openai_realtime",
+        providerCallId: callId,
+        twilioCallSid: twilioCallSid || null,
+        fromE164: fromNumber.startsWith("+") ? fromNumber : `+${fromNumber.replace(/\D/g, "")}`,
+        toE164: phoneNumber.e164,
+        startedAt: new Date(),
+      },
+    });
+    console.log(JSON.stringify({ event: 'db_write_success', model: 'Call', traceId, callId: call.id, orgId, leadId: lead.id }));
+  } catch (dbErr: any) {
+    console.error(JSON.stringify({ event: 'db_write_error', model: 'Call', traceId, orgId, error: dbErr?.message, code: dbErr?.code }));
+    throw dbErr;
+  }
 
   await prisma.auditLog.create({
     data: {
