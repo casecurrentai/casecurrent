@@ -49,6 +49,7 @@ import {
 } from './analytics/experiments';
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
+import { createVapiWebhookRouter } from './webhooks/vapi';
 import aiRouter from './routes/ai';
 import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
@@ -5144,6 +5145,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: Call not found
    */
   app.use('/v1/webhooks/elevenlabs', createElevenLabsWebhookRouter(prisma));
+
+  /**
+   * @openapi
+   * /v1/webhooks/vapi/health:
+   *   get:
+   *     summary: Vapi webhook health check
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Health check response
+   *
+   * /v1/webhooks/vapi:
+   *   post:
+   *     summary: Handle Vapi server messages (status-update, transcript, tool-calls, end-of-call-report)
+   *     tags: [Telephony]
+   *     description: Receives Vapi webhook events and creates/updates Call, Lead, and Intake records
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               message:
+   *                 type: object
+   *                 properties:
+   *                   type:
+   *                     type: string
+   *                     enum: [status-update, transcript, tool-calls, end-of-call-report]
+   *                   call:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *     responses:
+   *       200:
+   *         description: Event processed successfully
+   *       400:
+   *         description: Invalid payload
+   *       403:
+   *         description: Invalid webhook secret
+   */
+  app.use('/v1/webhooks/vapi', createVapiWebhookRouter(prisma));
 
   // ============================================
   // ROUTE MODULES (mounted routers)
