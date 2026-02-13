@@ -49,6 +49,7 @@ import {
 } from './analytics/experiments';
 import { getPIDashboardData, resolveMissedCall } from './analytics/piDashboard';
 import { createElevenLabsWebhookRouter } from './webhooks/elevenlabs';
+import { createVapiWebhookRouter } from './webhooks/vapi';
 import aiRouter from './routes/ai';
 import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
@@ -5144,6 +5145,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: Call not found
    */
   app.use('/v1/webhooks/elevenlabs', createElevenLabsWebhookRouter(prisma));
+
+  /**
+   * @openapi
+   * /v1/webhooks/vapi/health:
+   *   get:
+   *     summary: Vapi webhook health check
+   *     tags: [Telephony]
+   *     responses:
+   *       200:
+   *         description: Health check response
+   *
+   * /v1/webhooks/vapi:
+   *   post:
+   *     summary: Handle Vapi server messages (assistant-request, tool-calls, status-update, etc.)
+   *     tags: [Telephony]
+   *     description: >
+   *       Routes assistant-request to business/after-hours assistant,
+   *       returns tool-call results immediately, and ingests
+   *       end-of-call-report + transcript into Call/Lead/Intake records
+   *       so calls appear in the dashboard.
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               message:
+   *                 type: object
+   *                 properties:
+   *                   type:
+   *                     type: string
+   *                     enum: [assistant-request, tool-calls, status-update, transcript, end-of-call-report]
+   *     responses:
+   *       200:
+   *         description: Event processed successfully
+   *       400:
+   *         description: Missing message.type
+   *       403:
+   *         description: Invalid webhook secret
+   */
+  app.use('/v1/webhooks/vapi', createVapiWebhookRouter(prisma));
 
   // ============================================
   // ROUTE MODULES (mounted routers)
