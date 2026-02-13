@@ -5158,9 +5158,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *
    * /v1/webhooks/vapi:
    *   post:
-   *     summary: Handle Vapi server messages (status-update, transcript, tool-calls, end-of-call-report)
+   *     summary: Handle Vapi server messages (assistant-request, tool-calls, status-update, etc.)
    *     tags: [Telephony]
-   *     description: Receives Vapi webhook events and creates/updates Call, Lead, and Intake records
+   *     description: >
+   *       Routes assistant-request to business/after-hours assistant,
+   *       returns tool-call results, logs other event types.
    *     requestBody:
    *       content:
    *         application/json:
@@ -5172,17 +5174,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *                 properties:
    *                   type:
    *                     type: string
-   *                     enum: [status-update, transcript, tool-calls, end-of-call-report]
-   *                   call:
-   *                     type: object
-   *                     properties:
-   *                       id:
-   *                         type: string
+   *                     enum: [assistant-request, tool-calls, status-update, transcript, end-of-call-report]
    *     responses:
    *       200:
    *         description: Event processed successfully
    *       400:
-   *         description: Invalid payload
+   *         description: Missing message.type
    *       403:
    *         description: Invalid webhook secret
    */
