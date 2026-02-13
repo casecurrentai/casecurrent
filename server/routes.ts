@@ -5162,7 +5162,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *     tags: [Telephony]
    *     description: >
    *       Routes assistant-request to business/after-hours assistant,
-   *       returns tool-call results, logs other event types.
+   *       returns tool-call results immediately, and ingests
+   *       end-of-call-report + transcript into Call/Lead/Intake records
+   *       so calls appear in the dashboard.
    *     requestBody:
    *       content:
    *         application/json:
