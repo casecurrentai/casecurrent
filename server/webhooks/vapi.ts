@@ -1,6 +1,5 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response } from 'express';
 import { PrismaClient } from '../../apps/api/src/generated/prisma';
-import crypto from 'crypto';
 import {
   normalizeE164,
   maskPhone,
@@ -68,27 +67,6 @@ function flattenIntakeData(data: Record<string, unknown>): Record<string, unknow
     }
   }
   return flat;
-}
-
-function isBusinessHours(): boolean {
-  const now = new Date();
-  const chicago = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    hour: 'numeric',
-    minute: 'numeric',
-    weekday: 'short',
-    hour12: false,
-  }).formatToParts(now);
-
-  const weekday = chicago.find((p) => p.type === 'weekday')?.value;
-  const hour = parseInt(chicago.find((p) => p.type === 'hour')?.value || '0', 10);
-  const minute = parseInt(chicago.find((p) => p.type === 'minute')?.value || '0', 10);
-
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  if (!weekday || !weekdays.includes(weekday)) return false;
-
-  const timeMinutes = hour * 60 + minute;
-  return timeMinutes >= 540 && timeMinutes < 1020; // 09:00–17:00
 }
 
 /**
@@ -207,46 +185,14 @@ async function findOrCreateCallChain(
 
 export function createVapiWebhookRouter(prisma: PrismaClient): Router {
   const router = Router();
-  const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
-
-  if (!webhookSecret) {
-    console.log(JSON.stringify({
-      event: 'vapi_signature_skipped',
-      reason: 'VAPI_WEBHOOK_SECRET not configured — webhook signature verification disabled',
-    }));
-  }
-
-  const secretMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    if (!webhookSecret) {
-      next();
-      return;
-    }
-
-    const receivedSecret = req.headers['x-vapi-secret'] as string | undefined;
-    if (!receivedSecret) {
-      console.log(JSON.stringify({ event: 'vapi_signature_invalid', reason: 'missing x-vapi-secret header' }));
-      res.status(403).json({ error: 'Missing x-vapi-secret header' });
-      return;
-    }
-
-    const expected = Buffer.from(webhookSecret);
-    const received = Buffer.from(receivedSecret);
-    if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
-      console.log(JSON.stringify({ event: 'vapi_signature_invalid', reason: 'secret mismatch' }));
-      res.status(403).json({ error: 'Invalid webhook secret' });
-      return;
-    }
-
-    next();
-  };
-
-  // Health check — no auth
+  // Health check — public
   router.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ ok: true, ts: new Date().toISOString() });
   });
 
-  // Main webhook endpoint
-  router.post('/', secretMiddleware, async (req: Request, res: Response) => {
+  // Main webhook endpoint — PUBLIC (no auth). Vapi assistant-request
+  // does not send x-vapi-secret, so this route must have no auth middleware.
+  router.post('/', async (req: Request, res: Response) => {
     const body = req.body;
     const message: VapiMessage = body?.message || body;
     const messageType = message?.type;
@@ -265,15 +211,11 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
     // ── Fast path: assistant-request (no DB, < 1s) ──
     if (messageType === 'assistant-request') {
-      const biz = isBusinessHours();
-      const assistantId = biz
-        ? process.env.VAPI_ASSISTANT_ID_BUSINESS_HOURS
-        : process.env.VAPI_ASSISTANT_ID_AFTER_HOURS;
+      const assistantId = process.env.VAPI_ASSISTANT_ID_BUSINESS_HOURS || process.env.VAPI_ASSISTANT_ID;
 
       console.log(JSON.stringify({
         event: 'vapi_assistant_request',
         callId,
-        isBusinessHours: biz,
         hasAssistantId: !!assistantId,
       }));
 
@@ -318,8 +260,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
     // ── Ingestion path: end-of-call-report ──
     if (messageType === 'end-of-call-report') {
-      // Return 200 immediately, do DB work async
-      res.status(200).json({ status: 'ok', type: messageType });
+      res.status(200).json({ ok: true });
 
       if (!callId) {
         console.log(JSON.stringify({ event: 'vapi_eocr_skip', reason: 'no_call_id' }));
@@ -338,7 +279,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
     // ── Ingestion path: transcript ──
     if (messageType === 'transcript') {
-      res.status(200).json({ status: 'ok', type: messageType });
+      res.status(200).json({ ok: true });
 
       if (!callId) return;
 
@@ -354,9 +295,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
     // ── Lightweight path: status-update ──
     if (messageType === 'status-update') {
-      // Return 200 immediately; create call chain on in-progress so it exists
-      // before end-of-call-report arrives
-      res.status(200).json({ status: 'ok', type: messageType });
+      res.status(200).json({ ok: true });
 
       if (!callId) return;
 
@@ -395,7 +334,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       status: (message as any).status || null,
     }));
 
-    res.status(200).json({ status: 'ok', type: messageType });
+    res.status(200).json({ ok: true });
   });
 
   return router;
