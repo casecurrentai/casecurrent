@@ -8,6 +8,10 @@ import {
   extractDisplayName,
 } from './shared';
 
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
+
 interface VapiToolCall {
   id: string;
   type?: string;
@@ -22,8 +26,8 @@ interface VapiMessage {
   type: string;
   call?: {
     id?: string;
-    phoneNumber?: { number?: string };
-    customer?: { number?: string };
+    phoneNumber?: { number?: string; [key: string]: unknown };
+    customer?: { number?: string; [key: string]: unknown };
     [key: string]: unknown;
   };
   status?: string;
@@ -34,6 +38,7 @@ interface VapiMessage {
   recordingUrl?: string;
   summary?: string;
   durationSeconds?: number;
+  cost?: number;
   messages?: Array<{ role: string; content: string; [key: string]: unknown }>;
   artifact?: {
     transcript?: string;
@@ -43,6 +48,7 @@ interface VapiMessage {
   };
   analysis?: {
     summary?: string;
+    structuredData?: Record<string, unknown>;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -53,6 +59,19 @@ const INTAKE_FIELDS = [
   'practiceAreaGuess', 'incidentDate', 'incidentLocation',
   'injuryDescription', 'atFaultParty', 'medicalTreatment', 'insuranceInfo',
 ] as const;
+
+const SAVE_INTAKE_TOOLS = ['save_partial_intake', 'save_intake_answers', 'savePartialIntake', 'saveIntakeAnswers'];
+const COMPLETE_INTAKE_TOOLS = ['complete_intake', 'intake_complete', 'completeIntake', 'end_call'];
+const HANDOFF_TOOLS = ['human_handoff_needed', 'handoff', 'transfer', 'needs_handoff', 'transfer_call_to_firm'];
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+let _reqCounter = 0;
+function nextReqId(): string {
+  return `vapi-${Date.now()}-${(++_reqCounter).toString(36)}`;
+}
 
 function flattenIntakeData(data: Record<string, unknown>): Record<string, unknown> {
   const flat: Record<string, unknown> = {};
@@ -70,22 +89,94 @@ function flattenIntakeData(data: Record<string, unknown>): Record<string, unknow
 }
 
 /**
+ * Store a raw webhook event. This is the ground-truth record of what Vapi sent.
+ * Uses (provider, externalId, eventType) unique constraint for idempotency.
+ * Returns true if stored (new), false if duplicate.
+ */
+async function storeRawEvent(
+  prisma: PrismaClient,
+  callId: string | null,
+  eventType: string,
+  payload: unknown,
+): Promise<boolean> {
+  const externalId = callId
+    ? `${callId}:${eventType}`
+    : `unknown:${eventType}:${Date.now()}`;
+  try {
+    await prisma.webhookEvent.create({
+      data: {
+        provider: 'vapi',
+        externalId,
+        eventType,
+        payload: payload as any,
+      },
+    });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'P2002') return false; // duplicate
+    // Log but don't throw — storing the event is best-effort
+    console.log(JSON.stringify({
+      event: 'vapi_raw_store_error',
+      externalId,
+      error: err?.message || String(err),
+    }));
+    return true; // proceed anyway
+  }
+}
+
+/**
+ * Resolve phone numbers from Vapi's call object.
+ * Vapi may put numbers in different places — try multiple paths.
+ */
+function resolvePhoneNumbers(message: VapiMessage): {
+  fromNumber: string | null;
+  toNumber: string | null;
+  fromE164: string | null;
+  toE164: string | null;
+} {
+  const call = message.call || {};
+
+  // "to" = the number that was called (our Vapi number) = call.phoneNumber.number
+  // "from" = the caller = call.customer.number
+  // But also check alternate locations Vapi might use
+  const toNumber =
+    (call.phoneNumber as any)?.number ||
+    (call as any).phoneNumberId ||
+    (call as any).to ||
+    (call as any).calledNumber ||
+    null;
+
+  const fromNumber =
+    (call.customer as any)?.number ||
+    (call as any).from ||
+    (call as any).callerNumber ||
+    (call as any).caller?.number ||
+    null;
+
+  return {
+    fromNumber,
+    toNumber,
+    fromE164: normalizeE164(fromNumber),
+    toE164: normalizeE164(toNumber),
+  };
+}
+
+/**
  * Find or create the full record chain (Contact → Lead → Interaction → Call)
  * for a Vapi call. Uses providerCallId (unique) as the stable key.
- * If the call already exists, returns it. Otherwise creates the full chain
- * using the called/customer phone numbers from the Vapi payload.
  */
 async function findOrCreateCallChain(
   prisma: PrismaClient,
   vapiCallId: string,
   message: VapiMessage,
+  reqId: string,
 ): Promise<{
   dbCallId: string;
   leadId: string;
   orgId: string;
   created: boolean;
 } | null> {
-  // Try to find existing call first
+  // 1. Check if call already exists
   const existing = await prisma.call.findUnique({
     where: { providerCallId: vapiCallId },
     select: { id: true, leadId: true, orgId: true },
@@ -94,37 +185,51 @@ async function findOrCreateCallChain(
     return { dbCallId: existing.id, leadId: existing.leadId, orgId: existing.orgId, created: false };
   }
 
-  // Need to create — resolve org from called number
-  const call = message.call;
-  const toNumber = call?.phoneNumber?.number;
-  const fromNumber = call?.customer?.number;
-  const fromE164 = normalizeE164(fromNumber || null);
-  const toE164 = normalizeE164(toNumber || null);
+  // 2. Resolve phone numbers
+  const { fromNumber, toNumber, fromE164, toE164 } = resolvePhoneNumbers(message);
+
+  console.log(JSON.stringify({
+    event: 'vapi_chain_create_attempt',
+    reqId,
+    callId: vapiCallId,
+    fromRaw: maskPhone(fromNumber),
+    toRaw: maskPhone(toNumber),
+    fromE164: maskPhone(fromE164),
+    toE164: maskPhone(toE164),
+  }));
 
   if (!fromE164 || !toE164) {
     console.log(JSON.stringify({
-      event: 'vapi_create_chain_skip',
-      reason: 'missing_phones',
+      event: 'vapi_chain_create_fail',
+      reqId,
       callId: vapiCallId,
-      from: maskPhone(fromNumber || null),
-      to: maskPhone(toNumber || null),
+      reason: 'missing_phones',
+      fromPresent: !!fromNumber,
+      toPresent: !!toNumber,
+      // Dump the raw call object keys for debugging
+      callKeys: message.call ? Object.keys(message.call) : [],
     }));
     return null;
   }
 
+  // 3. Lookup org by called number
   const firm = await lookupFirmByNumber(prisma, toNumber!);
   if (!firm) {
     console.log(JSON.stringify({
-      event: 'vapi_create_chain_skip',
-      reason: 'no_firm_for_number',
+      event: 'vapi_chain_create_fail',
+      reqId,
       callId: vapiCallId,
-      calledNumber: maskPhone(toE164),
+      reason: 'no_firm_for_number',
+      toE164: maskPhone(toE164),
+      toRaw: toNumber,
+      hint: 'Ensure this number exists in phone_numbers table with inbound_enabled=true',
     }));
     return null;
   }
 
   const { orgId, phoneNumberId } = firm;
 
+  // 4. Find or create Contact
   let contact = await prisma.contact.findFirst({
     where: { orgId, primaryPhone: fromE164 },
   });
@@ -134,6 +239,7 @@ async function findOrCreateCallChain(
     });
   }
 
+  // 5. Find or create Lead
   let lead = await prisma.lead.findFirst({
     where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'in_progress'] } },
     orderBy: { createdAt: 'desc' },
@@ -150,6 +256,7 @@ async function findOrCreateCallChain(
     });
   }
 
+  // 6. Create Interaction
   const interaction = await prisma.interaction.create({
     data: {
       orgId,
@@ -160,6 +267,7 @@ async function findOrCreateCallChain(
     },
   });
 
+  // 7. Create Call
   const dbCall = await prisma.call.create({
     data: {
       orgId,
@@ -180,19 +288,88 @@ async function findOrCreateCallChain(
     data: { lastActivityAt: new Date() },
   });
 
+  console.log(JSON.stringify({
+    event: 'vapi_chain_created',
+    reqId,
+    callId: vapiCallId,
+    dbCallId: dbCall.id,
+    leadId: lead.id,
+    contactId: contact.id,
+    orgId,
+  }));
+
   return { dbCallId: dbCall.id, leadId: lead.id, orgId, created: true };
 }
 
+// ─────────────────────────────────────────────
+// Router
+// ─────────────────────────────────────────────
+
 export function createVapiWebhookRouter(prisma: PrismaClient): Router {
   const router = Router();
+
   // Health check — public
   router.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ ok: true, ts: new Date().toISOString() });
   });
 
-  // Main webhook endpoint — PUBLIC (no auth). Vapi assistant-request
-  // does not send x-vapi-secret, so this route must have no auth middleware.
+  // ── Diagnostic: recent raw Vapi webhook events ──
+  router.get('/diag/events', async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const events = await prisma.webhookEvent.findMany({
+      where: { provider: 'vapi' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, externalId: true, eventType: true, createdAt: true },
+    });
+    res.json({ count: events.length, events });
+  });
+
+  // ── Diagnostic: recent Vapi calls in DB ──
+  router.get('/diag/calls', async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const calls = await prisma.call.findMany({
+      where: { provider: 'vapi' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        providerCallId: true,
+        leadId: true,
+        orgId: true,
+        fromE164: true,
+        toE164: true,
+        startedAt: true,
+        endedAt: true,
+        durationSeconds: true,
+        callOutcome: true,
+        transcriptText: true,
+        aiSummary: true,
+        createdAt: true,
+      },
+    });
+    res.json({ count: calls.length, calls });
+  });
+
+  // ── Diagnostic: phone numbers registered for inbound ──
+  router.get('/diag/phones', async (_req: Request, res: Response) => {
+    const phones = await prisma.phoneNumber.findMany({
+      where: { inboundEnabled: true },
+      select: { id: true, e164: true, label: true, provider: true, orgId: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    // Mask the numbers for safety
+    const masked = phones.map((p) => ({
+      ...p,
+      e164: maskPhone(p.e164),
+    }));
+    res.json({ count: masked.length, phones: masked });
+  });
+
+  // ── Main webhook endpoint — PUBLIC (no auth) ──
   router.post('/', async (req: Request, res: Response) => {
+    const reqId = nextReqId();
     const body = req.body;
     const message: VapiMessage = body?.message || body;
     const messageType = message?.type;
@@ -200,8 +377,13 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
     console.log(JSON.stringify({
       event: 'vapi_webhook_received',
+      reqId,
       type: messageType,
       callId,
+      bodyKeys: body ? Object.keys(body) : [],
+      messageKeys: message ? Object.keys(message) : [],
+      hasCallObj: !!message?.call,
+      callKeys: message?.call ? Object.keys(message.call) : [],
     }));
 
     if (!messageType) {
@@ -215,6 +397,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
       console.log(JSON.stringify({
         event: 'vapi_assistant_request',
+        reqId,
         callId,
         hasAssistantId: !!assistantId,
       }));
@@ -223,7 +406,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       return;
     }
 
-    // ── Fast path: tool-calls (respond immediately, store async) ──
+    // ── Fast path: tool-calls (respond immediately, process async) ──
     if (messageType === 'tool-calls') {
       const toolCalls = message.toolCalls || message.toolCallList || [];
       const results = toolCalls.map((tc) => ({
@@ -233,43 +416,11 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
 
       res.status(200).json({ results });
 
-      prisma.webhookEvent.create({
-        data: {
-          provider: 'vapi',
-          externalId: callId || `tool-calls-${Date.now()}`,
-          eventType: 'tool-calls',
-          payload: body as any,
-        },
-      }).catch((err: any) => {
-        if (err?.code !== 'P2002') {
-          console.log(JSON.stringify({
-            event: 'vapi_tool_calls_store_error',
-            callId,
-            error: err?.message || String(err),
-          }));
-        }
-      });
-
-      console.log(JSON.stringify({
-        event: 'vapi_tool_calls_processed',
-        callId,
-        toolCount: toolCalls.length,
-      }));
-      return;
-    }
-
-    // ── Ingestion path: end-of-call-report ──
-    if (messageType === 'end-of-call-report') {
-      res.status(200).json({ ok: true });
-
-      if (!callId) {
-        console.log(JSON.stringify({ event: 'vapi_eocr_skip', reason: 'no_call_id' }));
-        return;
-      }
-
-      ingestEndOfCallReport(prisma, callId, message, body).catch((err: any) => {
+      // Store + process async
+      processToolCalls(prisma, callId, toolCalls, body, reqId).catch((err: any) => {
         console.log(JSON.stringify({
-          event: 'vapi_eocr_error',
+          event: 'vapi_tool_calls_error',
+          reqId,
           callId,
           error: err?.message || String(err),
         }));
@@ -277,90 +428,290 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       return;
     }
 
-    // ── Ingestion path: transcript ──
-    if (messageType === 'transcript') {
-      res.status(200).json({ ok: true });
+    // ── All other events: respond 200, store raw, process async ──
+    res.status(200).json({ ok: true });
 
-      if (!callId) return;
+    // Store raw payload for every event type (ground truth)
+    storeRawEvent(prisma, callId, messageType, body).catch(() => {});
 
-      ingestTranscript(prisma, callId, message).catch((err: any) => {
-        console.log(JSON.stringify({
-          event: 'vapi_transcript_error',
-          callId,
-          error: err?.message || String(err),
-        }));
-      });
+    if (!callId) {
+      console.log(JSON.stringify({ event: 'vapi_no_call_id', reqId, type: messageType }));
       return;
     }
 
-    // ── Lightweight path: status-update ──
-    if (messageType === 'status-update') {
-      res.status(200).json({ ok: true });
-
-      if (!callId) return;
-
-      if (message.status === 'in-progress') {
-        findOrCreateCallChain(prisma, callId, message).then((result) => {
-          console.log(JSON.stringify({
-            event: 'vapi_status_update_processed',
-            status: 'in-progress',
-            callId,
-            dbCallId: result?.dbCallId || null,
-            created: result?.created || false,
-          }));
-        }).catch((err: any) => {
-          console.log(JSON.stringify({
-            event: 'vapi_status_update_error',
-            callId,
-            error: err?.message || String(err),
-          }));
-        });
+    try {
+      if (messageType === 'end-of-call-report') {
+        await ingestEndOfCallReport(prisma, callId, message, body, reqId);
+      } else if (messageType === 'transcript') {
+        await ingestTranscript(prisma, callId, message, reqId);
+      } else if (messageType === 'status-update') {
+        await ingestStatusUpdate(prisma, callId, message, reqId);
       } else {
         console.log(JSON.stringify({
           event: 'vapi_event_logged',
+          reqId,
           type: messageType,
           callId,
-          status: message.status || null,
         }));
       }
-      return;
+    } catch (err: any) {
+      console.log(JSON.stringify({
+        event: 'vapi_async_error',
+        reqId,
+        type: messageType,
+        callId,
+        error: err?.message || String(err),
+        stack: err?.stack?.split('\n').slice(0, 3).join(' | '),
+      }));
     }
-
-    // ── All other types: log only ──
-    console.log(JSON.stringify({
-      event: 'vapi_event_logged',
-      type: messageType,
-      callId,
-      status: (message as any).status || null,
-    }));
-
-    res.status(200).json({ ok: true });
   });
 
   return router;
 }
 
 // ─────────────────────────────────────────────
-// Async ingestion functions (fire-and-forget)
+// Async ingestion functions
 // ─────────────────────────────────────────────
+
+async function ingestStatusUpdate(
+  prisma: PrismaClient,
+  vapiCallId: string,
+  message: VapiMessage,
+  reqId: string,
+): Promise<void> {
+  if (message.status === 'in-progress') {
+    const result = await findOrCreateCallChain(prisma, vapiCallId, message, reqId);
+    console.log(JSON.stringify({
+      event: 'vapi_status_update_processed',
+      reqId,
+      status: 'in-progress',
+      callId: vapiCallId,
+      dbCallId: result?.dbCallId || null,
+      created: result?.created || false,
+      chainNull: !result,
+    }));
+  } else if (message.status === 'ended') {
+    const dbCall = await prisma.call.findUnique({
+      where: { providerCallId: vapiCallId },
+      select: { id: true, interactionId: true, startedAt: true },
+    });
+    if (dbCall) {
+      const dur = dbCall.startedAt
+        ? Math.round((Date.now() - dbCall.startedAt.getTime()) / 1000)
+        : null;
+      await prisma.call.update({
+        where: { id: dbCall.id },
+        data: { endedAt: new Date(), ...(dur ? { durationSeconds: dur } : {}) },
+      });
+      await prisma.interaction.update({
+        where: { id: dbCall.interactionId },
+        data: { endedAt: new Date(), status: 'completed' },
+      });
+      console.log(JSON.stringify({
+        event: 'vapi_status_update_processed',
+        reqId,
+        status: 'ended',
+        callId: vapiCallId,
+        dbCallId: dbCall.id,
+        durationSeconds: dur,
+      }));
+    } else {
+      console.log(JSON.stringify({
+        event: 'vapi_status_update_no_call',
+        reqId,
+        callId: vapiCallId,
+        status: 'ended',
+      }));
+    }
+  } else {
+    console.log(JSON.stringify({
+      event: 'vapi_status_update_ignored',
+      reqId,
+      callId: vapiCallId,
+      status: message.status,
+    }));
+  }
+}
+
+async function ingestTranscript(
+  prisma: PrismaClient,
+  vapiCallId: string,
+  message: VapiMessage,
+  reqId: string,
+): Promise<void> {
+  const transcript = message.transcript;
+  if (!transcript) return;
+
+  const dbCall = await prisma.call.findUnique({
+    where: { providerCallId: vapiCallId },
+    select: { id: true },
+  });
+
+  if (!dbCall) {
+    console.log(JSON.stringify({
+      event: 'vapi_transcript_skip',
+      reqId,
+      callId: vapiCallId,
+      reason: 'no_call_yet',
+    }));
+    return;
+  }
+
+  await prisma.call.update({
+    where: { id: dbCall.id },
+    data: { transcriptText: transcript },
+  });
+
+  console.log(JSON.stringify({
+    event: 'vapi_transcript_updated',
+    reqId,
+    callId: vapiCallId,
+    dbCallId: dbCall.id,
+    length: transcript.length,
+  }));
+}
+
+async function processToolCalls(
+  prisma: PrismaClient,
+  callId: string | null,
+  toolCalls: VapiToolCall[],
+  rawBody: unknown,
+  reqId: string,
+): Promise<void> {
+  // Store raw event
+  await storeRawEvent(prisma, callId, 'tool-calls', rawBody);
+
+  if (!callId || toolCalls.length === 0) return;
+
+  const dbCall = await prisma.call.findUnique({
+    where: { providerCallId: callId },
+    include: { lead: true },
+  });
+
+  if (!dbCall) {
+    console.log(JSON.stringify({
+      event: 'vapi_tool_calls_no_call',
+      reqId,
+      callId,
+      toolNames: toolCalls.map((tc) => tc.function?.name).filter(Boolean),
+    }));
+    return;
+  }
+
+  for (const tc of toolCalls) {
+    const toolName = tc.function?.name || '';
+    const toolArgs = (tc.function?.arguments || {}) as Record<string, unknown>;
+
+    console.log(JSON.stringify({
+      event: 'vapi_tool_call_processing',
+      reqId,
+      callId,
+      toolName,
+      argKeys: Object.keys(toolArgs),
+    }));
+
+    if (SAVE_INTAKE_TOOLS.includes(toolName)) {
+      const existingIntakeData = (dbCall.lead.intakeData as Record<string, unknown>) || {};
+      const flatData = flattenIntakeData(toolArgs);
+      const merged = { ...existingIntakeData, ...flatData };
+
+      await prisma.lead.update({
+        where: { id: dbCall.leadId },
+        data: {
+          intakeData: merged as any,
+          lastActivityAt: new Date(),
+          displayName: extractDisplayName(flatData) || dbCall.lead.displayName,
+        },
+      });
+
+      console.log(JSON.stringify({
+        event: 'vapi_tool_call_processed',
+        reqId,
+        callId,
+        toolName,
+        action: 'save_intake',
+        fieldsUpdated: Object.keys(flatData).length,
+      }));
+    } else if (COMPLETE_INTAKE_TOOLS.includes(toolName)) {
+      await prisma.intake.upsert({
+        where: { leadId: dbCall.leadId },
+        create: {
+          orgId: dbCall.orgId,
+          leadId: dbCall.leadId,
+          completionStatus: 'complete',
+          completedAt: new Date(),
+          answers: toolArgs as any,
+        },
+        update: {
+          completionStatus: 'complete',
+          completedAt: new Date(),
+        },
+      });
+
+      console.log(JSON.stringify({
+        event: 'vapi_tool_call_processed',
+        reqId,
+        callId,
+        toolName,
+        action: 'complete_intake',
+      }));
+    } else if (HANDOFF_TOOLS.includes(toolName)) {
+      await prisma.lead.update({
+        where: { id: dbCall.leadId },
+        data: { status: 'needs_handoff', lastActivityAt: new Date() },
+      });
+      await prisma.auditLog.create({
+        data: {
+          orgId: dbCall.orgId,
+          actorType: 'ai',
+          action: 'handoff_requested',
+          entityType: 'lead',
+          entityId: dbCall.leadId,
+          details: { toolName, callId, provider: 'vapi' } as any,
+        },
+      });
+
+      console.log(JSON.stringify({
+        event: 'vapi_tool_call_processed',
+        reqId,
+        callId,
+        toolName,
+        action: 'handoff',
+      }));
+    } else {
+      console.log(JSON.stringify({
+        event: 'vapi_tool_call_unknown',
+        reqId,
+        callId,
+        toolName,
+      }));
+    }
+  }
+}
 
 async function ingestEndOfCallReport(
   prisma: PrismaClient,
   vapiCallId: string,
   message: VapiMessage,
   rawBody: unknown,
+  reqId: string,
 ): Promise<void> {
-  // Idempotency
+  // Idempotency check (also stores the raw event)
   const isNew = await checkIdempotency(prisma, 'vapi', vapiCallId, 'end-of-call-report', rawBody);
   if (!isNew) {
-    console.log(JSON.stringify({ event: 'vapi_idempotent_skip', callId: vapiCallId, eventType: 'end-of-call-report' }));
+    console.log(JSON.stringify({ event: 'vapi_idempotent_skip', reqId, callId: vapiCallId, eventType: 'end-of-call-report' }));
     return;
   }
 
   // Find or create the full chain
-  const chain = await findOrCreateCallChain(prisma, vapiCallId, message);
+  const chain = await findOrCreateCallChain(prisma, vapiCallId, message, reqId);
   if (!chain) {
-    console.log(JSON.stringify({ event: 'vapi_eocr_unlinked', callId: vapiCallId }));
+    console.log(JSON.stringify({
+      event: 'vapi_eocr_unlinked',
+      reqId,
+      callId: vapiCallId,
+      hint: 'Chain creation failed — check vapi_chain_create_fail logs above',
+    }));
     return;
   }
 
@@ -376,6 +727,7 @@ async function ingestEndOfCallReport(
   // ── Update Call ──
   const callUpdate: Record<string, unknown> = {
     endedAt: new Date(),
+    callOutcome: 'connected',
     aiFlags: { endedReason: message.endedReason || null },
   };
 
@@ -411,9 +763,15 @@ async function ingestEndOfCallReport(
 
   // ── Update Lead with intake data ──
   const extractedData: Record<string, unknown> = {};
+
+  // Pull from analysis.structuredData (Vapi's primary structured output)
+  if (message.analysis?.structuredData && typeof message.analysis.structuredData === 'object') {
+    Object.assign(extractedData, message.analysis.structuredData);
+  }
+  // Also pull from analysis top-level keys
   if (message.analysis && typeof message.analysis === 'object') {
     for (const [key, value] of Object.entries(message.analysis)) {
-      if (key !== 'summary' && value !== undefined && value !== null) {
+      if (key !== 'summary' && key !== 'structuredData' && value !== undefined && value !== null) {
         extractedData[key] = value;
       }
     }
@@ -428,6 +786,7 @@ async function ingestEndOfCallReport(
   const flatData = Object.keys(extractedData).length > 0 ? flattenIntakeData(extractedData) : {};
   const mergedIntakeData = { ...existingIntakeData, ...flatData };
 
+  // Always set summary from EOCR so dashboard has something to show
   await prisma.lead.update({
     where: { id: leadId },
     data: {
@@ -456,44 +815,16 @@ async function ingestEndOfCallReport(
 
   console.log(JSON.stringify({
     event: 'vapi_end_of_call_ingested',
+    reqId,
     callId: vapiCallId,
     dbCallId,
     leadId,
     orgId,
     hasTranscript: !!transcript,
     hasSummary: !!summary,
+    hasRecording: !!recordingUrl,
+    durationSeconds,
     endedReason: message.endedReason || null,
-  }));
-}
-
-async function ingestTranscript(
-  prisma: PrismaClient,
-  vapiCallId: string,
-  message: VapiMessage,
-): Promise<void> {
-  const transcript = message.transcript;
-  if (!transcript) return;
-
-  const dbCall = await prisma.call.findUnique({
-    where: { providerCallId: vapiCallId },
-    select: { id: true },
-  });
-
-  if (!dbCall) {
-    // Call doesn't exist yet — transcript will arrive again in end-of-call-report
-    console.log(JSON.stringify({ event: 'vapi_transcript_skip', callId: vapiCallId, reason: 'no_call_yet' }));
-    return;
-  }
-
-  await prisma.call.update({
-    where: { id: dbCall.id },
-    data: { transcriptText: transcript },
-  });
-
-  console.log(JSON.stringify({
-    event: 'vapi_transcript_updated',
-    callId: vapiCallId,
-    dbCallId: dbCall.id,
-    length: transcript.length,
+    extractedFields: Object.keys(flatData),
   }));
 }
