@@ -38,29 +38,49 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 const CANONICAL_HOST = "casecurrent.co";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Build a set of allowed hosts from Replit env vars
+const REPLIT_ALLOWED_HOSTS = new Set<string>();
+if (process.env.REPLIT_DEV_DOMAIN) {
+  REPLIT_ALLOWED_HOSTS.add(process.env.REPLIT_DEV_DOMAIN.toLowerCase());
+}
+if (process.env.REPLIT_DOMAINS) {
+  for (const d of process.env.REPLIT_DOMAINS.split(",")) {
+    const trimmed = d.trim().toLowerCase();
+    if (trimmed) REPLIT_ALLOWED_HOSTS.add(trimmed);
+  }
+}
+
+const CANONICAL_REDIRECT_ENABLED = IS_PRODUCTION;
+console.log(
+  `[CANONICAL] host=${CANONICAL_HOST} redirects=${CANONICAL_REDIRECT_ENABLED ? "enabled" : "disabled"} ` +
+  `replitHosts=[${[...REPLIT_ALLOWED_HOSTS].join(", ")}]`
+);
+
 app.use((req, res, next) => {
-  const host = req.hostname || req.headers.host?.split(":")[0] || "";
+  if (!CANONICAL_REDIRECT_ENABLED) return next();
+
+  const host = (req.hostname || req.headers.host?.split(":")[0] || "").toLowerCase();
   const method = req.method.toUpperCase();
   const path = req.path || req.originalUrl.split("?")[0];
-  
-  if (method !== "GET" && method !== "HEAD") {
-    return next();
-  }
-  
-  if (path.startsWith("/v1/") || path.startsWith("/api/") || path.startsWith("/.well-known/")) {
-    return next();
-  }
-  
+
+  if (method !== "GET" && method !== "HEAD") return next();
+  if (path.startsWith("/v1/") || path.startsWith("/api/") || path.startsWith("/.well-known/")) return next();
+
   if (
     host === "localhost" ||
     host === "127.0.0.1" ||
     host === "0.0.0.0" ||
     host.endsWith(".localhost") ||
-    host === CANONICAL_HOST
+    host === CANONICAL_HOST ||
+    host.endsWith(".replit.dev") ||
+    host.endsWith(".repl.co") ||
+    REPLIT_ALLOWED_HOSTS.has(host)
   ) {
     return next();
   }
-  
+
   const redirectUrl = `https://${CANONICAL_HOST}${req.originalUrl}`;
   console.log(`[REDIRECT] 301 ${host}${req.originalUrl} -> ${redirectUrl}`);
   return res.redirect(301, redirectUrl);
