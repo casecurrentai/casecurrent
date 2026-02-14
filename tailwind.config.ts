@@ -113,6 +113,15 @@ export default {
           "0%, 100%": { transform: "scale(1)", opacity: "0.4" },
           "50%": { transform: "scale(1.35)", opacity: "0.1" },
         },
+        "orb-spin": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "orb-shimmer": {
+          "0%": { transform: "translateX(-100%)" },
+          "50%": { transform: "translateX(100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",

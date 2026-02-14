@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { GuillocheUnderlay } from "./guilloche-pattern";
-import { VapiCallButton } from "@/components/ui/vapi-call-button";
 
 const NAV_LINKS = [
   { href: "/how-it-works", label: "Product" },
@@ -143,10 +142,6 @@ export function PageShell({ children, title, description }: PageShellProps) {
       </header>
 
       <main className="flex-1 relative z-10">{children}</main>
-
-      <div className="fixed bottom-6 right-6 z-40">
-        <VapiCallButton />
-      </div>
 
       <footer className="border-t border-border bg-muted/30 relative z-10">
         <div className="container mx-auto px-6 py-12">
