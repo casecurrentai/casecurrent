@@ -109,6 +109,10 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "orb-ping": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.4" },
+          "50%": { transform: "scale(1.35)", opacity: "0.1" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
