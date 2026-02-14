@@ -26,6 +26,8 @@ interface VapiMessage {
   type: string;
   call?: {
     id?: string;
+    type?: string; // "inboundPhoneCall" | "outboundPhoneCall" | "webCall"
+    assistantId?: string;
     phoneNumber?: { number?: string; [key: string]: unknown };
     customer?: { number?: string; [key: string]: unknown };
     [key: string]: unknown;
@@ -185,20 +187,88 @@ async function findOrCreateCallChain(
     return { dbCallId: existing.id, leadId: existing.leadId, orgId: existing.orgId, created: false };
   }
 
-  // 2. Resolve phone numbers
+  // 2. Detect web calls (browser-based, no phone numbers)
+  const callType = (message.call as any)?.type as string | undefined;
+  const isWebCall = callType === 'webCall' || callType === 'vapi.websocketCall';
+
+  // 3. Resolve phone numbers (will be null for web calls)
   const { fromNumber, toNumber, fromE164, toE164 } = resolvePhoneNumbers(message);
 
   console.log(JSON.stringify({
     event: 'vapi_chain_create_attempt',
     reqId,
     callId: vapiCallId,
+    callType: callType || 'unknown',
+    isWebCall,
     fromRaw: maskPhone(fromNumber),
     toRaw: maskPhone(toNumber),
     fromE164: maskPhone(fromE164),
     toE164: maskPhone(toE164),
   }));
 
-  if (!fromE164 || !toE164) {
+  let orgId: string;
+  let phoneNumberId: string;
+  let contactFromE164: string;
+  let contactToE164: string;
+
+  if (isWebCall || (!fromE164 && !toE164)) {
+    // ── Web call path: no phone numbers, resolve org by assistant ID or env ──
+    const assistantId = (message.call as any)?.assistantId
+      || (message.call as any)?.assistant?.id
+      || null;
+
+    // Try to find org: use VAPI_DEFAULT_ORG_ID env var (works for single-org deployments)
+    const defaultOrgId = process.env.VAPI_DEFAULT_ORG_ID;
+    const resolvedOrgId = defaultOrgId || null;
+
+    if (!resolvedOrgId) {
+      console.log(JSON.stringify({
+        event: 'vapi_chain_create_fail',
+        reqId,
+        callId: vapiCallId,
+        reason: 'web_call_no_org',
+        callType,
+        assistantId,
+        hint: 'Set VAPI_DEFAULT_ORG_ID env var to the org UUID for web call routing',
+        callKeys: message.call ? Object.keys(message.call) : [],
+      }));
+      return null;
+    }
+
+    orgId = resolvedOrgId;
+
+    // Get org's first inbound phone number for FK reference
+    const orgPhone = await prisma.phoneNumber.findFirst({
+      where: { orgId, inboundEnabled: true },
+      select: { id: true, e164: true },
+    });
+    if (!orgPhone) {
+      console.log(JSON.stringify({
+        event: 'vapi_chain_create_fail',
+        reqId,
+        callId: vapiCallId,
+        reason: 'web_call_no_phone_number',
+        orgId,
+        hint: 'Org needs at least one phone number with inboundEnabled=true',
+      }));
+      return null;
+    }
+
+    phoneNumberId = orgPhone.id;
+    // Use synthetic E164 values: "from" = web-{callId}, "to" = org's number
+    contactFromE164 = `+0web${vapiCallId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`;
+    contactToE164 = orgPhone.e164;
+
+    console.log(JSON.stringify({
+      event: 'vapi_web_call_resolved',
+      reqId,
+      callId: vapiCallId,
+      orgId,
+      phoneNumberId,
+      assistantId,
+    }));
+  } else if (!fromE164 || !toE164) {
+    // Partial phone data — can't proceed
     console.log(JSON.stringify({
       event: 'vapi_chain_create_fail',
       reqId,
@@ -206,50 +276,63 @@ async function findOrCreateCallChain(
       reason: 'missing_phones',
       fromPresent: !!fromNumber,
       toPresent: !!toNumber,
-      // Dump the raw call object keys for debugging
+      callType,
       callKeys: message.call ? Object.keys(message.call) : [],
     }));
     return null;
-  }
+  } else {
+    // ── Phone call path: lookup org by called number ──
+    const firm = await lookupFirmByNumber(prisma, toNumber!);
+    if (!firm) {
+      console.log(JSON.stringify({
+        event: 'vapi_chain_create_fail',
+        reqId,
+        callId: vapiCallId,
+        reason: 'no_firm_for_number',
+        toE164: maskPhone(toE164),
+        toRaw: toNumber,
+        hint: 'Ensure this number exists in phone_numbers table with inbound_enabled=true',
+      }));
+      return null;
+    }
 
-  // 3. Lookup org by called number
-  const firm = await lookupFirmByNumber(prisma, toNumber!);
-  if (!firm) {
-    console.log(JSON.stringify({
-      event: 'vapi_chain_create_fail',
-      reqId,
-      callId: vapiCallId,
-      reason: 'no_firm_for_number',
-      toE164: maskPhone(toE164),
-      toRaw: toNumber,
-      hint: 'Ensure this number exists in phone_numbers table with inbound_enabled=true',
-    }));
-    return null;
+    orgId = firm.orgId;
+    phoneNumberId = firm.phoneNumberId;
+    contactFromE164 = fromE164;
+    contactToE164 = toE164;
   }
-
-  const { orgId, phoneNumberId } = firm;
 
   // 4. Find or create Contact
-  let contact = await prisma.contact.findFirst({
-    where: { orgId, primaryPhone: fromE164 },
-  });
+  const isWeb = contactFromE164.startsWith('+0web');
+  let contact = isWeb
+    ? null
+    : await prisma.contact.findFirst({
+        where: { orgId, primaryPhone: contactFromE164 },
+      });
   if (!contact) {
     contact = await prisma.contact.create({
-      data: { orgId, name: 'Unknown Caller', primaryPhone: fromE164 },
+      data: {
+        orgId,
+        name: isWeb ? 'Web Visitor' : 'Unknown Caller',
+        primaryPhone: contactFromE164,
+      },
     });
   }
 
   // 5. Find or create Lead
-  let lead = await prisma.lead.findFirst({
-    where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'in_progress'] } },
-    orderBy: { createdAt: 'desc' },
-  });
+  let lead: { id: string; intakeData: unknown; displayName: string | null; summary: string | null } | null = null;
+  if (!isWeb) {
+    lead = await prisma.lead.findFirst({
+      where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'in_progress'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
   if (!lead) {
     lead = await prisma.lead.create({
       data: {
         orgId,
         contactId: contact.id,
-        source: 'phone',
+        source: isWeb ? 'web' : 'phone',
         status: 'new',
         priority: 'medium',
       },
@@ -261,7 +344,7 @@ async function findOrCreateCallChain(
     data: {
       orgId,
       leadId: lead.id,
-      channel: 'call',
+      channel: isWeb ? 'webchat' : 'call',
       status: 'active',
       startedAt: new Date(),
     },
@@ -277,8 +360,8 @@ async function findOrCreateCallChain(
       direction: 'inbound',
       provider: 'vapi',
       providerCallId: vapiCallId,
-      fromE164,
-      toE164,
+      fromE164: contactFromE164,
+      toE164: contactToE164,
       startedAt: new Date(),
     },
   });
@@ -367,6 +450,18 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     res.json({ count: masked.length, phones: masked });
   });
 
+  // ── Diagnostic: show raw payload of most recent webhook events ──
+  router.get('/diag/raw', async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 5, 10);
+    const events = await prisma.webhookEvent.findMany({
+      where: { provider: 'vapi' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, externalId: true, eventType: true, payload: true, createdAt: true },
+    });
+    res.json({ count: events.length, events });
+  });
+
   // ── Main webhook endpoint — PUBLIC (no auth) ──
   router.post('/', async (req: Request, res: Response) => {
     const reqId = nextReqId();
@@ -380,6 +475,8 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       reqId,
       type: messageType,
       callId,
+      callType: (message?.call as any)?.type || 'unknown',
+      assistantId: (message?.call as any)?.assistantId || null,
       bodyKeys: body ? Object.keys(body) : [],
       messageKeys: message ? Object.keys(message) : [],
       hasCallObj: !!message?.call,
@@ -432,7 +529,15 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     res.status(200).json({ ok: true });
 
     // Store raw payload for every event type (ground truth)
-    storeRawEvent(prisma, callId, messageType, body).catch(() => {});
+    storeRawEvent(prisma, callId, messageType, body).catch((err: any) => {
+      console.log(JSON.stringify({
+        event: 'vapi_raw_store_error_unhandled',
+        reqId,
+        callId,
+        type: messageType,
+        error: err?.message || String(err),
+      }));
+    });
 
     if (!callId) {
       console.log(JSON.stringify({ event: 'vapi_no_call_id', reqId, type: messageType }));
