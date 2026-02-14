@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { KPIStrip } from "@/components/dashboard/kpi-strip";
 import { IntakeFeed } from "@/components/dashboard/intake-feed";
-import { VapiCallButton } from "@/components/ui/vapi-call-button";
+
 
 interface FunnelStage {
   name: string;
@@ -174,11 +174,8 @@ export default function PIDashboardPage() {
           </h1>
           <p className="text-sm text-muted-foreground">{dateStr}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <VapiCallButton />
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
-            {firstName.charAt(0).toUpperCase()}
-          </div>
+        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
+          {firstName.charAt(0).toUpperCase()}
         </div>
       </div>
 

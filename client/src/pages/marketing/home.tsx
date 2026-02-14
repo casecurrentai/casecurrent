@@ -3,6 +3,7 @@ import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/
 import { PricingCard } from "@/components/marketing/pricing-card";
 import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { Button } from "@/components/ui/button";
+import { VapiCallButton } from "@/components/ui/vapi-call-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
@@ -48,6 +49,7 @@ export default function MarketingHomePage() {
                     See how intake works
                   </Button>
                 </Link>
+                <VapiCallButton />
               </div>
 
               {/* Micro-proof */}
