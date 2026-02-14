@@ -23,7 +23,7 @@ export function VapiCallButton({ className }: { className?: string }) {
           <span
             className={cn(
               "absolute inset-[-3px] rounded-full opacity-0 transition-opacity duration-500",
-              "bg-[conic-gradient(from_0deg,hsl(var(--primary)),hsl(var(--primary)/0.3),hsl(var(--primary)),hsl(var(--primary)/0.3),hsl(var(--primary)))]",
+              "bg-[conic-gradient(from_0deg,#2563eb,#06b6d4,#3b82f6,#8b5cf6,#2563eb)]",
               "animate-[orb-spin_4s_linear_infinite]",
               !isActive && !isBusy && "group-hover:opacity-100",
               isConnecting && "opacity-100 animate-[orb-spin_1.5s_linear_infinite]",
@@ -37,8 +37,8 @@ export function VapiCallButton({ className }: { className?: string }) {
               "absolute inset-[-8px] rounded-full transition-all duration-300",
               isActive
                 ? "bg-red-500/15"
-                : "bg-primary/8 animate-[orb-ping_2.5s_ease-in-out_infinite]",
-              isConnecting && "bg-primary/15 animate-[orb-ping_1s_ease-in-out_infinite]",
+                : "bg-blue-500/10 animate-[orb-ping_2.5s_ease-in-out_infinite]",
+              isConnecting && "bg-blue-400/20 animate-[orb-ping_1s_ease-in-out_infinite]",
             )}
             style={isActive ? {
               transform: `scale(${1 + volumeLevel * 0.7})`,
@@ -50,8 +50,8 @@ export function VapiCallButton({ className }: { className?: string }) {
               "absolute inset-[-16px] rounded-full transition-all duration-500",
               isActive
                 ? "bg-red-500/8"
-                : "bg-primary/5 animate-[orb-ping_2.5s_ease-in-out_0.4s_infinite]",
-              isConnecting && "bg-primary/8 animate-[orb-ping_1s_ease-in-out_0.3s_infinite]",
+                : "bg-blue-400/6 animate-[orb-ping_2.5s_ease-in-out_0.4s_infinite]",
+              isConnecting && "bg-blue-400/10 animate-[orb-ping_1s_ease-in-out_0.3s_infinite]",
             )}
             style={isActive ? {
               transform: `scale(${1 + volumeLevel * 1.1})`,
@@ -63,7 +63,7 @@ export function VapiCallButton({ className }: { className?: string }) {
               "absolute inset-[-24px] rounded-full transition-all duration-700",
               isActive
                 ? "bg-red-500/5"
-                : "bg-primary/3 animate-[orb-ping_2.5s_ease-in-out_0.8s_infinite]",
+                : "bg-cyan-400/4 animate-[orb-ping_2.5s_ease-in-out_0.8s_infinite]",
               isConnecting && "hidden",
             )}
             style={isActive ? {
@@ -80,7 +80,7 @@ export function VapiCallButton({ className }: { className?: string }) {
               "relative flex items-center justify-center",
               "w-16 h-16 rounded-full",
               "transition-all duration-300 ease-out",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-offset-2",
               isBusy && "cursor-wait",
               !isBusy && "cursor-pointer",
             )}
@@ -94,9 +94,9 @@ export function VapiCallButton({ className }: { className?: string }) {
                 "shadow-lg",
                 isActive
                   ? "bg-gradient-to-br from-red-500 via-red-600 to-orange-600 shadow-red-500/40"
-                  : "bg-gradient-to-br from-primary via-primary/90 to-primary/70 shadow-primary/40",
-                isConnecting && "from-primary/70 via-primary/50 to-primary/70",
-                !isBusy && !isActive && "group-hover:shadow-xl group-hover:shadow-primary/50",
+                  : "bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-500 shadow-blue-500/40",
+                isConnecting && "from-blue-400 via-blue-500 to-cyan-400",
+                !isBusy && !isActive && "group-hover:shadow-xl group-hover:shadow-blue-500/50 group-hover:from-blue-400 group-hover:via-blue-500 group-hover:to-cyan-400",
               )}
             />
 
@@ -108,19 +108,19 @@ export function VapiCallButton({ className }: { className?: string }) {
                 isConnecting && "animate-[orb-shimmer_1.2s_ease-in-out_infinite]",
               )}
             >
-              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent translate-x-[-100%] animate-[inherit]" />
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] animate-[inherit]" />
             </span>
 
             {/* Icon */}
             <span className="relative z-10">
               {isConnecting ? (
-                <Loader2 className="h-6 w-6 text-primary-foreground animate-spin" />
+                <Loader2 className="h-6 w-6 text-white animate-spin" />
               ) : isEnding ? (
                 <Loader2 className="h-6 w-6 text-white animate-spin" />
               ) : isActive ? (
                 <PhoneOff className="h-6 w-6 text-white drop-shadow-sm" />
               ) : (
-                <Phone className="h-6 w-6 text-primary-foreground drop-shadow-sm" />
+                <Phone className="h-6 w-6 text-white drop-shadow-sm" />
               )}
             </span>
           </button>
@@ -148,7 +148,7 @@ export function VapiCallButton({ className }: { className?: string }) {
       <span
         className={cn(
           "text-xs font-semibold tracking-wide uppercase transition-colors duration-200",
-          isActive ? "text-red-500 dark:text-red-400" : "text-muted-foreground",
+          isActive ? "text-red-500 dark:text-red-400" : "text-blue-600 dark:text-blue-400",
         )}
       >
         {isConnecting ? "Connecting..." : isEnding ? "Ending..." : isActive ? "Tap to end" : "Talk to Avery"}
