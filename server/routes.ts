@@ -148,15 +148,23 @@ function discoverBuildEnvVars(): Record<string, string> {
 
 // Try env vars in priority order, then generate fallback fingerprint
 function getBuildFingerprint(): { sha: string; source: string; deploymentId: string | null } {
+  // BUILD_SHA is baked in by esbuild at build time — always prefer it
+  if (process.env.BUILD_SHA && process.env.BUILD_SHA !== 'unknown') {
+    return {
+      sha: process.env.BUILD_SHA,
+      source: 'build-injected',
+      deploymentId: process.env.REPL_DEPLOYMENT_ID || process.env.REPLIT_DEPLOYMENT_ID || null,
+    };
+  }
+
   const envPriority = [
     'REPL_DEPLOYMENT_ID',
-    'REPLIT_DEPLOYMENT_ID', 
+    'REPLIT_DEPLOYMENT_ID',
     'REPL_SLUG_COMMIT',
     'RAILWAY_GIT_COMMIT_SHA',
     'VERCEL_GIT_COMMIT_SHA',
     'GITHUB_SHA',
     'COMMIT_SHA',
-    'BUILD_SHA',
     'DEPLOY_FINGERPRINT',
   ];
   
@@ -221,7 +229,8 @@ console.log(`[BUILD_INFO] nodeEnv=${process.env.NODE_ENV || 'undefined'} buildTi
 // Export for use in UI footer
 export const buildInfo = {
   sha: BUILD_FINGERPRINT.sha,
-  buildTime: BOOT_TIME,
+  buildTime: process.env.BUILD_TIME || BOOT_TIME,
+  bootTime: BOOT_TIME,
   nodeEnv: process.env.NODE_ENV || 'development',
   deploymentId: BUILD_FINGERPRINT.deploymentId,
   source: BUILD_FINGERPRINT.source,
@@ -10123,14 +10132,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: PI dashboard data with funnel, speed, rescue queue, source ROI, and intake completeness
    */
   app.get('/v1/analytics/pi-dashboard', flexAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+    const user = req.user;
+    const orgId = user?.orgId || 'unknown';
+    const userId = user?.userId || 'unknown';
     try {
-      const user = req.user!;
-      console.log(`[PI_DASHBOARD_HIT] userId=${user.userId} orgId=${user.orgId}`);
+      console.log(`[PI_DASHBOARD_HIT] userId=${userId} orgId=${orgId}`);
       const days = parseInt(req.query.days as string) || 30;
-      const data = await getPIDashboardData(prisma, user.orgId, days);
+      const data = await getPIDashboardData(prisma, orgId, days);
       res.json(data);
-    } catch (error) {
-      console.error('PI dashboard error:', error);
+    } catch (error: any) {
+      console.error(JSON.stringify({
+        tag: 'pi_dashboard_error',
+        orgId,
+        userId,
+        errorName: error?.name,
+        errorCode: error?.code,
+        errorMessage: error?.message,
+        errorMeta: error?.meta,
+        stack: error?.stack?.split('\n').slice(0, 5).join(' | '),
+      }));
       res.status(500).json({ error: 'Failed to get PI dashboard data' });
     }
   });
