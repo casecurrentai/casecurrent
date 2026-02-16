@@ -313,7 +313,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       }
 
       let lead = await prisma.lead.findFirst({
-        where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'in_progress'] } },
+        where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'engaged', 'in_progress', 'intake_started'] } },
         orderBy: { createdAt: 'desc' },
       });
 
@@ -460,6 +460,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         aiSummary: payload.summary || call.aiSummary,
         recordingUrl: payload.recording_url || call.recordingUrl,
         aiFlags: updatedAiFlags,
+        callOutcome: 'connected',
       };
 
       if (normalizedTranscript.length > 0) {

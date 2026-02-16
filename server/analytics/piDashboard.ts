@@ -308,7 +308,10 @@ async function getRescueQueue(
       direction: 'inbound',
       OR: [
         { callOutcome: { in: ['no-answer', 'busy', 'voicemail'] } },
-        { callOutcome: null },
+        {
+          callOutcome: null,
+          transcriptText: null,
+        },
       ],
       resolved: false,
     },
