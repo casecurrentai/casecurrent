@@ -479,6 +479,7 @@ async function handleCallEnded(event: OpenAIWebhookEvent, res: Response): Promis
           durationSeconds: call.startedAt
             ? Math.floor((Date.now() - call.startedAt.getTime()) / 1000)
             : null,
+          callOutcome: 'connected',
         },
       });
 
