@@ -48,7 +48,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
           <div className="container mx-auto px-6 h-full">
             <div className="flex items-center justify-between h-full">
               <Link href="/" className="flex items-center gap-2" data-testid="link-logo">
-                <img src="/brand/casecurrent-mark-whitebg.png" alt="CaseCurrent" className="h-8 w-auto" />
+                <img src="/brand/casecurrent-mark-transparent.png" alt="CaseCurrent" className="h-8 w-auto" />
                 <span className="font-bold text-xl text-foreground">CaseCurrent</span>
               </Link>
 
@@ -148,7 +148,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <img src="/brand/casecurrent-mark-whitebg.png" alt="CaseCurrent" className="h-6 w-auto" />
+                <img src="/brand/casecurrent-mark-transparent.png" alt="CaseCurrent" className="h-6 w-auto" />
                 <span className="font-bold text-foreground">CaseCurrent</span>
               </div>
               <p className="text-sm text-muted-foreground">
