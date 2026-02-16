@@ -2,6 +2,7 @@ import { PageShell } from "@/components/marketing/page-shell";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { PricingCard } from "@/components/marketing/pricing-card";
 import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { GradientOrb, GlowLine, DecorativeScatter, HeroGlow, FloatingShape, GradientText, PulseBeacon } from "@/components/marketing/decorative-visuals";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ export default function MarketingHomePage() {
       {/* HERO SECTION */}
       <section className="relative overflow-hidden py-20 lg:py-28" data-testid="section-hero">
         <GuillocheUnderlay />
+        <HeroGlow />
         <div className="container mx-auto px-6 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left: Copy */}
@@ -58,6 +60,9 @@ export default function MarketingHomePage() {
 
             {/* Right: Product Vignette */}
             <div className="relative">
+              <GradientOrb color="primary" size="md" className="absolute -top-16 -right-16 opacity-60" />
+              <FloatingShape variant="ring" color="blue" size={20} className="absolute -bottom-4 -left-4 animate-float-slow" />
+              <FloatingShape variant="diamond" color="primary" size={12} className="absolute top-8 -right-8 animate-float-slow" style={{ animationDelay: "2s" }} />
               <SectionFrame variant="corners" className="p-6">
                 <div className="space-y-4">
                   {/* Call in Progress Card */}
@@ -166,7 +171,7 @@ export default function MarketingHomePage() {
       </section>
 
       {/* PROBLEM SECTION */}
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="warm">
         <section className="py-20 relative">
           <DotGridPattern />
           <div className="container mx-auto px-6 relative z-10">
@@ -215,7 +220,7 @@ export default function MarketingHomePage() {
       <BlueprintDivider />
 
       {/* SOLUTION SECTION */}
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="crosshairs" className="p-8">
@@ -275,7 +280,7 @@ export default function MarketingHomePage() {
       <BlueprintDivider />
 
       {/* HOW IT WORKS SECTION */}
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="blue-purple">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="corners" className="p-8">
@@ -323,7 +328,7 @@ export default function MarketingHomePage() {
       <BlueprintDivider />
 
       {/* DIFFERENTIATOR SECTION */}
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="grid" className="p-8">
@@ -371,7 +376,7 @@ export default function MarketingHomePage() {
       <BlueprintDivider />
 
       {/* PACKAGES SECTION */}
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="primary">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <div className="text-center mb-12">
@@ -431,7 +436,7 @@ export default function MarketingHomePage() {
       <BlueprintDivider />
 
       {/* FAQ SECTION */}
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="minimal" className="p-8">
@@ -468,6 +473,8 @@ export default function MarketingHomePage() {
         <div className="absolute inset-0 opacity-10">
           <GuillocheUnderlay />
         </div>
+        <div className="absolute -top-20 left-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl pointer-events-none" aria-hidden="true" />
+        <div className="absolute -bottom-20 right-1/4 w-80 h-80 rounded-full bg-primary/10 blur-3xl pointer-events-none" aria-hidden="true" />
         <div className="container mx-auto px-6 text-center relative z-10">
           <h2 className="text-3xl font-bold mb-4" data-testid="text-final-headline">
             Turn missed calls into signed cases.

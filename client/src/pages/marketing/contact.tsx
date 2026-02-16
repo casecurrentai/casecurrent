@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { GlowLine, SectionGlow, GradientOrb } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,8 +75,9 @@ export default function ContactPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
       />
 
-      <SectionBackground variant="subtle">
-        <section className="py-20 -mt-10">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
+        <section className="py-20 -mt-10 relative overflow-hidden">
+          <GradientOrb color="primary" size="md" className="absolute -top-20 -right-20 opacity-50" />
           <div className="container mx-auto px-6">
             <SectionFrame variant="corners" className="p-8 max-w-5xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12">

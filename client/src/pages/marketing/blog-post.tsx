@@ -1,6 +1,7 @@
 import { useRoute, Link } from "wouter";
 import { PageShell } from "@/components/marketing/page-shell";
 import { SectionBackground } from "@/components/marketing/section-frame";
+import { GlowLine } from "@/components/marketing/decorative-visuals";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -100,7 +101,7 @@ export default function BlogPostPage() {
 
   return (
     <PageShell title={`${article.title} | CaseCurrent Blog`} description={article.excerpt}>
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-16">
           <div className="container mx-auto px-6">
             <div className="max-w-3xl mx-auto">
@@ -137,6 +138,8 @@ export default function BlogPostPage() {
                 </span>
               </div>
 
+              <GlowLine className="mb-8" />
+
               <div className="prose-custom" data-testid="text-blog-content">
                 {article.content.map((block, i) => renderBlock(block, i))}
               </div>
@@ -166,7 +169,7 @@ export default function BlogPostPage() {
         </section>
       </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-16">
           <div className="container mx-auto px-6">
             <h2 className="text-2xl font-bold text-foreground text-center mb-8">Related Articles</h2>

@@ -4,6 +4,7 @@ import { FeatureCard } from "@/components/marketing/feature-card";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { WireframeQualificationCard, WireframeTimelineCard } from "@/components/marketing/wireframe-components";
+import { GradientOrb, GlowLine, DecorativeScatter, SectionGlow, GradientText } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,10 +128,11 @@ export default function SolutionsPage() {
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="rails" className="p-8">
+            <GlowLine className="mb-8" aria-hidden="true" />
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Practice Areas</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -169,9 +171,10 @@ export default function SolutionsPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
         <DotGridPattern />
+        <DecorativeScatter density="sparse" />
         <div className="container mx-auto px-6 relative z-10">
           <SectionFrame variant="grid" className="p-8">
             <div className="text-center mb-12">
@@ -195,7 +198,7 @@ export default function SolutionsPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="accent">
+      <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="rails" className="p-8">
@@ -236,6 +239,8 @@ export default function SolutionsPage() {
       </SectionBackground>
 
       <section className="py-16 relative">
+        <GradientOrb color="primary" size="md" className="top-4 right-4" />
+        <GradientOrb color="blue" size="sm" className="bottom-4 left-4" />
         <GuillocheUnderlay />
         <div className="container mx-auto px-6 relative z-10">
           <div className="text-center mb-8">
@@ -249,8 +254,9 @@ export default function SolutionsPage() {
         </div>
       </section>
 
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-6 text-center">
+      <section className="py-16 bg-primary text-primary-foreground relative">
+        <div className="absolute -top-20 right-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl pointer-events-none" aria-hidden="true" />
+        <div className="container mx-auto px-6 text-center relative z-10">
           <h2 className="text-2xl font-bold mb-4">See CaseCurrent for Your Practice Area</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
             Schedule a demo tailored to your specific practice and intake workflow.

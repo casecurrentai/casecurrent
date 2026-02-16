@@ -5,11 +5,14 @@ export function WireframeInboxCard() {
     <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 mb-3">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Lead Inbox</span>
-        <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+        <div className="relative flex items-center justify-center">
+          <div className="absolute w-4 h-4 bg-primary/30 rounded-full animate-ping" />
+          <div className="w-2 h-2 bg-primary rounded-full" />
+        </div>
       </div>
       {[1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-3 p-2 bg-muted/30 rounded-md">
-          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+        <div key={i} className="flex items-center gap-3 p-2 bg-muted/30 rounded-md group hover-elevate">
+          <div className="relative w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
             <Phone className="w-4 h-4 text-primary" />
           </div>
           <div className="flex-1 space-y-1">
@@ -34,8 +37,8 @@ export function WireframeCallSummaryCard() {
         {[...Array(30)].map((_, i) => (
           <div 
             key={i} 
-            className="w-1 bg-primary/50 rounded-full" 
-            style={{ height: `${Math.random() * 24 + 8}px` }}
+            className="w-1 bg-primary/50 rounded-full animate-waveform" 
+            style={{ height: `${Math.random() * 24 + 8}px`, animationDelay: `${i * 0.04}s` }}
           />
         ))}
       </div>
@@ -70,7 +73,9 @@ export function WireframeTimelineCard() {
                   step.status === "completed" ? "text-primary" : "text-muted-foreground"
                 }`} />
               </div>
-              {i < steps.length - 1 && <div className="w-0.5 h-6 bg-border" />}
+              {i < steps.length - 1 && (
+                <div className={`w-0.5 h-6 ${step.status === "completed" ? "bg-primary/30" : "bg-border"}`} />
+              )}
             </div>
             <div className="pb-4">
               <div className="text-sm font-medium text-foreground">{step.label}</div>
@@ -92,11 +97,11 @@ export function WireframeDashboardCard() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="p-3 bg-muted/30 rounded-md text-center">
-          <div className="text-2xl font-bold text-foreground">24</div>
+          <div className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">24</div>
           <div className="text-xs text-muted-foreground">New Today</div>
         </div>
         <div className="p-3 bg-muted/30 rounded-md text-center">
-          <div className="text-2xl font-bold text-primary">87%</div>
+          <div className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">87%</div>
           <div className="text-xs text-muted-foreground">Qualified</div>
         </div>
       </div>
@@ -120,7 +125,7 @@ export function WireframeAutomationCard() {
             <span className="text-sm text-foreground">{rule.label}</span>
             <div className={`w-8 h-4 rounded-full ${
               rule.active ? "bg-primary" : "bg-muted"
-            } flex items-center ${rule.active ? "justify-end" : "justify-start"} px-0.5`}>
+            } flex items-center ${rule.active ? "justify-end" : "justify-start"} px-0.5 transition-all duration-300`}>
               <div className="w-3 h-3 bg-white rounded-full" />
             </div>
           </div>
@@ -142,7 +147,7 @@ export function WireframeQualificationCard() {
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between gap-2 mb-3">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Qualification</span>
-        <span className="text-lg font-bold text-primary">87</span>
+        <span className="text-lg font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">87</span>
       </div>
       <div className="space-y-2">
         {factors.map((factor, i) => (

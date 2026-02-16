@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { GlowLine, DecorativeScatter, SectionGlow } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,7 +186,7 @@ export default function DemoPage() {
         </Button>
       </Hero>
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20 -mt-10">
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="p-8">
@@ -212,7 +213,7 @@ export default function DemoPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-16">
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="p-8">
@@ -233,7 +234,7 @@ export default function DemoPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="accent">
+      <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-16">
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="p-8 max-w-3xl mx-auto">
@@ -272,8 +273,9 @@ export default function DemoPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="muted">
-        <section className="py-20" ref={formRef}>
+      <SectionBackground variant="muted" withMesh meshVariant="primary">
+        <section className="py-20 relative" ref={formRef}>
+          <SectionGlow position="center" />
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="max-w-2xl mx-auto p-6">
             <Card>

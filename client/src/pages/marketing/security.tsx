@@ -4,6 +4,7 @@ import { TrustList, SecurityCard } from "@/components/marketing/trust-list";
 import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { GradientOrb, GlowLine, DecorativeScatter, SectionGlow } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -77,7 +78,7 @@ export default function SecurityPage() {
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       />
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="crosshairs" className="p-8">
@@ -103,9 +104,10 @@ export default function SecurityPage() {
         </section>
       </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
         <DotGridPattern />
+        <DecorativeScatter density="sparse" />
         <div className="container mx-auto px-6 relative z-10">
           <SectionFrame variant="minimal" className="p-8">
             <div className="text-center mb-12">
@@ -151,11 +153,12 @@ export default function SecurityPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="accent">
+      <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="crosshairs" className="p-8">
               <div className="text-center mb-8">
+                <GlowLine className="mb-6" />
                 <h2 className="text-2xl font-bold text-foreground mb-4">Compliance Status</h2>
               <p className="text-muted-foreground">
                 Our commitment to meeting industry standards
@@ -195,8 +198,9 @@ export default function SecurityPage() {
         </section>
       </SectionBackground>
 
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-6 text-center">
+      <section className="py-16 bg-primary text-primary-foreground relative">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true"><div className="absolute -top-20 left-1/3 w-96 h-96 rounded-full bg-white/5 blur-3xl" /></div>
+        <div className="container mx-auto px-6 text-center relative z-10">
           <h2 className="text-2xl font-bold mb-4">Questions About Security?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
             Our team is happy to walk through our security practices and answer any compliance questions.

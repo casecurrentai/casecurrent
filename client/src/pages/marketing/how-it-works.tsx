@@ -5,6 +5,7 @@ import { UIFrame } from "@/components/marketing/ui-frame";
 import { TimelineStepper } from "@/components/marketing/timeline-stepper";
 import { FeatureCard, MetricCard } from "@/components/marketing/feature-card";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { GradientOrb, GlowLine, FloatingShape, GradientText, DecorativeScatter, HeroGlow, SectionGlow, PulseBeacon } from "@/components/marketing/decorative-visuals";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Phone, MessageSquare, Globe, Brain, Zap, BarChart3 } from "lucide-react";
@@ -63,7 +64,9 @@ export default function HowItWorksPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
-        <SectionFrame variant="brackets" className="p-4">
+        <SectionFrame variant="brackets" className="p-4 relative">
+          <GradientOrb color="primary" size="md" className="absolute -top-10 -right-10 pointer-events-none" />
+          <FloatingShape variant="diamond" className="absolute -bottom-4 -left-4 pointer-events-none" />
           <UIFrame title="Intake Flow">
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-lg">
@@ -92,10 +95,11 @@ export default function HowItWorksPage() {
         </SectionFrame>
       </Hero>
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="brackets" className="p-8">
+            <GlowLine className="mb-6" aria-hidden="true" />
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Multi-Channel Capture</h2>
               <p className="text-muted-foreground">Meet leads where they are</p>
@@ -115,9 +119,10 @@ export default function HowItWorksPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
         <DotGridPattern />
+        <DecorativeScatter density="sparse" />
         <div className="container mx-auto px-6 relative z-10">
           <SectionFrame variant="crosshairs" className="p-8">
             <div className="text-center mb-12">
@@ -161,13 +166,13 @@ export default function HowItWorksPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="accent">
+      <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="crosshairs" className="p-8">
               <div className="grid lg:grid-cols-2 gap-12 items-center">
                 <div>
-                  <h2 className="text-3xl font-bold text-foreground mb-4">Real-Time Analytics</h2>
+                  <h2 className="text-3xl font-bold text-foreground mb-4 flex items-center gap-2">Real-Time Analytics <PulseBeacon color="emerald" /></h2>
                 <p className="text-muted-foreground mb-6">
                   Track every step of your intake funnel. See which sources convert best,
                   where leads drop off, and how your team performs.
@@ -220,8 +225,9 @@ export default function HowItWorksPage() {
         </section>
       </SectionBackground>
 
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-6 text-center">
+      <section className="py-16 bg-primary text-primary-foreground relative overflow-hidden">
+        <div className="absolute -top-20 left-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl pointer-events-none" aria-hidden="true" />
+        <div className="container mx-auto px-6 text-center relative z-10">
           <h2 className="text-2xl font-bold mb-4">Ready to See It in Action?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
             Schedule a personalized demo to see how CaseCurrent can transform your intake process.

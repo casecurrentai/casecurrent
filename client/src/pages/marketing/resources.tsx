@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
+import { DecorativeScatter, SectionGlow, GlowLine } from "@/components/marketing/decorative-visuals";
 import { Link } from "wouter";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
 import { BLOG_ARTICLES, CATEGORY_COLORS } from "./blog-data";
@@ -18,9 +19,10 @@ export default function ResourcesPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
       />
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20 -mt-10 relative">
           <DotGridPattern />
+          <DecorativeScatter density="sparse" />
           <div className="container mx-auto px-6 relative z-10">
             <SectionFrame variant="grid" className="p-8">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -63,11 +65,12 @@ export default function ResourcesPage() {
       </section>
     </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <SectionFrame variant="minimal" className="p-8 max-w-2xl mx-auto">
             <div className="text-center">
+              <GlowLine className="mb-6" />
               <h2 className="text-2xl font-bold mb-4">Subscribe to Our Newsletter</h2>
               <p className="text-muted-foreground mb-6">
                 Get the latest insights on legal intake, AI, and practice growth delivered to your inbox.
@@ -89,8 +92,9 @@ export default function ResourcesPage() {
       </section>
     </SectionBackground>
 
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-6 text-center">
+      <section className="py-16 bg-primary text-primary-foreground relative">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true"><div className="absolute -top-20 right-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl" /></div>
+        <div className="container mx-auto px-6 text-center relative z-10">
           <h2 className="text-2xl font-bold mb-4">Ready to Transform Your Intake?</h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
             See how CaseCurrent can help your firm capture more qualified leads.
