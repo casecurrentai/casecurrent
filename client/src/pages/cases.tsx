@@ -75,11 +75,16 @@ const FILTER_OPTIONS = [
   { value: "action", label: "Action Required" },
   { value: "all", label: "All Cases" },
   { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
+  { value: "engaged", label: "Engaged" },
+  { value: "intake_started", label: "Intake Started" },
+  { value: "intake_complete", label: "Intake Complete" },
+  { value: "needs_handoff", label: "Needs Handoff" },
   { value: "qualified", label: "Qualified" },
-  { value: "unqualified", label: "Unqualified" },
-  { value: "converted", label: "Won / Signed" },
-  { value: "closed", label: "Closed / Lost" },
+  { value: "consult_set", label: "Consult Set" },
+  { value: "retained", label: "Retained" },
+  { value: "not_qualified", label: "Not Qualified" },
+  { value: "referred", label: "Referred" },
+  { value: "closed", label: "Closed" },
 ];
 
 function getBestDisplayName(lead: Lead): string {
@@ -101,10 +106,18 @@ function getBestDisplayName(lead: Lead): string {
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-primary text-primary-foreground",
+  engaged: "bg-blue-500 text-white dark:bg-blue-600",
   contacted: "bg-blue-500 text-white dark:bg-blue-600",
+  intake_started: "bg-indigo-500 text-white dark:bg-indigo-600",
+  intake_complete: "bg-violet-500 text-white dark:bg-violet-600",
+  needs_handoff: "bg-orange-500 text-white dark:bg-orange-600",
   qualified: "bg-green-500 text-white dark:bg-green-600",
+  consult_set: "bg-teal-500 text-white dark:bg-teal-600",
+  not_qualified: "bg-muted text-muted-foreground",
   unqualified: "bg-muted text-muted-foreground",
+  retained: "bg-emerald-500 text-white dark:bg-emerald-600",
   converted: "bg-emerald-500 text-white dark:bg-emerald-600",
+  referred: "bg-sky-500 text-white dark:bg-sky-600",
   closed: "bg-muted text-muted-foreground",
 };
 
@@ -122,7 +135,7 @@ function getContextString(lead: Lead): string {
   else if (diffDays < 7) timeAgo = `${diffDays}d ago`;
   else timeAgo = new Date(lead.createdAt).toLocaleDateString();
 
-  const sourceLabel = lead.source === "call" ? "Call" : lead.source === "sms" ? "Text" : lead.source === "web" ? "Web" : lead.source;
+  const sourceLabel = lead.source === "call" || lead.source === "phone" ? "Call" : lead.source === "sms" ? "Text" : lead.source === "web" ? "Web" : lead.source;
 
   return `${sourceLabel} - ${timeAgo}`;
 }
@@ -160,10 +173,10 @@ function groupCasesByContact(leads: Lead[]): Lead[] {
 
 // Status group definitions
 const STATUS_GROUPS = [
-  { label: "Needs Action", statuses: ["new"], key: "needs-action" },
-  { label: "In Progress", statuses: ["contacted", "qualified"], key: "in-progress" },
-  { label: "Won / Signed", statuses: ["converted"], key: "won" },
-  { label: "Closed / Lost", statuses: ["unqualified", "closed"], key: "closed" },
+  { label: "Needs Action", statuses: ["new", "engaged", "intake_started", "intake_complete", "needs_handoff"], key: "needs-action" },
+  { label: "In Progress", statuses: ["contacted", "qualified", "consult_set"], key: "in-progress" },
+  { label: "Won / Signed", statuses: ["converted", "retained"], key: "won" },
+  { label: "Closed / Lost", statuses: ["unqualified", "not_qualified", "closed", "referred"], key: "closed" },
 ];
 
 export default function CasesPage() {
@@ -259,7 +272,7 @@ export default function CasesPage() {
   // Filter for "action" mode
   const filteredCases = useMemo(() => {
     if (filterMode === "action") {
-      return groupedCases.filter(c => ["new", "contacted", "qualified"].includes(c.status));
+      return groupedCases.filter(c => ["new", "engaged", "intake_started", "intake_complete", "needs_handoff", "contacted", "qualified"].includes(c.status));
     }
     return groupedCases;
   }, [groupedCases, filterMode]);

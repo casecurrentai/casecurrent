@@ -708,6 +708,28 @@ model WebhookReceipt {
 }
 
 // ============================================
+// INGESTION OUTCOMES (webhook observability & replay)
+// ============================================
+
+model IngestionOutcome {
+  id           String   @id @default(uuid())
+  provider     String
+  eventType    String   @map("event_type")
+  externalId   String   @map("external_id")
+  orgId        String?  @map("org_id")
+  status       String   // persisted | failed | skipped
+  errorCode    String?  @map("error_code")
+  errorMessage String?  @map("error_message")
+  payload      Json?    // stored only for failed/skipped (for replay)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([provider, status])
+  @@index([provider, createdAt])
+  @@index([status, createdAt])
+  @@map("ingestion_outcomes")
+}
+
+// ============================================
 // DEVICE TOKENS (for push notifications)
 // ============================================
 

@@ -45,7 +45,9 @@ export async function getLeadTranscript(
           role: role as 'ai' | 'user',
           speaker: role === 'ai' ? 'Avery' : 'Caller',
           text: String(entry.text || entry.message || entry.content || ''),
-          timestamp: entry.timestamp ? new Date(entry.timestamp).toISOString() : null,
+          timestamp: entry.timestamp
+            ? new Date(entry.timestamp).toISOString()
+            : (entry.timeInCallSecs != null ? String(entry.timeInCallSecs) : null),
           callId: call.id,
         });
       }

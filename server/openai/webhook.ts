@@ -7,6 +7,7 @@ import { COUNSELTECH_INTAKE_PROMPT, VOICE_SETTINGS } from "../agent/prompt";
 import { getToolSchemas } from "../agent/tools";
 import { maskPhone, maskCallSid } from "../utils/logMasking";
 import { recordEvent } from "../flightRecorder";
+import { recordIngestionOutcome } from "../webhooks/ingestion-outcome";
 
 // GATE 2: Deploy marker at module load
 console.log(`[DEPLOY_MARK] openai webhook module loaded v4 ${new Date().toISOString()}`);
@@ -314,8 +315,19 @@ async function handleIncomingCallAsync(event: OpenAIWebhookEvent, webhookId: str
   try {
     await createCallRecords(orgId, callId, fromNumber, toNumber, twilioCallSid);
     console.log(`[OpenAI Webhook] [${requestId}] createCallRecords succeeded`);
+    await recordIngestionOutcome(prisma, {
+      provider: 'openai', eventType: 'realtime.call.incoming', externalId: callId,
+      orgId, status: 'persisted',
+    });
   } catch (dbErr: any) {
     console.error(`[OpenAI Webhook] [${requestId}] createCallRecords FAILED:`, dbErr?.message);
+    // HTTP 200 already sent (fast ACK). Record failure for observability/replay.
+    await recordIngestionOutcome(prisma, {
+      provider: 'openai', eventType: 'realtime.call.incoming', externalId: callId,
+      orgId, status: 'failed', errorCode: 'db_write_error',
+      errorMessage: dbErr?.message || String(dbErr),
+      payload: { fromNumber, toNumber, twilioCallSid },
+    });
   }
 
   try {
@@ -458,7 +470,7 @@ async function handleIncomingCall(event: OpenAIWebhookEvent, res: Response): Pro
 
 async function handleCallEnded(event: OpenAIWebhookEvent, res: Response): Promise<void> {
   const callId = event.data?.call_id;
-  
+
   if (!callId) {
     res.status(200).json({ received: true });
     return;
@@ -471,42 +483,61 @@ async function handleCallEnded(event: OpenAIWebhookEvent, res: Response): Promis
       where: { providerCallId: callId },
     });
 
-    if (call) {
-      await prisma.call.update({
-        where: { id: call.id },
-        data: {
-          endedAt: new Date(),
-          durationSeconds: call.startedAt
-            ? Math.floor((Date.now() - call.startedAt.getTime()) / 1000)
-            : null,
-          callOutcome: 'connected',
-        },
+    if (!call) {
+      await recordIngestionOutcome(prisma, {
+        provider: 'openai', eventType: 'realtime.call.ended', externalId: callId,
+        status: 'skipped', errorCode: 'call_not_found',
+        errorMessage: 'No matching call record for providerCallId',
       });
-
-      await prisma.interaction.update({
-        where: { id: call.interactionId },
-        data: {
-          status: "completed",
-          endedAt: new Date(),
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          orgId: call.orgId,
-          actorType: "system",
-          action: "call_ended",
-          entityType: "call",
-          entityId: call.id,
-          details: { providerCallId: callId, statusCode: event.data.status_code },
-        },
-      });
+      res.status(200).json({ received: true });
+      return;
     }
-  } catch (error) {
-    console.error("[OpenAI Webhook] Failed to update call ended:", error);
-  }
 
-  res.status(200).json({ received: true });
+    await prisma.call.update({
+      where: { id: call.id },
+      data: {
+        endedAt: new Date(),
+        durationSeconds: call.startedAt
+          ? Math.floor((Date.now() - call.startedAt.getTime()) / 1000)
+          : null,
+        callOutcome: 'connected',
+      },
+    });
+
+    await prisma.interaction.update({
+      where: { id: call.interactionId },
+      data: {
+        status: "completed",
+        endedAt: new Date(),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        orgId: call.orgId,
+        actorType: "system",
+        action: "call_ended",
+        entityType: "call",
+        entityId: call.id,
+        details: { providerCallId: callId, statusCode: event.data.status_code },
+      },
+    });
+
+    await recordIngestionOutcome(prisma, {
+      provider: 'openai', eventType: 'realtime.call.ended', externalId: callId,
+      orgId: call.orgId, status: 'persisted',
+    });
+    res.status(200).json({ received: true });
+  } catch (error: any) {
+    console.error("[OpenAI Webhook] Failed to update call ended:", error);
+    await recordIngestionOutcome(prisma, {
+      provider: 'openai', eventType: 'realtime.call.ended', externalId: callId,
+      status: 'failed', errorCode: 'db_write_error',
+      errorMessage: error?.message || String(error),
+      payload: event.data,
+    });
+    res.status(500).json({ error: 'persistence_failed' });
+  }
 }
 
 async function findOrgByPhoneNumber(phoneNumber: string): Promise<{ id: string } | null> {

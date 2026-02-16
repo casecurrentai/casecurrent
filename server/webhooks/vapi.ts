@@ -6,6 +6,7 @@ import {
   lookupFirmByNumber,
   extractDisplayName,
 } from './shared';
+import { recordIngestionOutcome } from './ingestion-outcome';
 // Note: checkIdempotency removed — webhook_events table may be missing in prod.
 // Idempotency now relies on providerCallId uniqueness on the Call table.
 
@@ -374,7 +375,7 @@ async function findOrCreateCallChain(
   let lead: { id: string; intakeData: unknown; displayName: string | null; summary: string | null } | null = null;
   if (!isWebContact) {
     lead = await prisma.lead.findFirst({
-      where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'in_progress'] } },
+      where: { orgId, contactId: contact.id, status: { in: ['new', 'contacted', 'engaged', 'in_progress', 'intake_started'] } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -621,8 +622,23 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     try {
       if (messageType === 'end-of-call-report') {
         const result = await ingestEndOfCallReport(prisma, callId, message, body, reqId);
-        outcome = result ? 'persisted' : 'chain_failed';
-        resolvedOrg = result?.orgId || null;
+        if (result) {
+          outcome = 'persisted';
+          resolvedOrg = result.orgId;
+          await recordIngestionOutcome(prisma, {
+            provider: 'vapi', eventType: messageType, externalId: callId,
+            orgId: result.orgId, status: 'persisted',
+          });
+        } else {
+          // chain_failed = permanent config issue (missing firm). Retrying won't help.
+          outcome = 'chain_failed';
+          await recordIngestionOutcome(prisma, {
+            provider: 'vapi', eventType: messageType, externalId: callId,
+            status: 'skipped', errorCode: 'chain_failed',
+            errorMessage: 'No firm resolved for call — check vapi_chain_fail logs',
+            payload: body,
+          });
+        }
       } else if (messageType === 'status-update') {
         const result = await ingestStatusUpdate(prisma, callId, message, reqId);
         outcome = result || 'processed';
@@ -648,9 +664,13 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
         error,
         stack: err?.stack?.split('\n').slice(0, 4).join(' | '),
       }));
-      // Still respond 200 to avoid Vapi retries that compound the issue
-      // But log clearly that persistence failed
-      res.status(200).json({ ok: false, error: 'persistence_failed' });
+      // Return 503 so Vapi retries (up to 3x). Idempotent via providerCallId.
+      await recordIngestionOutcome(prisma, {
+        provider: 'vapi', eventType: messageType, externalId: callId,
+        status: 'failed', errorCode: 'persistence_error',
+        errorMessage: error, payload: body,
+      });
+      res.status(503).json({ ok: false, error: 'persistence_failed' });
     }
 
     pushDiag({
