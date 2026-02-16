@@ -311,6 +311,7 @@ async function getRescueQueue(
         {
           callOutcome: null,
           transcriptText: null,
+          endedAt: { not: null },
         },
       ],
       resolved: false,
