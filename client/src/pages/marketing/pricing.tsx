@@ -279,7 +279,7 @@ export default function PricingPage() {
         </div>
       </Hero>
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="deep" withMesh meshVariant="ocean">
         <section className="py-16 -mt-8">
           <div className="container mx-auto px-6">
             <div className="flex justify-center mb-10">
@@ -331,7 +331,7 @@ export default function PricingPage() {
         </section>
       </SectionBackground>
 
-      <SectionBackground variant="muted">
+      <SectionBackground variant="slate" withMesh meshVariant="midnight">
         <section className="py-16 relative">
           <DotGridPattern />
           <div className="container mx-auto px-6 relative z-10">
@@ -365,42 +365,52 @@ export default function PricingPage() {
         </section>
       </SectionBackground>
 
-      <section className="py-16">
-        <div className="container mx-auto px-6">
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-foreground">Try it without the fear.</h2>
-            </div>
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                {
-                  icon: <AlertTriangle className="w-5 h-5 text-primary" />,
-                  title: "Cancel anytime",
-                  desc: "No long-term contract during Pilot. Cancel before your term ends with zero penalty.",
-                },
-                {
-                  icon: <Clock className="w-5 h-5 text-primary" />,
-                  title: "90-day Pilot",
-                  desc: "Full access to your plan tier for 90 days at reduced pricing before transitioning to standard rates.",
-                },
-                {
-                  icon: <Shield className="w-5 h-5 text-primary" />,
-                  title: "Full audit trail",
-                  desc: "Audit logs and call history so you can verify performance before committing long-term.",
-                },
-              ].map((item) => (
-                <div key={item.title} className="text-center space-y-2 p-4">
-                  <div className="flex justify-center">{item.icon}</div>
-                  <h3 className="text-sm font-semibold text-foreground">{item.title}</h3>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
-                </div>
-              ))}
+      <SectionBackground variant="deep" withMesh meshVariant="ocean">
+        <section className="py-16">
+          <div className="container mx-auto px-6">
+            <div className="max-w-3xl mx-auto">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-foreground">Try it without the fear.</h2>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-5">
+                {[
+                  {
+                    icon: AlertTriangle,
+                    title: "Cancel anytime",
+                    desc: "No long-term contract during Pilot. Cancel before your term ends with zero penalty.",
+                    gradient: "from-amber-500 to-orange-500",
+                  },
+                  {
+                    icon: Clock,
+                    title: "90-day Pilot",
+                    desc: "Full access to your plan tier for 90 days at reduced pricing before transitioning to standard rates.",
+                    gradient: "from-blue-500 to-indigo-500",
+                  },
+                  {
+                    icon: Shield,
+                    title: "Full audit trail",
+                    desc: "Audit logs and call history so you can verify performance before committing long-term.",
+                    gradient: "from-emerald-500 to-teal-500",
+                  },
+                ].map((item) => (
+                  <div key={item.title} className="relative group">
+                    <div className="absolute -inset-0.5 bg-gradient-to-br from-primary/8 to-blue-500/8 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+                    <div className="relative bg-card border border-border/50 rounded-2xl p-5 text-center h-full">
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center mx-auto mb-3 shadow-lg`}>
+                        <item.icon className="w-6 h-6 text-white" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground mb-1">{item.title}</h3>
+                      <p className="text-xs text-muted-foreground">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </SectionBackground>
 
-      <SectionBackground variant="subtle">
+      <SectionBackground variant="slate" withMesh meshVariant="steel">
         <section className="py-16">
           <div className="container mx-auto px-6">
             <div className="text-center mb-10">
@@ -426,10 +436,14 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-6 text-center">
-          <h2 className="text-2xl font-bold mb-4">Ready to capture more cases?</h2>
-          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
+      <section className="py-20 bg-gradient-to-br from-primary via-blue-600 to-indigo-700 text-primary-foreground relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+          <div className="absolute -top-32 left-1/4 w-[30rem] h-[30rem] rounded-full bg-white/5 blur-3xl" />
+          <div className="absolute -bottom-20 right-1/3 w-96 h-96 rounded-full bg-white/5 blur-3xl" />
+        </div>
+        <div className="container mx-auto px-6 text-center relative z-10">
+          <h2 className="text-3xl lg:text-4xl font-bold mb-4">Ready to capture more cases?</h2>
+          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto text-lg">
             Join the Founding Firm Pilot and see results in your first week.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
