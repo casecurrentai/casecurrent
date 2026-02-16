@@ -55,6 +55,8 @@ import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
 import analyticsTrendsRouter from './routes/analytics-trends';
 import callDebugRouter from './routes/call-debug';
+import ingestionOutcomesRouter from './routes/ingestion-outcomes';
+import { recordIngestionOutcome } from './webhooks/ingestion-outcome';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -2716,6 +2718,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /v1/leads/:id/calls — all calls for a lead with full artifacts
+  app.get('/v1/leads/:id/calls', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id, orgId },
+        select: { id: true },
+      });
+      if (!lead) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+
+      const calls = await prisma.call.findMany({
+        where: { leadId: id, orgId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          id: true,
+          direction: true,
+          provider: true,
+          callOutcome: true,
+          endReason: true,
+          startedAt: true,
+          endedAt: true,
+          durationSeconds: true,
+          recordingUrl: true,
+          transcriptText: true,
+          transcriptJson: true,
+          aiSummary: true,
+          structuredData: true,
+          successEvaluation: true,
+          messagesJson: true,
+          aiFlags: true,
+          fromE164: true,
+          toE164: true,
+        },
+      });
+
+      res.json({ calls });
+    } catch (error) {
+      console.error('Get lead calls error:', error);
+      res.status(500).json({ error: 'Failed to get lead calls' });
+    }
+  });
+
   /**
    * @openapi
    * /v1/leads/{id}:
@@ -5195,6 +5243,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(transcriptRouter);
   app.use(analyticsTrendsRouter);
   app.use(callDebugRouter);
+  app.use(ingestionOutcomesRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
@@ -6615,12 +6664,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               durationSeconds: RecordingDuration ? parseInt(RecordingDuration, 10) : undefined,
             },
           });
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'recording', externalId: CallUUID,
+            orgId: call.orgId, status: 'persisted',
+          });
+        } else {
+          // Plivo doesn't retry — keep 200, record skipped
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'recording', externalId: CallUUID,
+            status: 'skipped', errorCode: 'call_not_found',
+            errorMessage: 'No matching call for CallUUID',
+          });
         }
       }
 
       res.json({ status: 'ok' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Plivo recording callback error:', error);
+      await recordIngestionOutcome(prisma, {
+        provider: 'plivo', eventType: 'recording',
+        externalId: req.body?.CallUUID || 'unknown',
+        status: 'failed', errorCode: 'recording_error',
+        errorMessage: error?.message || String(error),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Failed to process recording' });
     }
   });
@@ -6672,12 +6739,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               data: { status: dbStatus, ...(isTerminal ? { endedAt: new Date() } : {}) },
             });
           }
+
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'status', externalId: CallUUID,
+            orgId: call.orgId, status: 'persisted',
+          });
+        } else {
+          // Plivo doesn't retry — keep 200, record skipped
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'status', externalId: CallUUID,
+            status: 'skipped', errorCode: 'call_not_found',
+            errorMessage: 'No matching call for CallUUID',
+          });
         }
       }
 
       res.json({ status: 'ok' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Plivo status callback error:', error);
+      await recordIngestionOutcome(prisma, {
+        provider: 'plivo', eventType: 'status',
+        externalId: req.body?.CallUUID || 'unknown',
+        status: 'failed', errorCode: 'status_error',
+        errorMessage: error?.message || String(error),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Failed to process status' });
     }
   });
@@ -9351,6 +9437,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status,
         provider: call.provider,
         duration,
+        direction: call.direction,
+        callOutcome: call.callOutcome,
+        endReason: call.endReason,
+        startedAt: call.startedAt,
+        endedAt: call.endedAt,
+        recordingUrl: call.recordingUrl,
+        transcriptText: call.transcriptText,
+        transcriptJson: call.transcriptJson,
+        aiSummary: call.aiSummary,
+        structuredData: call.structuredData,
+        successEvaluation: call.successEvaluation,
+        messagesJson: call.messagesJson,
+        aiFlags: call.aiFlags,
+        leadId: call.leadId,
+        fromE164: call.fromE164,
+        toE164: call.toE164,
       });
     } catch (error) {
       console.error('Get call status error:', error);

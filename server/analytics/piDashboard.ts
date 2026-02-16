@@ -141,7 +141,14 @@ async function getFunnelData(
       where: { ...baseWhere, direction: 'inbound' },
     }),
     prisma.call.count({
-      where: { ...baseWhere, direction: 'inbound', callOutcome: 'connected' },
+      where: {
+        ...baseWhere,
+        direction: 'inbound',
+        OR: [
+          { callOutcome: 'connected' },
+          { callOutcome: null, transcriptText: { not: null } },
+        ],
+      },
     }),
     prisma.lead.count({
       where: {
@@ -166,7 +173,14 @@ async function getFunnelData(
       where: { ...prevBaseWhere, direction: 'inbound' },
     }),
     prisma.call.count({
-      where: { ...prevBaseWhere, direction: 'inbound', callOutcome: 'connected' },
+      where: {
+        ...prevBaseWhere,
+        direction: 'inbound',
+        OR: [
+          { callOutcome: 'connected' },
+          { callOutcome: null, transcriptText: { not: null } },
+        ],
+      },
     }),
     prisma.lead.count({
       where: {

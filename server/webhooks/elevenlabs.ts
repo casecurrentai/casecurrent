@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '../../apps/api/src/generated/prisma';
 import crypto from 'crypto';
 import { normalizeE164, maskPhone, checkIdempotency, lookupFirmByNumber, extractDisplayName } from './shared';
+import { recordIngestionOutcome } from './ingestion-outcome';
 
 const router = Router();
 
@@ -379,6 +380,11 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         durationMs: Date.now() - startMs,
       }));
 
+      await recordIngestionOutcome(prisma, {
+        provider: 'elevenlabs', eventType: 'inbound', externalId: externalId!,
+        orgId, status: 'persisted',
+      });
+
       res.status(200).json({
         status: 'ok',
         callId: call.id,
@@ -391,6 +397,13 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         error: err?.message || String(err),
         durationMs: Date.now() - startMs,
       }));
+      await recordIngestionOutcome(prisma, {
+        provider: 'elevenlabs', eventType: 'inbound',
+        externalId: payload.conversation_id || payload.call_sid || 'unknown',
+        status: 'failed', errorCode: 'inbound_error',
+        errorMessage: err?.message || String(err),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -434,6 +447,13 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
           client_data_interaction_id: payload.client_data?.interactionId,
           client_data_call_sid: payload.client_data?.callSid,
         }));
+
+        await recordIngestionOutcome(prisma, {
+          provider: 'elevenlabs', eventType: 'post-call', externalId: payload.conversation_id,
+          status: 'skipped', errorCode: 'unlinked',
+          errorMessage: 'No matching call found for conversation',
+          payload: req.body,
+        });
 
         res.status(200).json({
           status: 'unlinked',
@@ -519,6 +539,11 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         durationMs: Date.now() - startMs,
       }));
 
+      await recordIngestionOutcome(prisma, {
+        provider: 'elevenlabs', eventType: 'post-call', externalId: payload.conversation_id,
+        orgId: call.orgId, status: 'persisted',
+      });
+
       res.status(200).json({
         status: 'ok',
         callId: call.id,
@@ -531,6 +556,13 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         error: err?.message || String(err),
         durationMs: Date.now() - startMs,
       }));
+      await recordIngestionOutcome(prisma, {
+        provider: 'elevenlabs', eventType: 'post-call',
+        externalId: payload.conversation_id || 'unknown',
+        status: 'failed', errorCode: 'postcall_error',
+        errorMessage: err?.message || String(err),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

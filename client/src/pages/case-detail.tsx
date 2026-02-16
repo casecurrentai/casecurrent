@@ -16,6 +16,7 @@ import { IntakeAnalysisCard } from "@/components/intake-analysis-card";
 import { SummaryTab } from "@/components/case/summary-tab";
 import { TranscriptTab } from "@/components/case/transcript-tab";
 import { ActivityTab } from "@/components/case/activity-tab";
+import { CallsTab } from "@/components/case/calls-tab";
 import {
   ArrowLeft,
   Phone,
@@ -765,6 +766,7 @@ export default function CaseDetailPage() {
             <TabsList className="w-full">
               <TabsTrigger value="summary" className="flex-1">Summary</TabsTrigger>
               <TabsTrigger value="transcript" className="flex-1">Transcript</TabsTrigger>
+              <TabsTrigger value="calls" className="flex-1">Calls</TabsTrigger>
               <TabsTrigger value="activity" className="flex-1">
                 Activity
                 {interactions.length > 0 && (
@@ -781,6 +783,10 @@ export default function CaseDetailPage() {
 
             <TabsContent value="transcript">
               <TranscriptTab leadId={leadId!} />
+            </TabsContent>
+
+            <TabsContent value="calls">
+              <CallsTab leadId={leadId!} />
             </TabsContent>
 
             <TabsContent value="activity">
