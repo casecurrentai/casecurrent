@@ -95,11 +95,11 @@ export function KPIStrip({ dashboardData, isLoading }: KPIStripProps) {
   }
 
   const funnel = dashboardData.funnel;
-  const newStage = findStage(funnel, "New");
-  const qualifiedStage = findStage(funnel, "Qualified");
+  const newStage = findStage(funnel, "Inbound Calls", "New");
+  const qualifiedStage = findStage(funnel, "Qualified PI", "Qualified");
   const consultStage = findStage(funnel, "Consult Scheduled", "consult_scheduled");
   const retainerStage = findStage(funnel, "Retainer Sent", "retainer_sent");
-  const signedStage = findStage(funnel, "Signed", "Converted");
+  const signedStage = findStage(funnel, "Retainer Signed", "Signed", "Converted");
 
   const metrics = [
     {
