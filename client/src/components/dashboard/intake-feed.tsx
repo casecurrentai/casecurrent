@@ -39,6 +39,7 @@ interface LeadsResponse {
 
 const SOURCE_ICONS: Record<string, typeof Phone> = {
   call: Phone,
+  phone: Phone,
   sms: MessageSquare,
   web: Globe,
 };
@@ -82,7 +83,7 @@ function getTimeAgo(dateStr: string): string {
 
 function buildMilestones(lead: Lead): Milestone[] {
   const status = lead.status.toLowerCase();
-  const progressOrder = ["new", "contacted", "qualified", "consult_scheduled", "retainer_sent", "converted", "signed"];
+  const progressOrder = ["new", "engaged", "contacted", "intake_started", "intake_complete", "qualified", "consult_scheduled", "consult_set", "retainer_sent", "retained", "converted", "signed"];
   const statusIdx = progressOrder.indexOf(status);
 
   return MILESTONE_KEYS.map((m, i) => ({

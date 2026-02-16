@@ -68,9 +68,17 @@ interface PracticeAreasResponse {
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
   { value: "new", label: "New" },
+  { value: "engaged", label: "Engaged" },
+  { value: "intake_started", label: "Intake Started" },
+  { value: "intake_complete", label: "Intake Complete" },
+  { value: "needs_handoff", label: "Needs Handoff" },
   { value: "contacted", label: "Contacted" },
   { value: "qualified", label: "Qualified" },
+  { value: "consult_set", label: "Consult Set" },
+  { value: "retained", label: "Retained" },
+  { value: "not_qualified", label: "Not Qualified" },
   { value: "unqualified", label: "Unqualified" },
+  { value: "referred", label: "Referred" },
   { value: "converted", label: "Converted" },
   { value: "closed", label: "Closed" },
 ];
@@ -116,10 +124,18 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-primary text-primary-foreground",
+  engaged: "bg-blue-500 text-white dark:bg-blue-600",
   contacted: "bg-blue-500 text-white dark:bg-blue-600",
+  intake_started: "bg-indigo-500 text-white dark:bg-indigo-600",
+  intake_complete: "bg-violet-500 text-white dark:bg-violet-600",
+  needs_handoff: "bg-orange-500 text-white dark:bg-orange-600",
   qualified: "bg-green-500 text-white dark:bg-green-600",
+  consult_set: "bg-teal-500 text-white dark:bg-teal-600",
+  not_qualified: "bg-muted text-muted-foreground",
   unqualified: "bg-muted text-muted-foreground",
+  retained: "bg-emerald-500 text-white dark:bg-emerald-600",
   converted: "bg-emerald-500 text-white dark:bg-emerald-600",
+  referred: "bg-sky-500 text-white dark:bg-sky-600",
   closed: "bg-muted text-muted-foreground",
 };
 
