@@ -175,8 +175,11 @@ export function PageShell({ children, title, description }: PageShellProps) {
             <div>
               <h4 className="font-semibold text-foreground mb-3">Legal</h4>
               <ul className="space-y-2 text-sm">
+                <li><Link href="/terms" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-terms">Terms of Service</Link></li>
                 <li><span className="text-muted-foreground">Privacy Policy</span></li>
-                <li><span className="text-muted-foreground">Terms of Service</span></li>
+                <li>
+                  <a href="tel:+15049005237" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-phone">(504) 900-5237</a>
+                </li>
               </ul>
             </div>
           </div>
