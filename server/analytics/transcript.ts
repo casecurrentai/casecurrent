@@ -40,26 +40,27 @@ export async function getLeadTranscript(
     // Prefer structured JSON transcript
     if (call.transcriptJson && Array.isArray(call.transcriptJson)) {
       for (const entry of call.transcriptJson as any[]) {
-        const role = entry.role === 'ai' ? 'ai' : 'user';
+        const role = entry.role === 'ai' || entry.role === 'assistant' || entry.role === 'bot' ? 'ai' : 'user';
         messages.push({
           role: role as 'ai' | 'user',
           speaker: role === 'ai' ? 'Avery' : 'Caller',
-          text: String(entry.text || ''),
+          text: String(entry.text || entry.message || entry.content || ''),
           timestamp: entry.timestamp ? new Date(entry.timestamp).toISOString() : null,
           callId: call.id,
         });
       }
     } else if (call.transcriptText) {
       // Fall back to parsing text transcript
+      // Vapi uses "AI:" / "User:" prefixes; also support "Avery:" / "Caller:"
       const lines = call.transcriptText.split('\n').filter((l: string) => l.trim());
       for (const line of lines) {
-        const isAvery = line.startsWith('Avery:');
-        const isCaller = line.startsWith('Caller:');
-        if (isAvery || isCaller) {
+        const isAgent = line.startsWith('AI:') || line.startsWith('Avery:');
+        const isUser = line.startsWith('User:') || line.startsWith('Caller:');
+        if (isAgent || isUser) {
           messages.push({
-            role: isAvery ? 'ai' : 'user',
-            speaker: isAvery ? 'Avery' : 'Caller',
-            text: line.replace(/^(Avery|Caller):\s*/, ''),
+            role: isAgent ? 'ai' : 'user',
+            speaker: isAgent ? 'Avery' : 'Caller',
+            text: line.replace(/^(AI|Avery|User|Caller):\s*/, ''),
             timestamp: call.startedAt?.toISOString() ?? null,
             callId: call.id,
           });

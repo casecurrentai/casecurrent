@@ -900,7 +900,7 @@ async function ingestEndOfCallReport(
   if (messages && Array.isArray(messages) && messages.length > 0) {
     callUpdate.transcriptJson = messages.map((m) => ({
       role: m.role,
-      message: m.content,
+      text: m.content,
       timeInCallSecs: null,
     }));
   }

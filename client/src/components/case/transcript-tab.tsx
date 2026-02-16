@@ -8,6 +8,7 @@ import { Search, Copy, Download, Check, MessageSquare } from "lucide-react";
 
 interface TranscriptMessage {
   role: string;
+  speaker?: string;
   text: string;
   timestamp: string | null;
 }
@@ -173,7 +174,10 @@ export function TranscriptTab({ leadId }: { leadId: string }) {
       ) : (
         <div className="space-y-1" data-testid="transcript-messages">
           {messages.map((msg, i) => {
-            const isAgent = msg.role.toLowerCase() === "avery" || msg.role.toLowerCase() === "agent" || msg.role.toLowerCase() === "assistant";
+            const roleLower = msg.role.toLowerCase();
+            const isAgent = roleLower === "ai" || roleLower === "avery" || roleLower === "agent" || roleLower === "assistant" || roleLower === "bot";
+            const displayName = msg.speaker || (isAgent ? "Avery" : "Caller");
+            const displayText = msg.text || "(no text)";
             return (
               <div
                 key={i}
@@ -190,10 +194,10 @@ export function TranscriptTab({ leadId }: { leadId: string }) {
                 )}
                 <div className="min-w-0">
                   <span className={`text-xs font-medium ${isAgent ? "text-primary" : "text-foreground"}`}>
-                    {msg.role}
+                    {displayName}
                   </span>
                   <p className="text-sm text-muted-foreground">
-                    {highlightText(msg.text, search)}
+                    {highlightText(displayText, search)}
                   </p>
                 </div>
               </div>
