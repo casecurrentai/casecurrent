@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '../../apps/api/src/generated/prisma';
 import {
-  normalizeE164,
+  normalizeE164 as sharedNormalizeE164,
   maskPhone,
   lookupFirmByNumber,
   extractDisplayName,
 } from './shared';
 import { recordIngestionOutcome } from './ingestion-outcome';
+import { getCallNumbers, type CallNumbers } from '../utils/vapiNumbers';
 // Note: checkIdempotency removed — webhook_events table may be missing in prod.
 // Idempotency now relies on providerCallId uniqueness on the Call table.
 
@@ -78,11 +79,17 @@ interface DiagEntry {
   eventType: string;
   callId: string | null;
   callType: string;
-  from: string | null;
-  to: string | null;
+  fromRaw: string | null;
+  toRaw: string | null;
+  fromE164: string | null;
+  toE164: string | null;
+  toMatchedPath: string | null;
+  fromMatchedPath: string | null;
   assistantId: string | null;
   orgResolved: string | null;
+  resolutionMethod: string | null;
   outcome: string;
+  reason: string | null;
   error: string | null;
 }
 
@@ -175,40 +182,6 @@ async function storeRawEvent(
 }
 
 /**
- * Resolve phone numbers from Vapi's call object.
- * Vapi may put numbers in different places — try multiple paths.
- */
-function resolvePhoneNumbers(message: VapiMessage): {
-  fromNumber: string | null;
-  toNumber: string | null;
-  fromE164: string | null;
-  toE164: string | null;
-} {
-  const call = message.call || {};
-
-  const toNumber =
-    (call.phoneNumber as any)?.number ||
-    (call as any).phoneNumberId ||
-    (call as any).to ||
-    (call as any).calledNumber ||
-    null;
-
-  const fromNumber =
-    (call.customer as any)?.number ||
-    (call as any).from ||
-    (call as any).callerNumber ||
-    (call as any).caller?.number ||
-    null;
-
-  return {
-    fromNumber,
-    toNumber,
-    fromE164: normalizeE164(fromNumber),
-    toE164: normalizeE164(toNumber),
-  };
-}
-
-/**
  * Find or create the full record chain (Contact → Lead → Interaction → Call).
  * UNIFIED path for both phone calls and web calls.
  * Uses providerCallId (unique) as the stable key.
@@ -223,6 +196,7 @@ async function findOrCreateCallChain(
   leadId: string;
   orgId: string;
   created: boolean;
+  resolutionMethod: string;
 } | null> {
   // 1. Check if call already exists
   const existing = await prisma.call.findUnique({
@@ -230,7 +204,7 @@ async function findOrCreateCallChain(
     select: { id: true, leadId: true, orgId: true },
   });
   if (existing) {
-    return { dbCallId: existing.id, leadId: existing.leadId, orgId: existing.orgId, created: false };
+    return { dbCallId: existing.id, leadId: existing.leadId, orgId: existing.orgId, created: false, resolutionMethod: 'existing' };
   }
 
   // 2. Extract call metadata
@@ -240,8 +214,13 @@ async function findOrCreateCallChain(
     || null;
   const isWebCall = callType === 'webCall' || callType === 'vapi.websocketCall';
 
-  // 3. Resolve phone numbers
-  const { fromNumber, toNumber, fromE164, toE164 } = resolvePhoneNumbers(message);
+  // 3. Resolve phone numbers using vapiNumbers
+  const bodyForExtraction = { message } as Record<string, unknown>;
+  const nums = getCallNumbers(bodyForExtraction);
+  const fromNumber = nums.fromRaw;
+  const toNumber = nums.toRaw;
+  const fromE164 = nums.fromNorm.e164;
+  const toE164 = nums.toNorm.e164;
 
   console.log(JSON.stringify({
     tag: 'vapi_chain_resolve',
@@ -440,7 +419,8 @@ async function findOrCreateCallChain(
     verifiedOrgId: verified?.orgId || null,
   }));
 
-  return { dbCallId: dbCall.id, leadId: lead.id, orgId, created: true };
+  const resMethod = callSource === 'phone' ? 'phone_number_lookup' : 'default_org_id';
+  return { dbCallId: dbCall.id, leadId: lead.id, orgId, created: true, resolutionMethod: resMethod };
 }
 
 // ─────────────────────────────────────────────
@@ -476,6 +456,18 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
   router.get('/diag/ring', (req: Request, res: Response) => {
     if (!requireDiagToken(req, res)) return;
     res.json({ count: diagRing.length, maxSize: DIAG_RING_SIZE, entries: [...diagRing].reverse() });
+  });
+
+  // ── /v1/debug/recent-webhooks — primary no-shell visibility tool ──
+  // Mounted at /v1/webhooks/vapi/debug/recent-webhooks
+  // Protected by DEBUG_TOKEN (falls back to DIAG_TOKEN)
+  router.get('/debug/recent-webhooks', (req: Request, res: Response) => {
+    const token = process.env.DEBUG_TOKEN || process.env.DIAG_TOKEN;
+    if (!token) { res.status(404).json({ error: 'Not found' }); return; }
+    if (req.query.token !== token) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 50);
+    const entries = [...diagRing].reverse().slice(0, limit);
+    res.json({ count: entries.length, maxSize: DIAG_RING_SIZE, entries });
   });
 
   // ── Diagnostic: recent raw Vapi webhook events (DB-backed) ──
@@ -564,26 +556,52 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     const body = req.body;
     const message: VapiMessage = body?.message || body;
     const messageType = message?.type;
-    const callId = message?.call?.id || null;
-    const callType = (message?.call as any)?.type || 'unknown';
     const assistantId = (message?.call as any)?.assistantId || null;
-    const { fromNumber, toNumber, fromE164, toE164 } = resolvePhoneNumbers(message);
 
-    // ── INCONTROVERTIBLE top-of-handler log ──
+    // ── Phase 2: robust number extraction via vapiNumbers ──
+    const nums: CallNumbers = getCallNumbers(body);
+    const callId = nums.callId || message?.call?.id || null;
+    const callType = nums.callType;
+    // Derive legacy-compatible vars for downstream functions
+    const fromE164 = nums.fromNorm.e164;
+    const toE164 = nums.toNorm.e164;
+    const fromNumber = nums.fromRaw;
+    const toNumber = nums.toRaw;
+
+    // ── LOG 1: vapi_webhook_received ──
     console.log(JSON.stringify({
       tag: 'vapi_webhook_received',
       reqId,
-      eventType: messageType,
+      ts: new Date().toISOString(),
+      messageType,
       callId,
       callType,
-      from: maskPhone(fromNumber),
-      to: maskPhone(toNumber),
-      fromE164: maskPhone(fromE164),
+      toRaw: maskPhone(nums.toRaw),
+      fromRaw: maskPhone(nums.fromRaw),
       toE164: maskPhone(toE164),
+      fromE164: maskPhone(fromE164),
+      toMatchedPath: nums.toMatchedPath,
+      fromMatchedPath: nums.fromMatchedPath,
       assistantId,
       hasDefaultOrgId: !!process.env.VAPI_DEFAULT_ORG_ID,
       bodyKeys: body ? Object.keys(body) : [],
       callKeys: message?.call ? Object.keys(message.call) : [],
+    }));
+
+    // ── LOG 2: vapi_numbers_extracted ──
+    console.log(JSON.stringify({
+      tag: 'vapi_numbers_extracted',
+      reqId,
+      callId,
+      callType,
+      toRaw: maskPhone(nums.toRaw),
+      fromRaw: maskPhone(nums.fromRaw),
+      toE164: maskPhone(toE164),
+      fromE164: maskPhone(fromE164),
+      toDigits: nums.toNorm.digits ? `...${nums.toNorm.digits.slice(-4)}` : null,
+      fromDigits: nums.fromNorm.digits ? `...${nums.fromNorm.digits.slice(-4)}` : null,
+      toMatchedPath: nums.toMatchedPath,
+      fromMatchedPath: nums.fromMatchedPath,
     }));
 
     if (!messageType) {
@@ -595,7 +613,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     if (messageType === 'assistant-request') {
       const aid = process.env.VAPI_ASSISTANT_ID_BUSINESS_HOURS || process.env.VAPI_ASSISTANT_ID;
       console.log(JSON.stringify({ tag: 'vapi_assistant_request', reqId, callId, hasAssistantId: !!aid }));
-      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType, callId, callType, from: maskPhone(fromNumber), to: maskPhone(toNumber), assistantId, orgResolved: null, outcome: 'assistant_response', error: null });
+      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType, callId, callType, fromRaw: maskPhone(fromNumber), toRaw: maskPhone(toNumber), fromE164: maskPhone(fromE164), toE164: maskPhone(toE164), toMatchedPath: nums.toMatchedPath, fromMatchedPath: nums.fromMatchedPath, assistantId, orgResolved: null, resolutionMethod: null, outcome: 'assistant_response', reason: null, error: null });
       res.status(200).json({ assistantId: aid });
       return;
     }
@@ -606,7 +624,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       const results = toolCalls.map((tc) => ({ toolCallId: tc.id, result: 'ok' }));
       // Respond immediately for tool-calls (Vapi expects quick response)
       res.status(200).json({ results });
-      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType, callId, callType, from: maskPhone(fromNumber), to: maskPhone(toNumber), assistantId, orgResolved: null, outcome: 'tool_response', error: null });
+      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType, callId, callType, fromRaw: maskPhone(fromNumber), toRaw: maskPhone(toNumber), fromE164: maskPhone(fromE164), toE164: maskPhone(toE164), toMatchedPath: nums.toMatchedPath, fromMatchedPath: nums.fromMatchedPath, assistantId, orgResolved: null, resolutionMethod: null, outcome: 'tool_response', reason: null, error: null });
       // Process async — but log errors
       processToolCalls(prisma, callId, toolCalls, body, reqId).catch((err: any) => {
         console.log(JSON.stringify({ tag: 'vapi_tool_calls_error', reqId, callId, error: err?.message || String(err) }));
@@ -617,7 +635,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     // ── All other events: await persistence BEFORE responding ──
     if (!callId) {
       console.log(JSON.stringify({ tag: 'vapi_no_call_id', reqId, eventType: messageType }));
-      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType || 'unknown', callId, callType, from: maskPhone(fromNumber), to: maskPhone(toNumber), assistantId, orgResolved: null, outcome: 'no_call_id', error: null });
+      pushDiag({ ts: new Date().toISOString(), reqId, eventType: messageType || 'unknown', callId, callType, fromRaw: maskPhone(fromNumber), toRaw: maskPhone(toNumber), fromE164: maskPhone(fromE164), toE164: maskPhone(toE164), toMatchedPath: nums.toMatchedPath, fromMatchedPath: nums.fromMatchedPath, assistantId, orgResolved: null, resolutionMethod: null, outcome: 'no_call_id', reason: 'missing_call_id', error: null });
       res.status(200).json({ ok: true });
       return;
     }
@@ -626,7 +644,9 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     storeRawEvent(prisma, callId, messageType, body, reqId).catch(() => {});
 
     let outcome = 'unknown';
+    let reason: string | null = null;
     let resolvedOrg: string | null = null;
+    let resolutionMethod: string | null = null;
     let error: string | null = null;
 
     try {
@@ -635,13 +655,14 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
         if (result) {
           outcome = 'persisted';
           resolvedOrg = result.orgId;
+          resolutionMethod = result.resolutionMethod || 'chain';
           await recordIngestionOutcome(prisma, {
             provider: 'vapi', eventType: messageType, externalId: callId,
             orgId: result.orgId, status: 'persisted',
           });
         } else {
-          // chain_failed = permanent config issue (missing firm). Retrying won't help.
           outcome = 'chain_failed';
+          reason = 'no_firm_resolved';
           await recordIngestionOutcome(prisma, {
             provider: 'vapi', eventType: messageType, externalId: callId,
             status: 'skipped', errorCode: 'chain_failed',
@@ -652,7 +673,6 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       } else if (messageType === 'status-update') {
         const result = await ingestStatusUpdate(prisma, callId, message, reqId);
         outcome = result || 'processed';
-        resolvedOrg = null; // logged inside function
       } else if (messageType === 'transcript') {
         await ingestTranscript(prisma, callId, message, reqId);
         outcome = 'transcript_processed';
@@ -661,11 +681,37 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
         console.log(JSON.stringify({ tag: 'vapi_event_logged', reqId, eventType: messageType, callId }));
       }
 
+      // ── LOG 3: vapi_org_resolved ──
+      console.log(JSON.stringify({
+        tag: 'vapi_org_resolved',
+        reqId,
+        callId,
+        callType,
+        resolvedOrgId: resolvedOrg,
+        resolutionMethod,
+        toE164: maskPhone(toE164),
+        fromE164: maskPhone(fromE164),
+      }));
+
+      // ── LOG 4: vapi_persist_outcome ──
+      console.log(JSON.stringify({
+        tag: 'vapi_persist_outcome',
+        reqId,
+        callId,
+        callType,
+        messageType,
+        outcome,
+        reason,
+        resolvedOrgId: resolvedOrg,
+        resolutionMethod,
+      }));
+
       // Respond 200 AFTER persistence succeeds
       res.status(200).json({ ok: true });
     } catch (err: any) {
       error = err?.message || String(err);
       outcome = 'error';
+      reason = 'persistence_error';
       console.log(JSON.stringify({
         tag: 'vapi_persist_error',
         reqId,
@@ -674,6 +720,20 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
         error,
         stack: err?.stack?.split('\n').slice(0, 4).join(' | '),
       }));
+
+      // ── LOG 4 (error path): vapi_persist_outcome ──
+      console.log(JSON.stringify({
+        tag: 'vapi_persist_outcome',
+        reqId,
+        callId,
+        callType,
+        messageType,
+        outcome: 'error',
+        reason: 'persistence_error',
+        resolvedOrgId: resolvedOrg,
+        error,
+      }));
+
       // Return 503 so Vapi retries (up to 3x). Idempotent via providerCallId.
       await recordIngestionOutcome(prisma, {
         provider: 'vapi', eventType: messageType, externalId: callId,
@@ -689,11 +749,17 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
       eventType: messageType,
       callId,
       callType,
-      from: maskPhone(fromNumber),
-      to: maskPhone(toNumber),
+      fromRaw: maskPhone(fromNumber),
+      toRaw: maskPhone(toNumber),
+      fromE164: maskPhone(fromE164),
+      toE164: maskPhone(toE164),
+      toMatchedPath: nums.toMatchedPath,
+      fromMatchedPath: nums.fromMatchedPath,
       assistantId,
       orgResolved: resolvedOrg,
+      resolutionMethod,
       outcome,
+      reason,
       error,
     });
   });
@@ -888,7 +954,7 @@ async function ingestEndOfCallReport(
   message: VapiMessage,
   rawBody: unknown,
   reqId: string,
-): Promise<{ orgId: string } | null> {
+): Promise<{ orgId: string; resolutionMethod: string } | null> {
   // Idempotency: try to store raw event, skip if duplicate
   const stored = await storeRawEvent(prisma, vapiCallId, 'end-of-call-report-idem', rawBody, reqId);
   // Note: storeRawEvent returns false for P2002 (duplicate) and for table-missing errors.
@@ -908,7 +974,7 @@ async function ingestEndOfCallReport(
     return null;
   }
 
-  const { dbCallId, leadId, orgId } = chain;
+  const { dbCallId, leadId, orgId, resolutionMethod } = chain;
 
   // Pull data from Vapi payload (multiple possible locations)
   const transcript = message.transcript || message.artifact?.transcript || null;
@@ -1036,5 +1102,5 @@ async function ingestEndOfCallReport(
     },
   }));
 
-  return { orgId };
+  return { orgId, resolutionMethod };
 }
