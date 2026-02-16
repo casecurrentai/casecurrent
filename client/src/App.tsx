@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Switch, Route, Redirect, useLocation, useRoute } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -133,6 +134,24 @@ function LeadDetailRedirect() {
     return <Redirect to={`/cases/${params.id}`} />;
   }
   return <Redirect to="/cases" />;
+}
+
+/** Reset scroll to top on pathname change (PUSH/REPLACE only, not POP). */
+function ScrollToTop() {
+  const [location] = useLocation();
+  const prevPath = useRef(location);
+
+  useEffect(() => {
+    // Extract pathname (strip hash/query)
+    const path = location.split(/[?#]/)[0];
+    const prev = prevPath.current.split(/[?#]/)[0];
+    if (path !== prev) {
+      window.scrollTo(0, 0);
+    }
+    prevPath.current = location;
+  }, [location]);
+
+  return null;
 }
 
 function Router() {
@@ -287,6 +306,7 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <VapiProvider>
+            <ScrollToTop />
             <Toaster />
             <Router />
             <MarketingVapiFab />
