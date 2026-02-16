@@ -464,13 +464,23 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
     res.status(200).json({ ok: true, ts: new Date().toISOString(), ...identity });
   });
 
+  // ── Diag token gate (shared with server/routes.ts pattern) ──
+  function requireDiagToken(req: Request, res: Response): boolean {
+    const diagToken = process.env.DIAG_TOKEN;
+    if (!diagToken) { res.status(404).json({ error: 'Not found' }); return false; }
+    if (req.query.token !== diagToken) { res.status(401).json({ error: 'Unauthorized' }); return false; }
+    return true;
+  }
+
   // ── Diagnostic: in-memory ring buffer (works even if webhook_events table is missing) ──
-  router.get('/diag/ring', (_req: Request, res: Response) => {
+  router.get('/diag/ring', (req: Request, res: Response) => {
+    if (!requireDiagToken(req, res)) return;
     res.json({ count: diagRing.length, maxSize: DIAG_RING_SIZE, entries: [...diagRing].reverse() });
   });
 
   // ── Diagnostic: recent raw Vapi webhook events (DB-backed) ──
   router.get('/diag/events', async (req: Request, res: Response) => {
+    if (!requireDiagToken(req, res)) return;
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const events = await prisma.webhookEvent.findMany({

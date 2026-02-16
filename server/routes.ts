@@ -55,6 +55,8 @@ import summaryRouter from './routes/summary';
 import transcriptRouter from './routes/transcript';
 import analyticsTrendsRouter from './routes/analytics-trends';
 import callDebugRouter from './routes/call-debug';
+import ingestionOutcomesRouter from './routes/ingestion-outcomes';
+import { recordIngestionOutcome } from './webhooks/ingestion-outcome';
 
 // ============================================
 // REALTIME WEBSOCKET CONNECTIONS
@@ -5195,6 +5197,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(transcriptRouter);
   app.use(analyticsTrendsRouter);
   app.use(callDebugRouter);
+  app.use(ingestionOutcomesRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS
@@ -6615,12 +6618,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               durationSeconds: RecordingDuration ? parseInt(RecordingDuration, 10) : undefined,
             },
           });
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'recording', externalId: CallUUID,
+            orgId: call.orgId, status: 'persisted',
+          });
+        } else {
+          // Plivo doesn't retry — keep 200, record skipped
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'recording', externalId: CallUUID,
+            status: 'skipped', errorCode: 'call_not_found',
+            errorMessage: 'No matching call for CallUUID',
+          });
         }
       }
 
       res.json({ status: 'ok' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Plivo recording callback error:', error);
+      await recordIngestionOutcome(prisma, {
+        provider: 'plivo', eventType: 'recording',
+        externalId: req.body?.CallUUID || 'unknown',
+        status: 'failed', errorCode: 'recording_error',
+        errorMessage: error?.message || String(error),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Failed to process recording' });
     }
   });
@@ -6672,12 +6693,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               data: { status: dbStatus, ...(isTerminal ? { endedAt: new Date() } : {}) },
             });
           }
+
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'status', externalId: CallUUID,
+            orgId: call.orgId, status: 'persisted',
+          });
+        } else {
+          // Plivo doesn't retry — keep 200, record skipped
+          await recordIngestionOutcome(prisma, {
+            provider: 'plivo', eventType: 'status', externalId: CallUUID,
+            status: 'skipped', errorCode: 'call_not_found',
+            errorMessage: 'No matching call for CallUUID',
+          });
         }
       }
 
       res.json({ status: 'ok' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Plivo status callback error:', error);
+      await recordIngestionOutcome(prisma, {
+        provider: 'plivo', eventType: 'status',
+        externalId: req.body?.CallUUID || 'unknown',
+        status: 'failed', errorCode: 'status_error',
+        errorMessage: error?.message || String(error),
+        payload: req.body,
+      });
       res.status(500).json({ error: 'Failed to process status' });
     }
   });
