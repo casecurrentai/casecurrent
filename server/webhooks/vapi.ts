@@ -661,6 +661,7 @@ export function createVapiWebhookRouter(prisma: PrismaClient): Router {
             orgId: result.orgId, status: 'persisted',
           });
         } else {
+          // chain_failed = permanent config issue (missing firm). Retrying won't help.
           outcome = 'chain_failed';
           reason = 'no_firm_resolved';
           await recordIngestionOutcome(prisma, {
