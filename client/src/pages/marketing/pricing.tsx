@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,20 +33,12 @@ import {
   type FaqItem,
 } from "@/lib/pricing-config";
 
-// ──────────────────────────────────────────────
-// Trust row icon map
-// ──────────────────────────────────────────────
-
 const TRUST_ICON_MAP: Record<string, React.ReactNode> = {
   shield: <Shield className="w-5 h-5" />,
   "file-check": <FileCheck className="w-5 h-5" />,
   plug: <Plug className="w-5 h-5" />,
   scale: <Scale className="w-5 h-5" />,
 };
-
-// ──────────────────────────────────────────────
-// Plan Card component
-// ──────────────────────────────────────────────
 
 function PlanCard({ plan, onSelect }: { plan: PlanDef; onSelect?: (id: string) => void }) {
   return (
@@ -73,7 +65,6 @@ function PlanCard({ plan, onSelect }: { plan: PlanDef; onSelect?: (id: string) =
       <CardContent className="flex-1 flex flex-col">
         <p className="text-sm font-medium text-foreground mb-4">{plan.positioning}</p>
 
-        {/* Usage block */}
         <div className="rounded-lg bg-muted/50 border border-border p-3 mb-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Monthly usage
@@ -139,10 +130,6 @@ function PlanCard({ plan, onSelect }: { plan: PlanDef; onSelect?: (id: string) =
   );
 }
 
-// ──────────────────────────────────────────────
-// Comparison Table
-// ──────────────────────────────────────────────
-
 function CellValue({ value }: { value: string | boolean }) {
   if (value === true) return <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mx-auto" />;
   if (value === false) return <X className="w-5 h-5 text-muted-foreground/40 mx-auto" />;
@@ -176,7 +163,6 @@ function ComparisonTable({ rows }: { rows: ComparisonRow[] }) {
   );
 }
 
-// Mobile accordion comparison
 function ComparisonAccordion({ rows }: { rows: ComparisonRow[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   return (
@@ -212,10 +198,6 @@ function ComparisonAccordion({ rows }: { rows: ComparisonRow[] }) {
   );
 }
 
-// ──────────────────────────────────────────────
-// FAQ section
-// ──────────────────────────────────────────────
-
 function FaqSection({ faqs }: { faqs: FaqItem[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   return (
@@ -241,10 +223,6 @@ function FaqSection({ faqs }: { faqs: FaqItem[] }) {
   );
 }
 
-// ──────────────────────────────────────────────
-// Mobile sticky CTA
-// ──────────────────────────────────────────────
-
 function MobileStickyCta({ selectedPlan }: { selectedPlan: PlanDef | null }) {
   const plan = selectedPlan ?? PILOT_PLANS.find((p) => p.highlighted) ?? PILOT_PLANS[0];
   return (
@@ -263,10 +241,6 @@ function MobileStickyCta({ selectedPlan }: { selectedPlan: PlanDef | null }) {
   );
 }
 
-// ──────────────────────────────────────────────
-// Main page
-// ──────────────────────────────────────────────
-
 type PlanSet = "pilot" | "standard";
 
 export default function PricingPage() {
@@ -281,7 +255,6 @@ export default function PricingPage() {
       title="Pricing | CaseCurrent"
       description="Simple, transparent pricing for AI-powered legal intake. Start with a Founding Firm Pilot or choose a standard plan."
     >
-      {/* ── A) Hero ─────────────────────────────── */}
       <Hero
         headline="AI Intake that captures more qualified cases — 24/7."
         subheadline="Start with a Founding Firm Pilot. Upgrade when you're ready for full-scale intake and SLA-backed reliability."
@@ -292,7 +265,6 @@ export default function PricingPage() {
           <p className="text-sm text-muted-foreground">
             No long-term contract during Pilot. Cancel anytime.
           </p>
-          {/* Trust row */}
           <div className="flex flex-wrap gap-4">
             {TRUST_ITEMS.map((item) => (
               <div
@@ -307,11 +279,9 @@ export default function PricingPage() {
         </div>
       </Hero>
 
-      {/* ── B) Plan set toggle ─────────────────── */}
       <SectionBackground variant="subtle">
         <section className="py-16 -mt-8">
           <div className="container mx-auto px-6">
-            {/* Toggle tabs */}
             <div className="flex justify-center mb-10">
               <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
                 <button
@@ -341,21 +311,17 @@ export default function PricingPage() {
               </div>
             </div>
 
-            {/* ── C/D) Plan cards ────────────────── */}
-            <SectionFrame variant="brackets" className="p-6">
-              <div
-                className={cn(
-                  "grid gap-6 max-w-6xl mx-auto",
-                  activePlans.length === 2 ? "md:grid-cols-2 max-w-4xl" : "md:grid-cols-3",
-                )}
-              >
-                {activePlans.map((plan) => (
-                  <PlanCard key={plan.id} plan={plan} onSelect={setSelectedPlanId} />
-                ))}
-              </div>
-            </SectionFrame>
+            <div
+              className={cn(
+                "grid gap-6 max-w-6xl mx-auto",
+                activePlans.length === 2 ? "md:grid-cols-2 max-w-4xl" : "md:grid-cols-3",
+              )}
+            >
+              {activePlans.map((plan) => (
+                <PlanCard key={plan.id} plan={plan} onSelect={setSelectedPlanId} />
+              ))}
+            </div>
 
-            {/* Pilot footnote */}
             {planSet === "pilot" && (
               <p className="text-xs text-muted-foreground text-center mt-6 max-w-2xl mx-auto">
                 {PILOT_CONFIG.footnote}
@@ -365,12 +331,11 @@ export default function PricingPage() {
         </section>
       </SectionBackground>
 
-      {/* ── E) Usage & Overage Block ───────────── */}
       <SectionBackground variant="muted">
         <section className="py-16 relative">
           <DotGridPattern />
           <div className="container mx-auto px-6 relative z-10">
-            <SectionFrame variant="corners" className="p-8 max-w-3xl mx-auto">
+            <div className="max-w-3xl mx-auto">
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-foreground">
                   Transparent usage. Predictable billing.
@@ -395,15 +360,14 @@ export default function PricingPage() {
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
-            </SectionFrame>
+            </div>
           </div>
         </section>
       </SectionBackground>
 
-      {/* ── F) Risk Reversal ───────────────────── */}
       <section className="py-16">
         <div className="container mx-auto px-6">
-          <SectionFrame variant="minimal" className="p-8 max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-foreground">Try it without the fear.</h2>
             </div>
@@ -432,11 +396,10 @@ export default function PricingPage() {
                 </div>
               ))}
             </div>
-          </SectionFrame>
+          </div>
         </div>
       </section>
 
-      {/* ── G) Comparison Table ────────────────── */}
       <SectionBackground variant="subtle">
         <section className="py-16">
           <div className="container mx-auto px-6">
@@ -444,13 +407,9 @@ export default function PricingPage() {
               <h2 className="text-2xl font-bold text-foreground">Compare plans</h2>
               <p className="text-muted-foreground mt-2">See exactly what's included at every tier.</p>
             </div>
-            {/* Desktop table */}
             <div className="hidden md:block max-w-4xl mx-auto">
-              <SectionFrame variant="brackets" className="p-6">
-                <ComparisonTable rows={COMPARISON_ROWS} />
-              </SectionFrame>
+              <ComparisonTable rows={COMPARISON_ROWS} />
             </div>
-            {/* Mobile accordion */}
             <div className="md:hidden">
               <ComparisonAccordion rows={COMPARISON_ROWS} />
             </div>
@@ -458,7 +417,6 @@ export default function PricingPage() {
         </section>
       </SectionBackground>
 
-      {/* ── H) FAQs ───────────────────────────── */}
       <section className="py-16">
         <div className="container mx-auto px-6">
           <div className="text-center mb-10">
@@ -468,7 +426,6 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* ── Bottom CTA ─────────────────────────── */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-bold mb-4">Ready to capture more cases?</h2>
@@ -495,7 +452,6 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* ── Mobile sticky CTA ──────────────────── */}
       <MobileStickyCta selectedPlan={selectedPlan} />
     </PageShell>
   );

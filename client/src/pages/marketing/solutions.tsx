@@ -1,10 +1,9 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { FeatureCard } from "@/components/marketing/feature-card";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { GuillocheUnderlay, DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { WireframeQualificationCard, WireframeTimelineCard } from "@/components/marketing/wireframe-components";
-import { GradientOrb, GlowLine, DecorativeScatter, SectionGlow, GradientText } from "@/components/marketing/decorative-visuals";
+import { GradientOrb, GlowLine, DecorativeScatter, SectionGlow } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,7 +130,6 @@ export default function SolutionsPage() {
       <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="rails" className="p-8">
             <GlowLine className="mb-8" aria-hidden="true" />
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Practice Areas</h2>
@@ -166,17 +164,15 @@ export default function SolutionsPage() {
                 </Card>
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
-        <DotGridPattern />
-        <DecorativeScatter density="sparse" />
-        <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame variant="grid" className="p-8">
+          <DotGridPattern />
+          <DecorativeScatter density="sparse" />
+          <div className="container mx-auto px-6 relative z-10">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Operational Outcomes</h2>
               <p className="text-muted-foreground">
@@ -193,17 +189,15 @@ export default function SolutionsPage() {
                 />
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="rails" className="p-8">
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-foreground mb-4">Integrations</h2>
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground mb-4">Integrations</h2>
               <p className="text-muted-foreground">
                 Connect CaseCurrent to your existing tools
               </p>
@@ -232,27 +226,10 @@ export default function SolutionsPage() {
                   </CardContent>
                 </Card>
               ))}
-              </div>
-            </SectionFrame>
+            </div>
           </div>
         </section>
       </SectionBackground>
-
-      <section className="py-16 relative">
-        <GradientOrb color="primary" size="md" className="top-4 right-4" />
-        <GradientOrb color="blue" size="sm" className="bottom-4 left-4" />
-        <GuillocheUnderlay />
-        <div className="container mx-auto px-6 relative z-10">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-foreground">Smart Intake Workflow</h2>
-            <p className="text-muted-foreground">AI-powered qualification and tracking</p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            <WireframeQualificationCard />
-            <WireframeTimelineCard />
-          </div>
-        </div>
-      </section>
 
       <section className="py-16 bg-primary text-primary-foreground relative">
         <div className="absolute -top-20 right-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl pointer-events-none" aria-hidden="true" />

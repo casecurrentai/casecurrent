@@ -1,11 +1,11 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { DecorativeScatter, SectionGlow, GlowLine } from "@/components/marketing/decorative-visuals";
+import { DecorativeScatter, GlowLine } from "@/components/marketing/decorative-visuals";
 import { Link } from "wouter";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
 import { BLOG_ARTICLES, CATEGORY_COLORS } from "./blog-data";
@@ -24,7 +24,6 @@ export default function ResourcesPage() {
           <DotGridPattern />
           <DecorativeScatter density="sparse" />
           <div className="container mx-auto px-6 relative z-10">
-            <SectionFrame variant="grid" className="p-8">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {BLOG_ARTICLES.map((post) => (
                 <Link key={post.id} href={`/blog/${post.slug}`}>
@@ -60,16 +59,14 @@ export default function ResourcesPage() {
                 </Link>
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="minimal" className="p-8 max-w-2xl mx-auto">
-            <div className="text-center">
+            <div className="max-w-2xl mx-auto text-center">
               <GlowLine className="mb-6" />
               <h2 className="text-2xl font-bold mb-4">Subscribe to Our Newsletter</h2>
               <p className="text-muted-foreground mb-6">
@@ -87,10 +84,9 @@ export default function ResourcesPage() {
                 </Button>
               </form>
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <section className="py-16 bg-primary text-primary-foreground relative">
         <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true"><div className="absolute -top-20 right-1/4 w-96 h-96 rounded-full bg-white/5 blur-3xl" /></div>

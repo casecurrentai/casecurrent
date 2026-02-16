@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
-import { GlowLine, SectionGlow, GradientOrb } from "@/components/marketing/decorative-visuals";
+import { SectionBackground } from "@/components/marketing/section-frame";
+import { GradientOrb } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,138 +79,138 @@ export default function ContactPage() {
         <section className="py-20 -mt-10 relative overflow-hidden">
           <GradientOrb color="primary" size="md" className="absolute -top-20 -right-20 opacity-50" />
           <div className="container mx-auto px-6">
-            <SectionFrame variant="corners" className="p-8 max-w-5xl mx-auto">
-            <div className="grid lg:grid-cols-2 gap-12">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground mb-6">Get in Touch</h2>
-                <div className="space-y-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Mail className="w-5 h-5 text-primary" />
+            <div className="max-w-5xl mx-auto">
+              <div className="grid lg:grid-cols-2 gap-12">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground mb-6">Get in Touch</h2>
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <Mail className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">Email</h3>
+                        <p className="text-muted-foreground">info@casecurrent.co</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-medium">Email</h3>
-                      <p className="text-muted-foreground">info@casecurrent.co</p>
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <Phone className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">Phone</h3>
+                        <a href="tel:+15049005237" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-contact-phone">(504) 900-5237</a>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <Clock className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">Response Time</h3>
+                        <p className="text-muted-foreground">Within 24 hours on business days</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Phone className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">Phone</h3>
-                      <a href="tel:+15049005237" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-contact-phone">(504) 900-5237</a>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Clock className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">Response Time</h3>
-                      <p className="text-muted-foreground">Within 24 hours on business days</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-8 p-4 bg-muted/50 rounded-lg">
-                  <h3 className="font-medium mb-2">Looking for a demo?</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    See CaseCurrent in action with a personalized walkthrough.
-                  </p>
-                  <Link href="/demo">
-                    <Button variant="outline" size="sm" data-testid="link-demo-from-contact">
-                      Book a Demo
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-
-              <Card>
-                <CardContent className="p-6">
-                  {isSubmitted ? (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold mb-2">Message Received</h3>
-                      <p className="text-muted-foreground">
-                        Thank you for reaching out. We'll be in touch within 24 hours.
-                      </p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      <div>
-                        <Label htmlFor="name">Name *</Label>
-                        <Input
-                          id="name"
-                          required
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder="Your name"
-                          data-testid="input-contact-name"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email">Email *</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          required
-                          value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                          placeholder="you@example.com"
-                          data-testid="input-contact-email"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="firm">Firm Name</Label>
-                        <Input
-                          id="firm"
-                          value={formData.firm}
-                          onChange={(e) => setFormData({ ...formData, firm: e.target.value })}
-                          placeholder="Your law firm (optional)"
-                          data-testid="input-contact-firm"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="message">Message *</Label>
-                        <Textarea
-                          id="message"
-                          required
-                          rows={4}
-                          value={formData.message}
-                          onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                          placeholder="Tell us about your intake needs..."
-                          data-testid="input-contact-message"
-                        />
-                      </div>
-                      <div className="hidden" aria-hidden="true">
-                        <Label htmlFor="website">Website</Label>
-                        <Input
-                          id="website"
-                          tabIndex={-1}
-                          autoComplete="off"
-                          value={formData.website}
-                          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={isSubmitting}
-                        data-testid="button-contact-submit"
-                      >
-                        {isSubmitting ? "Sending..." : "Send Message"}
+                  <div className="mt-8 p-4 bg-muted/50 rounded-lg">
+                    <h3 className="font-medium mb-2">Looking for a demo?</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      See CaseCurrent in action with a personalized walkthrough.
+                    </p>
+                    <Link href="/demo">
+                      <Button variant="outline" size="sm" data-testid="link-demo-from-contact">
+                        Book a Demo
+                        <ArrowRight className="w-4 h-4 ml-2" />
                       </Button>
-                    </form>
-                  )}
-                </CardContent>
-              </Card>
+                    </Link>
+                  </div>
+                </div>
+
+                <Card>
+                  <CardContent className="p-6">
+                    {isSubmitted ? (
+                      <div className="text-center py-8">
+                        <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">Message Received</h3>
+                        <p className="text-muted-foreground">
+                          Thank you for reaching out. We'll be in touch within 24 hours.
+                        </p>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                          <Label htmlFor="name">Name *</Label>
+                          <Input
+                            id="name"
+                            required
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            placeholder="Your name"
+                            data-testid="input-contact-name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="email">Email *</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            required
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                            placeholder="you@example.com"
+                            data-testid="input-contact-email"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="firm">Firm Name</Label>
+                          <Input
+                            id="firm"
+                            value={formData.firm}
+                            onChange={(e) => setFormData({ ...formData, firm: e.target.value })}
+                            placeholder="Your law firm (optional)"
+                            data-testid="input-contact-firm"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="message">Message *</Label>
+                          <Textarea
+                            id="message"
+                            required
+                            rows={4}
+                            value={formData.message}
+                            onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                            placeholder="Tell us about your intake needs..."
+                            data-testid="input-contact-message"
+                          />
+                        </div>
+                        <div className="hidden" aria-hidden="true">
+                          <Label htmlFor="website">Website</Label>
+                          <Input
+                            id="website"
+                            tabIndex={-1}
+                            autoComplete="off"
+                            value={formData.website}
+                            onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                          />
+                        </div>
+                        <Button
+                          type="submit"
+                          className="w-full"
+                          disabled={isSubmitting}
+                          data-testid="button-contact-submit"
+                        >
+                          {isSubmitting ? "Sending..." : "Send Message"}
+                        </Button>
+                      </form>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
     </PageShell>
   );
 }

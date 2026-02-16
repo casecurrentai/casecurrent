@@ -1,10 +1,10 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { TrustList, SecurityCard } from "@/components/marketing/trust-list";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { GradientOrb, GlowLine, DecorativeScatter, SectionGlow } from "@/components/marketing/decorative-visuals";
+import { GlowLine, DecorativeScatter } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,10 +81,9 @@ export default function SecurityPage() {
       <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="crosshairs" className="p-8">
-              <div className="grid lg:grid-cols-2 gap-12">
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
+            <div className="grid lg:grid-cols-2 gap-12">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground mb-6">Trust Checklist</h2>
                 <TrustList items={TRUST_ITEMS} />
               </div>
               <UIFrame title="Security Overview">
@@ -98,18 +97,16 @@ export default function SecurityPage() {
                   ))}
                 </div>
               </UIFrame>
-              </div>
-            </SectionFrame>
+            </div>
           </div>
         </section>
       </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
-        <DotGridPattern />
-        <DecorativeScatter density="sparse" />
-        <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame variant="minimal" className="p-8">
+          <DotGridPattern />
+          <DecorativeScatter density="sparse" />
+          <div className="container mx-auto px-6 relative z-10">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Unrelenting Security</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -148,18 +145,16 @@ export default function SecurityPage() {
                 </CardContent>
               </Card>
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="crosshairs" className="p-8">
-              <div className="text-center mb-8">
-                <GlowLine className="mb-6" />
-                <h2 className="text-2xl font-bold text-foreground mb-4">Compliance Status</h2>
+            <div className="text-center mb-8">
+              <GlowLine className="mb-6" />
+              <h2 className="text-2xl font-bold text-foreground mb-4">Compliance Status</h2>
               <p className="text-muted-foreground">
                 Our commitment to meeting industry standards
               </p>
@@ -192,8 +187,7 @@ export default function SecurityPage() {
                   </Badge>
                 </CardContent>
               </Card>
-              </div>
-            </SectionFrame>
+            </div>
           </div>
         </section>
       </SectionBackground>

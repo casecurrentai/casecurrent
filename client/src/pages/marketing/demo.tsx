@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
-import { GlowLine, DecorativeScatter, SectionGlow } from "@/components/marketing/decorative-visuals";
+import { SectionBackground } from "@/components/marketing/section-frame";
+import { SectionGlow } from "@/components/marketing/decorative-visuals";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,7 +189,6 @@ export default function DemoPage() {
       <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20 -mt-10">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-12">
               <h2 className="text-2xl font-bold text-foreground mb-4">What You'll See</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -208,15 +207,13 @@ export default function DemoPage() {
                 </div>
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-16">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="brackets" className="p-8">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-4">Who It's For</h2>
               <p className="text-muted-foreground">CaseCurrent works for firms across practice areas</p>
@@ -229,267 +226,266 @@ export default function DemoPage() {
                 </div>
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-16">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="brackets" className="p-8 max-w-3xl mx-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-4">Implementation Timeline</h2>
-              <p className="text-muted-foreground">Get started quickly with minimal disruption</p>
+            <div className="max-w-3xl mx-auto">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-foreground mb-4">Implementation Timeline</h2>
+                <p className="text-muted-foreground">Get started quickly with minimal disruption</p>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-6">
+                <div className="text-center">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <Clock className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold mb-1">Day 1-2</h3>
+                  <p className="text-sm text-muted-foreground">Onboarding call & configuration</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <Zap className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold mb-1">Day 3-5</h3>
+                  <p className="text-sm text-muted-foreground">AI training & testing</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold mb-1">Day 6+</h3>
+                  <p className="text-sm text-muted-foreground">Go live & iterate</p>
+                </div>
+              </div>
+              <p className="text-center text-sm text-muted-foreground mt-6">
+                Actual timeline varies based on complexity. Most firms are live within one week.
+              </p>
             </div>
-            <div className="grid sm:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <Clock className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-1">Day 1-2</h3>
-                <p className="text-sm text-muted-foreground">Onboarding call & configuration</p>
-              </div>
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <Zap className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-1">Day 3-5</h3>
-                <p className="text-sm text-muted-foreground">AI training & testing</p>
-              </div>
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-1">Day 6+</h3>
-                <p className="text-sm text-muted-foreground">Go live & iterate</p>
-              </div>
-            </div>
-            <p className="text-center text-sm text-muted-foreground mt-6">
-              Actual timeline varies based on complexity. Most firms are live within one week.
-            </p>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="primary">
         <section className="py-20 relative" ref={formRef}>
           <SectionGlow position="center" />
           <div className="container mx-auto px-6">
-            <SectionFrame variant="brackets" className="max-w-2xl mx-auto p-6">
-            <Card>
-              <CardContent className="p-8">
-                {isSubmitted ? (
-                  <div className="text-center py-8">
-                    <CheckCircle className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
-                    <h3 className="text-2xl font-semibold mb-2">Demo Request Received</h3>
-                    <p className="text-muted-foreground">
-                      We'll reach out shortly to schedule your personalized demo.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-center mb-8">
-                      <h2 className="text-2xl font-bold text-foreground mb-2">Request Your Demo</h2>
+            <div className="max-w-2xl mx-auto">
+              <Card>
+                <CardContent className="p-8">
+                  {isSubmitted ? (
+                    <div className="text-center py-8">
+                      <CheckCircle className="w-16 h-16 text-emerald-600 mx-auto mb-4" />
+                      <h3 className="text-2xl font-semibold mb-2">Demo Request Received</h3>
                       <p className="text-muted-foreground">
-                        Fill out the form below and we'll be in touch within one business day.
+                        We'll reach out shortly to schedule your personalized demo.
                       </p>
                     </div>
+                  ) : (
+                    <>
+                      <div className="text-center mb-8">
+                        <h2 className="text-2xl font-bold text-foreground mb-2">Request Your Demo</h2>
+                        <p className="text-muted-foreground">
+                          Fill out the form below and we'll be in touch within one business day.
+                        </p>
+                      </div>
 
-                    <div className="flex items-center justify-center gap-2 mb-8">
-                      {FORM_STEPS.map((step) => (
-                        <div key={step.id} className="flex items-center">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                              currentStep >= step.id
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                            data-testid={`step-indicator-${step.id}`}
-                          >
-                            {step.id}
-                          </div>
-                          {step.id < 3 && (
+                      <div className="flex items-center justify-center gap-2 mb-8">
+                        {FORM_STEPS.map((step) => (
+                          <div key={step.id} className="flex items-center">
                             <div
-                              className={`w-12 h-0.5 mx-1 ${
-                                currentStep > step.id ? "bg-primary" : "bg-muted"
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                                currentStep >= step.id
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted text-muted-foreground"
                               }`}
-                            />
+                              data-testid={`step-indicator-${step.id}`}
+                            >
+                              {step.id}
+                            </div>
+                            {step.id < 3 && (
+                              <div
+                                className={`w-12 h-0.5 mx-1 ${
+                                  currentStep > step.id ? "bg-primary" : "bg-muted"
+                                }`}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <form onSubmit={handleSubmit}>
+                        {currentStep === 1 && (
+                          <div className="space-y-4" data-testid="form-step-1">
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="name">Name *</Label>
+                                <Input
+                                  id="name"
+                                  value={formData.name}
+                                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                  placeholder="Your name"
+                                  data-testid="input-demo-name"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="email">Email *</Label>
+                                <Input
+                                  id="email"
+                                  type="email"
+                                  value={formData.email}
+                                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                  placeholder="you@example.com"
+                                  data-testid="input-demo-email"
+                                />
+                              </div>
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="firm_name">Firm Name</Label>
+                                <Input
+                                  id="firm_name"
+                                  value={formData.firm_name}
+                                  onChange={(e) => setFormData({ ...formData, firm_name: e.target.value })}
+                                  placeholder="Your law firm"
+                                  data-testid="input-demo-firm"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="phone">Phone (optional)</Label>
+                                <Input
+                                  id="phone"
+                                  type="tel"
+                                  value={formData.phone}
+                                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                  placeholder="(555) 123-4567"
+                                  data-testid="input-demo-phone"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {currentStep === 2 && (
+                          <div className="space-y-4" data-testid="form-step-2">
+                            <div>
+                              <Label htmlFor="practice_area">Practice Area</Label>
+                              <Select
+                                value={formData.practice_area}
+                                onValueChange={(value) => setFormData({ ...formData, practice_area: value })}
+                              >
+                                <SelectTrigger data-testid="select-demo-practice-area">
+                                  <SelectValue placeholder="Select practice area" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PRACTICE_AREAS.map((area) => (
+                                    <SelectItem key={area.value} value={area.value}>
+                                      {area.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="current_intake_method">Current Intake Method</Label>
+                                <Select
+                                  value={formData.current_intake_method}
+                                  onValueChange={(value) => setFormData({ ...formData, current_intake_method: value })}
+                                >
+                                  <SelectTrigger data-testid="select-demo-intake-method">
+                                    <SelectValue placeholder="How do you handle intake?" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {INTAKE_METHODS.map((method) => (
+                                      <SelectItem key={method.value} value={method.value}>
+                                        {method.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label htmlFor="monthly_lead_volume">Monthly Lead Volume</Label>
+                                <Select
+                                  value={formData.monthly_lead_volume}
+                                  onValueChange={(value) => setFormData({ ...formData, monthly_lead_volume: value })}
+                                >
+                                  <SelectTrigger data-testid="select-demo-lead-volume">
+                                    <SelectValue placeholder="How many leads/month?" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {LEAD_VOLUMES.map((volume) => (
+                                      <SelectItem key={volume.value} value={volume.value}>
+                                        {volume.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {currentStep === 3 && (
+                          <div className="space-y-4" data-testid="form-step-3">
+                            <div>
+                              <Label htmlFor="message">Anything else? (optional)</Label>
+                              <Textarea
+                                id="message"
+                                rows={4}
+                                value={formData.message}
+                                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                                placeholder="Tell us about your specific needs or questions..."
+                                data-testid="input-demo-message"
+                              />
+                            </div>
+                            <div className="hidden" aria-hidden="true">
+                              <Label htmlFor="website">Website</Label>
+                              <Input
+                                id="website"
+                                tabIndex={-1}
+                                autoComplete="off"
+                                value={formData.website}
+                                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between mt-8">
+                          {currentStep > 1 ? (
+                            <Button type="button" variant="outline" onClick={prevStep} data-testid="button-demo-prev">
+                              <ArrowLeft className="w-4 h-4 mr-2" />
+                              Back
+                            </Button>
+                          ) : (
+                            <div />
+                          )}
+
+                          {currentStep < 3 ? (
+                            <Button type="button" onClick={nextStep} data-testid="button-demo-next">
+                              Next
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                          ) : (
+                            <Button type="submit" disabled={isSubmitting} data-testid="button-demo-submit">
+                              {isSubmitting ? "Submitting..." : "Request Demo"}
+                            </Button>
                           )}
                         </div>
-                      ))}
-                    </div>
-
-                    <form onSubmit={handleSubmit}>
-                      {currentStep === 1 && (
-                        <div className="space-y-4" data-testid="form-step-1">
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="name">Name *</Label>
-                              <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="Your name"
-                                data-testid="input-demo-name"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="email">Email *</Label>
-                              <Input
-                                id="email"
-                                type="email"
-                                value={formData.email}
-                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                placeholder="you@example.com"
-                                data-testid="input-demo-email"
-                              />
-                            </div>
-                          </div>
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="firm_name">Firm Name</Label>
-                              <Input
-                                id="firm_name"
-                                value={formData.firm_name}
-                                onChange={(e) => setFormData({ ...formData, firm_name: e.target.value })}
-                                placeholder="Your law firm"
-                                data-testid="input-demo-firm"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="phone">Phone (optional)</Label>
-                              <Input
-                                id="phone"
-                                type="tel"
-                                value={formData.phone}
-                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                placeholder="(555) 123-4567"
-                                data-testid="input-demo-phone"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {currentStep === 2 && (
-                        <div className="space-y-4" data-testid="form-step-2">
-                          <div>
-                            <Label htmlFor="practice_area">Practice Area</Label>
-                            <Select
-                              value={formData.practice_area}
-                              onValueChange={(value) => setFormData({ ...formData, practice_area: value })}
-                            >
-                              <SelectTrigger data-testid="select-demo-practice-area">
-                                <SelectValue placeholder="Select practice area" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {PRACTICE_AREAS.map((area) => (
-                                  <SelectItem key={area.value} value={area.value}>
-                                    {area.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="current_intake_method">Current Intake Method</Label>
-                              <Select
-                                value={formData.current_intake_method}
-                                onValueChange={(value) => setFormData({ ...formData, current_intake_method: value })}
-                              >
-                                <SelectTrigger data-testid="select-demo-intake-method">
-                                  <SelectValue placeholder="How do you handle intake?" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {INTAKE_METHODS.map((method) => (
-                                    <SelectItem key={method.value} value={method.value}>
-                                      {method.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label htmlFor="monthly_lead_volume">Monthly Lead Volume</Label>
-                              <Select
-                                value={formData.monthly_lead_volume}
-                                onValueChange={(value) => setFormData({ ...formData, monthly_lead_volume: value })}
-                              >
-                                <SelectTrigger data-testid="select-demo-lead-volume">
-                                  <SelectValue placeholder="How many leads/month?" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {LEAD_VOLUMES.map((volume) => (
-                                    <SelectItem key={volume.value} value={volume.value}>
-                                      {volume.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {currentStep === 3 && (
-                        <div className="space-y-4" data-testid="form-step-3">
-                          <div>
-                            <Label htmlFor="message">Anything else? (optional)</Label>
-                            <Textarea
-                              id="message"
-                              rows={4}
-                              value={formData.message}
-                              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                              placeholder="Tell us about your specific needs or questions..."
-                              data-testid="input-demo-message"
-                            />
-                          </div>
-                          <div className="hidden" aria-hidden="true">
-                            <Label htmlFor="website">Website</Label>
-                            <Input
-                              id="website"
-                              tabIndex={-1}
-                              autoComplete="off"
-                              value={formData.website}
-                              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between mt-8">
-                        {currentStep > 1 ? (
-                          <Button type="button" variant="outline" onClick={prevStep} data-testid="button-demo-prev">
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Back
-                          </Button>
-                        ) : (
-                          <div />
-                        )}
-
-                        {currentStep < 3 ? (
-                          <Button type="button" onClick={nextStep} data-testid="button-demo-next">
-                            Next
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        ) : (
-                          <Button type="submit" disabled={isSubmitting} data-testid="button-demo-submit">
-                            {isSubmitting ? "Submitting..." : "Request Demo"}
-                          </Button>
-                        )}
-                      </div>
-                    </form>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+                      </form>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </section>
+      </SectionBackground>
     </PageShell>
   );
 }

@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { PageShell } from "@/components/marketing/page-shell";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,8 @@ const MARKETING_ROUTES = [
 
 const CHECKLIST_ITEMS = [
   { id: "guilloche", label: "Guilloche underlay visible in debug mode (debugPattern=1)" },
-  { id: "frame-outline", label: "Guilloche container outline visible (debugFrame=1)" },
-  { id: "section-frames", label: "SectionFrame appears at least 2 times per page" },
+  { id: "section-bg", label: "SectionBackground with colored backgrounds separates all sections" },
+  { id: "mesh-gradients", label: "Dynamic mesh gradients applied to section backgrounds" },
   { id: "ctas", label: "Primary CTAs route to /demo" },
   { id: "page-shell", label: "All pages use PageShell component" },
 ];
@@ -28,18 +28,22 @@ const CHECKLIST_ITEMS = [
 export default function DesignAuditPage() {
   return (
     <PageShell>
-      <div className="py-16">
-        <div className="container mx-auto px-6">
-          <SectionFrame variant="corners" className="p-8 mb-8">
+      <SectionBackground variant="subtle" withMesh meshVariant="cool">
+        <div className="py-16">
+          <div className="container mx-auto px-6">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-foreground mb-4">Design Audit Page</h1>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 Internal tool for verifying marketing signature consistency across all pages.
               </p>
             </div>
-          </SectionFrame>
+          </div>
+        </div>
+      </SectionBackground>
 
-          <SectionFrame variant="brackets" className="p-8 mb-8">
+      <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
+        <div className="py-12">
+          <div className="container mx-auto px-6">
             <h2 className="text-xl font-bold text-foreground mb-6">Marketing Routes with Debug Links</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
               {MARKETING_ROUTES.map((route) => (
@@ -74,13 +78,17 @@ export default function DesignAuditPage() {
                 </Card>
               ))}
             </div>
-          </SectionFrame>
+          </div>
+        </div>
+      </SectionBackground>
 
-          <SectionFrame variant="crosshairs" className="p-8">
+      <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
+        <div className="py-12">
+          <div className="container mx-auto px-6">
             <h2 className="text-xl font-bold text-foreground mb-6">Design Signature Checklist</h2>
             <div className="space-y-4">
               {CHECKLIST_ITEMS.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 p-4 bg-muted/30 rounded-lg">
+                <div key={item.id} className="flex items-start gap-3 p-4 bg-card rounded-lg border border-border">
                   <CheckCircle className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="font-medium text-foreground">{item.label}</p>
@@ -94,14 +102,14 @@ export default function DesignAuditPage() {
               <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                 <li>Click any "Open with debug flags" link above</li>
                 <li>Verify the guilloche pattern is clearly visible (high opacity)</li>
-                <li>Verify a dashed outline appears around the guilloche container</li>
-                <li>Count SectionFrame usages (wireframe corner brackets)</li>
+                <li>Verify colored section backgrounds alternate between sections</li>
+                <li>Verify dynamic mesh gradients appear in section backgrounds</li>
                 <li>Ensure primary CTAs navigate to /demo</li>
               </ol>
             </div>
-          </SectionFrame>
+          </div>
         </div>
-      </div>
+      </SectionBackground>
     </PageShell>
   );
 }

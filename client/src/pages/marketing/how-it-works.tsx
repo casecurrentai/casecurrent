@@ -1,11 +1,11 @@
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
-import { SectionFrame, BlueprintDivider, SectionBackground } from "@/components/marketing/section-frame";
+import { SectionBackground } from "@/components/marketing/section-frame";
 import { UIFrame } from "@/components/marketing/ui-frame";
 import { TimelineStepper } from "@/components/marketing/timeline-stepper";
 import { FeatureCard, MetricCard } from "@/components/marketing/feature-card";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
-import { GradientOrb, GlowLine, FloatingShape, GradientText, DecorativeScatter, HeroGlow, SectionGlow, PulseBeacon } from "@/components/marketing/decorative-visuals";
+import { GradientOrb, GlowLine, FloatingShape, DecorativeScatter, SectionGlow, PulseBeacon } from "@/components/marketing/decorative-visuals";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Phone, MessageSquare, Globe, Brain, Zap, BarChart3 } from "lucide-react";
@@ -64,7 +64,7 @@ export default function HowItWorksPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Contact Sales", href: "/contact" }}
       >
-        <SectionFrame variant="brackets" className="p-4 relative">
+        <div className="relative">
           <GradientOrb color="primary" size="md" className="absolute -top-10 -right-10 pointer-events-none" />
           <FloatingShape variant="diamond" className="absolute -bottom-4 -left-4 pointer-events-none" />
           <UIFrame title="Intake Flow">
@@ -92,13 +92,12 @@ export default function HowItWorksPage() {
               </div>
             </div>
           </UIFrame>
-        </SectionFrame>
+        </div>
       </Hero>
 
       <SectionBackground variant="subtle" withMesh meshVariant="cool">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="brackets" className="p-8">
             <GlowLine className="mb-6" aria-hidden="true" />
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">Multi-Channel Capture</h2>
@@ -114,17 +113,15 @@ export default function HowItWorksPage() {
                 />
               ))}
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="muted" withMesh meshVariant="blue-purple">
         <section className="py-20 relative">
-        <DotGridPattern />
-        <DecorativeScatter density="sparse" />
-        <div className="container mx-auto px-6 relative z-10">
-          <SectionFrame variant="crosshairs" className="p-8">
+          <DotGridPattern />
+          <DecorativeScatter density="sparse" />
+          <div className="container mx-auto px-6 relative z-10">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold text-foreground mb-4">What Happens Next</h2>
               <p className="text-muted-foreground">The complete journey from inquiry to consultation</p>
@@ -161,18 +158,16 @@ export default function HowItWorksPage() {
                 </UIFrame>
               </div>
             </div>
-          </SectionFrame>
-        </div>
-      </section>
-    </SectionBackground>
+          </div>
+        </section>
+      </SectionBackground>
 
       <SectionBackground variant="accent" withMesh meshVariant="emerald-blue">
         <section className="py-20">
           <div className="container mx-auto px-6">
-            <SectionFrame variant="crosshairs" className="p-8">
-              <div className="grid lg:grid-cols-2 gap-12 items-center">
-                <div>
-                  <h2 className="text-3xl font-bold text-foreground mb-4 flex items-center gap-2">Real-Time Analytics <PulseBeacon color="emerald" /></h2>
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <h2 className="text-3xl font-bold text-foreground mb-4 flex items-center gap-2">Real-Time Analytics <PulseBeacon color="emerald" /></h2>
                 <p className="text-muted-foreground mb-6">
                   Track every step of your intake funnel. See which sources convert best,
                   where leads drop off, and how your team performs.
@@ -219,8 +214,7 @@ export default function HowItWorksPage() {
                   </div>
                 </div>
               </UIFrame>
-              </div>
-            </SectionFrame>
+            </div>
           </div>
         </section>
       </SectionBackground>
