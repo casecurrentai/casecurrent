@@ -2718,6 +2718,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /v1/leads/:id/calls — all calls for a lead with full artifacts
+  app.get('/v1/leads/:id/calls', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = req.user!.orgId;
+      const { id } = req.params;
+
+      const lead = await prisma.lead.findFirst({
+        where: { id, orgId },
+        select: { id: true },
+      });
+      if (!lead) {
+        return res.status(404).json({ error: 'Lead not found' });
+      }
+
+      const calls = await prisma.call.findMany({
+        where: { leadId: id, orgId },
+        orderBy: { startedAt: 'desc' },
+        select: {
+          id: true,
+          direction: true,
+          provider: true,
+          callOutcome: true,
+          endReason: true,
+          startedAt: true,
+          endedAt: true,
+          durationSeconds: true,
+          recordingUrl: true,
+          transcriptText: true,
+          transcriptJson: true,
+          aiSummary: true,
+          structuredData: true,
+          successEvaluation: true,
+          messagesJson: true,
+          aiFlags: true,
+          fromE164: true,
+          toE164: true,
+        },
+      });
+
+      res.json({ calls });
+    } catch (error) {
+      console.error('Get lead calls error:', error);
+      res.status(500).json({ error: 'Failed to get lead calls' });
+    }
+  });
+
   /**
    * @openapi
    * /v1/leads/{id}:
@@ -9391,6 +9437,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status,
         provider: call.provider,
         duration,
+        direction: call.direction,
+        callOutcome: call.callOutcome,
+        endReason: call.endReason,
+        startedAt: call.startedAt,
+        endedAt: call.endedAt,
+        recordingUrl: call.recordingUrl,
+        transcriptText: call.transcriptText,
+        transcriptJson: call.transcriptJson,
+        aiSummary: call.aiSummary,
+        structuredData: call.structuredData,
+        successEvaluation: call.successEvaluation,
+        messagesJson: call.messagesJson,
+        aiFlags: call.aiFlags,
+        leadId: call.leadId,
+        fromE164: call.fromE164,
+        toE164: call.toE164,
       });
     } catch (error) {
       console.error('Get call status error:', error);

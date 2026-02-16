@@ -982,23 +982,38 @@ async function ingestEndOfCallReport(
   const summary = message.summary || message.analysis?.summary || null;
   const durationSeconds = typeof message.durationSeconds === 'number' ? message.durationSeconds : null;
   const messages = message.messages || message.artifact?.messages || null;
+  const structuredData = message.analysis?.structuredData || null;
+  const successEvaluation = message.analysis?.successEvaluation || null;
+  const endReason = message.endedReason || null;
 
   // Update Call
   const callUpdate: Record<string, unknown> = {
     endedAt: new Date(),
     callOutcome: 'connected',
-    aiFlags: { endedReason: message.endedReason || null },
+    endReason,
+    aiFlags: { endedReason: endReason },
+    lastWebhookReceivedAt: new Date(),
+    rawWebhookPayload: rawBody,
   };
   if (transcript) callUpdate.transcriptText = transcript;
   if (recordingUrl) callUpdate.recordingUrl = recordingUrl;
   if (summary) callUpdate.aiSummary = summary;
   if (durationSeconds) callUpdate.durationSeconds = durationSeconds;
+  if (structuredData && typeof structuredData === 'object') {
+    callUpdate.structuredData = structuredData;
+  }
+  if (successEvaluation !== null && successEvaluation !== undefined) {
+    callUpdate.successEvaluation = typeof successEvaluation === 'object'
+      ? successEvaluation
+      : { result: successEvaluation };
+  }
   if (messages && Array.isArray(messages) && messages.length > 0) {
     callUpdate.transcriptJson = messages.map((m) => ({
       role: m.role,
       text: m.content,
       timeInCallSecs: null,
     }));
+    callUpdate.messagesJson = messages;
   }
 
   await prisma.call.update({
