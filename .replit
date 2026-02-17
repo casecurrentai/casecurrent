@@ -49,4 +49,4 @@ PUBLIC_BASE_URL = "https://casecurrent.co"
 [userenv.development]
 
 [agent]
-integrations = ["github:1.0.0"]
+integrations = ["github:1.0.0", "stripe:2.0.0"]
