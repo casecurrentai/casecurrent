@@ -101,6 +101,7 @@ export default function DemoPage() {
     email: "",
     firm_name: "",
     phone: "",
+    smsConsent: false,
     practice_area: "",
     current_intake_method: "",
     monthly_lead_volume: "",
@@ -141,13 +142,18 @@ export default function DemoPage() {
       return;
     }
 
+    if (formData.phone.trim() && !formData.smsConsent) {
+      toast({ title: "Please agree to SMS consent to continue", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const res = await fetch("/v1/marketing/demo-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify({ // guardrail-allow: json-dump
           name: formData.name,
           email: formData.email,
           firm_name: formData.firm_name || null,
@@ -156,6 +162,11 @@ export default function DemoPage() {
           current_intake_method: formData.current_intake_method || null,
           monthly_lead_volume: formData.monthly_lead_volume || null,
           message: formData.message || null,
+          ...(formData.smsConsent ? {
+            sms_consent: true,
+            sms_consent_at: new Date().toISOString(),
+            sms_consent_source: "/demo",
+          } : {}),
         }),
       });
 
@@ -378,6 +389,26 @@ export default function DemoPage() {
                                   />
                                 </div>
                               </div>
+                              {formData.phone.trim() && (
+                                <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50" data-testid="sms-consent-block">
+                                  <input
+                                    type="checkbox"
+                                    id="smsConsent"
+                                    checked={formData.smsConsent}
+                                    onChange={(e) => setFormData({ ...formData, smsConsent: e.target.checked })}
+                                    className="mt-1 h-4 w-4 rounded border-border"
+                                    data-testid="checkbox-sms-consent"
+                                  />
+                                  <div>
+                                    <Label htmlFor="smsConsent" className="text-sm leading-snug cursor-pointer">
+                                      I agree to receive case-related text messages. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Consent is not a condition of purchase or representation.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
 

@@ -38,6 +38,7 @@ import DesignAuditPage from "@/pages/marketing/design-audit";
 import InstallPage from "@/pages/marketing/install";
 import BlogPostPage from "@/pages/marketing/blog-post";
 import TermsPage from "@/pages/marketing/terms";
+import PrivacyPage from "@/pages/marketing/privacy";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -171,6 +172,7 @@ function Router() {
       <Route path="/install" component={InstallPage} />
       <Route path="/blog/:slug" component={BlogPostPage} />
       <Route path="/terms" component={TermsPage} />
+      <Route path="/privacy" component={PrivacyPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />
@@ -291,7 +293,7 @@ function Router() {
   );
 }
 
-const MARKETING_PATHS = ["/", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms"];
+const MARKETING_PATHS = ["/", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy"];
 
 function MarketingVapiFab() {
   const [location] = useLocation();
