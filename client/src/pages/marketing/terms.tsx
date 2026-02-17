@@ -36,6 +36,10 @@ const SECTIONS = [
     content: "You agree to comply with the Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, and all applicable federal and state telecommunications regulations when using the Service's calling, SMS, and automated communication features. You are responsible for maintaining proper consent records, honoring do-not-call requests, and ensuring that all outbound communications comply with applicable law. The Service includes DNC (Do Not Call) enforcement features, but ultimate compliance responsibility rests with you."
   },
   {
+    title: "8a. CaseCurrent Client Messaging Program",
+    content: "When you provide your phone number and consent, you may receive case-related text messages including appointment reminders, intake follow-ups, and case status updates. Message frequency varies. Message and data rates may apply. Reply STOP to cancel messages at any time. Reply HELP for help. For support, contact info@casecurrent.co or call (504) 900-5237. Consent to receive text messages is not a condition of purchase or legal representation. We do not sell or share phone numbers or SMS consent with third parties for their marketing purposes. See our Privacy Policy at /privacy for more details."
+  },
+  {
     title: "9. Acceptable Use",
     content: "You agree not to use the Service to: (a) violate any applicable law or regulation; (b) transmit spam, unsolicited communications, or marketing materials without proper consent; (c) impersonate any person or entity; (d) interfere with or disrupt the Service or its infrastructure; (e) attempt to gain unauthorized access to any portion of the Service; (f) use the Service for any purpose other than legitimate legal intake and lead management; (g) share account credentials with unauthorized parties; or (h) circumvent any security or access control measures."
   },

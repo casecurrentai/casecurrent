@@ -3031,6 +3031,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         monthly_lead_volume,
         message,
         website,
+        sms_consent,
+        sms_consent_at,
+        sms_consent_source,
       } = req.body;
 
       // Honeypot check - reject if filled (bots fill this hidden field)
@@ -3057,6 +3060,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           currentIntakeMethod: current_intake_method || null,
           monthlyLeadVolume: monthly_lead_volume || null,
           message: message?.trim() || null,
+          smsConsent: sms_consent === true ? true : null,
+          smsConsentAt: sms_consent === true ? new Date() : null,
+          smsConsentSource: sms_consent === true ? (sms_consent_source || '/demo') : null,
+          smsConsentText: sms_consent === true ? 'I agree to receive case-related text messages. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.' : null,
           metadata: {
             ip: clientIp,
             userAgent: req.headers['user-agent'] || null,
@@ -6049,6 +6056,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return stopWords.includes(normalized);
   }
 
+  // HELP keyword detection helper
+  function isHelpWord(text: string): boolean {
+    return text.trim().toLowerCase() === 'help';
+  }
+
   app.post('/v1/telephony/twilio/sms', async (req, res) => {
     try {
       const payload = req.body;
@@ -6182,6 +6194,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>`);
+      }
+
+      // Check for HELP keyword
+      if (isHelpWord(Body || '')) {
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response><Message>CaseCurrent: For support, contact info@casecurrent.co or call (504) 900-5237. Reply STOP to opt out of messages. Msg&amp;data rates may apply.</Message></Response>`);
       }
 
       let interaction = await prisma.interaction.findFirst({
@@ -6556,6 +6575,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
 
         return res.json({ status: 'dnc_set' });
+      }
+
+      // Check for HELP keyword
+      if (isHelpWord(Text || '')) {
+        return res.json({
+          status: 'help_response',
+          message: 'CaseCurrent: For support, contact info@casecurrent.co or call (504) 900-5237. Reply STOP to opt out of messages. Msg&data rates may apply.',
+        });
       }
 
       // Create interaction

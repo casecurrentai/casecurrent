@@ -519,6 +519,10 @@ model MarketingSubmission {
   monthlyLeadVolume    String?  @map("monthly_lead_volume")
   message              String?
   metadata             Json?
+  smsConsent           Boolean?  @map("sms_consent")
+  smsConsentAt         DateTime? @map("sms_consent_at")
+  smsConsentSource     String?   @map("sms_consent_source")
+  smsConsentText       String?   @map("sms_consent_text")
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("marketing_submissions")
