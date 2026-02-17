@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, Shield, Sparkles, CheckCircle2 } from "lucide-react";
+import logoPath from "@assets/CaseCURRENT_-_2_1771296974787.png";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -67,9 +68,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-logo">
-            CaseCurrent
-          </h1>
+          <div className="flex items-center justify-center gap-3" data-testid="text-logo">
+            <img src={logoPath} alt="CaseCurrent" className="h-10 w-auto" />
+            <h1 className="text-3xl font-bold tracking-tight">CaseCurrent</h1>
+          </div>
           <p className="text-muted-foreground">
             AI-powered intake and lead capture
           </p>

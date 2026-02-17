@@ -41,6 +41,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import logoPath from "@assets/CaseCURRENT_-_2_1771296974787.png";
 
 interface BuildInfo {
   sha: string;
@@ -140,12 +141,10 @@ function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="hidden md:flex">
       <SidebarHeader className="p-4">
-        <Link href="/cases">
+        <Link href="/cases" className="flex items-center gap-2">
+          <img src={logoPath} alt="CaseCurrent" className="h-7 w-auto flex-shrink-0" />
           <span className="font-bold text-lg tracking-tight cursor-pointer group-data-[collapsible=icon]:hidden" data-testid="text-header-logo">
             CaseCurrent
-          </span>
-          <span className="font-bold text-lg tracking-tight cursor-pointer hidden group-data-[collapsible=icon]:block">
-            CC
           </span>
         </Link>
       </SidebarHeader>
@@ -334,7 +333,8 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
             <SidebarTrigger className="hidden md:flex" />
 
             {/* Mobile: Logo */}
-            <Link href="/cases" className="md:hidden">
+            <Link href="/cases" className="md:hidden flex items-center gap-2">
+              <img src={logoPath} alt="CaseCurrent" className="h-6 w-auto" />
               <span className="font-bold text-lg tracking-tight cursor-pointer" data-testid="text-header-logo-mobile">
                 CaseCurrent
               </span>
