@@ -167,10 +167,14 @@ app.use((req, res, next) => {
     const stripeSync = await getStripeSync();
 
     const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
-    const { webhook } = await stripeSync.findOrCreateManagedWebhook(
-      `${webhookBaseUrl}/api/stripe/webhook`
-    );
-    console.log(`[STRIPE] Webhook configured: ${webhook.url}`);
+    try {
+      const result = await stripeSync.findOrCreateManagedWebhook(
+        `${webhookBaseUrl}/api/stripe/webhook`
+      );
+      console.log(`[STRIPE] Webhook configured: ${result?.webhook?.url || 'managed'}`);
+    } catch (webhookErr: any) {
+      console.log(`[STRIPE] Webhook setup skipped (will use existing): ${webhookErr?.message}`);
+    }
 
     stripeSync.syncBackfill()
       .then(() => console.log('[STRIPE] Data synced'))
