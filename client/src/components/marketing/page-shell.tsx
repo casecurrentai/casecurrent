@@ -193,6 +193,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
               <ul className="space-y-2 text-sm">
                 <li><Link href="/terms" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-terms">Terms of Service</Link></li>
                 <li><Link href="/privacy" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-privacy">Privacy Policy</Link></li>
+                <li><Link href="/sms-consent" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-sms-consent">SMS Consent</Link></li>
                 <li>
                   <a href="tel:+15049005237" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-phone">(504) 900-5237</a>
                 </li>

@@ -6200,7 +6200,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (isHelpWord(Body || '')) {
         res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response><Message>CaseCurrent: For support, contact info@casecurrent.co or call (504) 900-5237. Reply STOP to opt out of messages. Msg&amp;data rates may apply.</Message></Response>`);
+<Response><Message>CaseCurrent: For support email support@casecurrent.co. Reply STOP to opt out.</Message></Response>`);
       }
 
       let interaction = await prisma.interaction.findFirst({
