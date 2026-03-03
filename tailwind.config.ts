@@ -138,6 +138,51 @@ export default {
           "0%, 100%": { opacity: "0.4" },
           "50%": { opacity: "0.8" },
         },
+        "ring-expand": {
+          "0%": { transform: "scale(1)", opacity: "0.6" },
+          "100%": { transform: "scale(2.2)", opacity: "0" },
+        },
+        "arc-spin": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "arc-spin-reverse": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(-360deg)" },
+        },
+        "scan-line": {
+          "0%": { transform: "translateY(-100%)", opacity: "0" },
+          "20%": { opacity: "1" },
+          "80%": { opacity: "1" },
+          "100%": { transform: "translateY(200%)", opacity: "0" },
+        },
+        "particle-drift": {
+          "0%": { transform: "translate(0, 0) scale(1)", opacity: "0" },
+          "10%": { opacity: "0.7" },
+          "90%": { opacity: "0.4" },
+          "100%": { transform: "translate(var(--dx, 40px), var(--dy, -60px)) scale(0.4)", opacity: "0" },
+        },
+        "bar-fill": {
+          "0%": { width: "0%" },
+          "100%": { width: "100%" },
+        },
+        "row-complete": {
+          "0%": { opacity: "0", transform: "translateX(-4px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        "check-pop": {
+          "0%": { transform: "scale(0)", opacity: "0" },
+          "60%": { transform: "scale(1.2)", opacity: "1" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        "intake-complete": {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "core-breathe": {
+          "0%, 100%": { transform: "scale(1)", filter: "brightness(1)" },
+          "50%": { transform: "scale(1.04)", filter: "brightness(1.15)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -146,6 +191,16 @@ export default {
         "waveform": "waveform 1.2s ease-in-out infinite",
         "fade-in-up": "fade-in-up 0.6s ease-out forwards",
         "glow-pulse": "glow-pulse 3s ease-in-out infinite",
+        "ring-expand": "ring-expand 3s cubic-bezier(0.2,0,0,1) infinite",
+        "arc-spin": "arc-spin 8s linear infinite",
+        "arc-spin-reverse": "arc-spin-reverse 12s linear infinite",
+        "scan-line": "scan-line 4s cubic-bezier(0.2,0,0,1) infinite",
+        "particle-drift": "particle-drift 5s cubic-bezier(0.2,0,0,1) infinite",
+        "bar-fill": "bar-fill 1.8s cubic-bezier(0.2,0,0,1) forwards",
+        "row-complete": "row-complete 0.4s cubic-bezier(0.2,0,0,1) forwards",
+        "check-pop": "check-pop 0.35s cubic-bezier(0.175,0.885,0.32,1.275) forwards",
+        "intake-complete": "intake-complete 0.5s cubic-bezier(0.2,0,0,1) forwards",
+        "core-breathe": "core-breathe 4s ease-in-out infinite",
       },
       transitionDuration: {
         fast: "var(--duration-fast)",
