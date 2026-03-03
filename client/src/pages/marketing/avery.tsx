@@ -14,7 +14,7 @@
  *  - No inline styles, no new dependencies, no new CSS
  */
 import { PageShell } from "@/components/marketing/page-shell";
-import { Hero } from "@/components/marketing/hero";
+import { AveryHero } from "@/components/marketing/avery-hero";
 import { SectionBackground } from "@/components/marketing/section-frame";
 import { FeatureCard } from "@/components/marketing/feature-card";
 import { TrustList } from "@/components/marketing/trust-list";
@@ -32,13 +32,6 @@ import {
 } from "lucide-react";
 
 // ── Data ─────────────────────────────────────────────────────────────────────
-
-const HERO_OUTPUTS = [
-  { icon: Phone, label: "Call recording", gradient: "from-blue-500 to-indigo-500" },
-  { icon: FileText, label: "Transcript", gradient: "from-indigo-500 to-purple-500" },
-  { icon: Brain, label: "Smart summary", gradient: "from-purple-500 to-pink-500" },
-  { icon: CheckCircle, label: "Lead fields", gradient: "from-emerald-500 to-teal-500" },
-] as const;
 
 const WHY_AVERY = [
   {
@@ -142,42 +135,7 @@ export default function AveryPage() {
       description="Avery answers missed and after-hours calls, qualifies the case, and delivers a structured intake record instantly."
     >
       {/* ── Hero ── */}
-      <Hero
-        headline="Meet Avery"
-        subheadline="Avery answers missed and after-hours calls, qualifies the case, and delivers a structured intake record instantly."
-        primaryCta={{ label: "Talk to Avery", href: "/demo" }}
-        secondaryCta={{ label: "See what gets captured", href: "#what-your-team-receives" }}
-      >
-        {/* Right-side: UIFrame card stack — same component as how-it-works.tsx */}
-        <UIFrame title="Avery · New Intake" data-testid="graphic-avery-card-stack">
-          <div className="space-y-2">
-            {HERO_OUTPUTS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-muted/60 to-muted/30 border border-border/40"
-                >
-                  <div
-                    className={`w-10 h-10 rounded-lg bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-lg`}
-                  >
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="text-sm font-medium text-foreground">{item.label}</span>
-                  <div className="ml-auto w-16 h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="w-full h-full bg-gradient-to-r from-emerald-500/60 to-emerald-400/40 rounded-full" />
-                  </div>
-                </div>
-              );
-            })}
-            <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-emerald-500/10 to-blue-500/10 border border-emerald-500/20">
-              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                Intake complete · Lead created
-              </p>
-            </div>
-          </div>
-        </UIFrame>
-      </Hero>
+      <AveryHero />
 
       {/* ── Why Avery exists ── */}
       <SectionBackground variant="muted" withMesh meshVariant="ocean">
