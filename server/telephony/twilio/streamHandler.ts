@@ -1000,30 +1000,77 @@ interface PostCallContext {
 }
 
 async function processCallEnd(ctx: PostCallContext): Promise<void> {
-  const { requestId, callSid, leadId, contactId, orgId, callStartTime, fromE164, toE164, transcriptBuffer } = ctx;
+  let { requestId, callSid, leadId, contactId, orgId, callStartTime, fromE164, toE164, transcriptBuffer } = ctx;
   const maskSid = (sid: string | null) => sid ? `****${sid.slice(-8)}` : null;
-  
+
   // FINALIZE-ONCE GUARD: Prevent duplicate processing for the same callSid
   if (callSid && finalizedCallSids.has(callSid)) {
-    console.log(JSON.stringify({ 
-      tag: '[FINALIZE_SKIP]', 
-      requestId, 
+    console.log(JSON.stringify({
+      tag: '[FINALIZE_SKIP]',
+      requestId,
       callSid: maskSid(callSid),
       reason: 'already_finalized',
     }));
     return;
   }
-  
-  if (!leadId || !orgId) {
-    console.log(JSON.stringify({ 
-      tag: '[FINALIZE_SKIP]', 
-      requestId, 
+
+  // INV-2: If leadId/orgId are missing, look them up from the Call row by
+  // twilioCallSid. This resolves the race where processCallEnd runs before
+  // createdLeadId is set in the handler closure (e.g. start event DB lookup
+  // slow, or stop fires before start's upsert commits).
+  if ((!leadId || !orgId) && callSid) {
+    console.log(JSON.stringify({
+      tag: '[FINALIZE_DB_LOOKUP]',
+      requestId,
       callSid: maskSid(callSid),
-      reason: 'no_lead_id',
+      reason: 'lead_id_missing_in_memory',
     }));
+    try {
+      const dbCall = await prisma.call.findUnique({
+        where: { twilioCallSid: callSid },
+        include: { lead: { select: { id: true, orgId: true, contactId: true } } },
+      });
+      if (dbCall?.lead) {
+        leadId    = dbCall.lead.id;
+        orgId     = dbCall.lead.orgId;
+        contactId = contactId ?? dbCall.lead.contactId ?? null;
+        fromE164  = fromE164 ?? dbCall.fromE164 ?? null;
+        toE164    = toE164   ?? dbCall.toE164   ?? null;
+        console.log(JSON.stringify({
+          tag: '[FINALIZE_DB_LOOKUP_OK]',
+          requestId,
+          callSid: maskSid(callSid),
+          leadId,
+          orgId,
+        }));
+      }
+    } catch (lookupErr: any) {
+      console.error(JSON.stringify({
+        tag: '[FINALIZE_DB_LOOKUP_ERROR]',
+        requestId,
+        callSid: maskSid(callSid),
+        error: lookupErr?.message || String(lookupErr),
+      }));
+    }
+  }
+
+  if (!leadId || !orgId) {
+    console.log(JSON.stringify({
+      tag: '[FINALIZE_SKIP]',
+      requestId,
+      callSid: maskSid(callSid),
+      reason: 'no_lead_id_after_db_lookup',
+    }));
+    // Still mark Call ended so dashboard doesn't show it as stuck
+    if (callSid) {
+      await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: { status: 'failed', lastFinalizeError: 'lead_id_unresolvable', endedAt: new Date() },
+      }).catch(() => {});
+    }
     return;
   }
-  
+
   // Mark as finalized immediately to prevent race conditions
   if (callSid) {
     finalizedCallSids.add(callSid);
@@ -1091,26 +1138,57 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       .map(t => `${t.role === 'ai' ? 'Avery' : 'Caller'}: ${t.text}`)
       .join('\n');
     
+    // Classify transcript quality; always persist what we have (INV-5)
+    const transcriptQuality = !fullTranscript
+      ? 'empty'
+      : fullTranscript.length < 20
+      ? 'short'
+      : 'ok';
+
     // [TRANSCRIPT_UPSERT_OK] - Log transcript ready for processing
-    console.log(JSON.stringify({ 
-      tag: '[TRANSCRIPT_UPSERT_OK]', 
+    console.log(JSON.stringify({
+      tag: '[TRANSCRIPT_UPSERT_OK]',
       requestId,
       callSid: maskSid(callSid),
       msgCount: transcriptBuffer.length,
       transcriptLength: fullTranscript.length,
+      transcriptQuality,
     }));
-    
-    if (!fullTranscript || fullTranscript.length < 20) {
-      console.log(JSON.stringify({ 
-        tag: '[FINALIZE_SKIP]', 
-        requestId, 
+
+    // Always persist the transcript (even if short/empty) so the Call row is
+    // never a ghost — dashboard will show it with a "Transcript pending" label.
+    if (callSid) {
+      await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: {
+          transcriptText: fullTranscript || null,
+          transcriptJson: transcriptBuffer.length > 0 ? (transcriptBuffer as any) : undefined,
+          transcriptQuality,
+          status: 'ended',
+        },
+      });
+    }
+
+    if (transcriptQuality !== 'ok') {
+      console.log(JSON.stringify({
+        tag: '[FINALIZE_SKIP]',
+        requestId,
         callSid: maskSid(callSid),
-        reason: 'transcript_too_short', 
+        reason: 'transcript_too_short_skip_extraction',
         length: fullTranscript.length,
+        transcriptQuality,
+        note: 'transcript persisted on Call row; extraction skipped',
       }));
+      // Mark call finalized (without AI extraction) so status is accurate
+      if (callSid) {
+        await prisma.call.updateMany({
+          where: { twilioCallSid: callSid },
+          data: { status: 'finalized', finalizedAt: new Date() },
+        });
+      }
       return;
     }
-    
+
     // Step 4: Extract intake data
     currentStep = 'extraction';
     console.log(JSON.stringify({ 
@@ -1286,16 +1364,12 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       }
     }
 
-    // Step 7: Store transcript in Call record
+    // Step 7: Store AI summary on Call record (transcript already persisted above)
     currentStep = 'transcript_store';
     if (callSid) {
       await prisma.call.updateMany({
         where: { twilioCallSid: callSid },
-        data: {
-          transcriptText: fullTranscript,
-          transcriptJson: transcriptBuffer as any,
-          aiSummary: extraction.summary,
-        },
+        data: { aiSummary: extraction.summary },
       });
     }
     
@@ -1346,10 +1420,18 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       },
     });
     
-    // [FINALIZE_DONE] - Complete enrichment pipeline success
-    console.log(JSON.stringify({ 
-      tag: '[FINALIZE_DONE]', 
-      requestId, 
+    // Mark call finalized on success
+    if (callSid) {
+      await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: { status: 'finalized', finalizedAt: new Date() },
+      });
+    }
+
+    // [FINALIZE_OK] - Complete enrichment pipeline success
+    console.log(JSON.stringify({
+      tag: '[FINALIZE_OK]',
+      requestId,
       callSid: maskSid(callSid),
       leadId,
       displayName: extraction.caller.fullName || null,
@@ -1357,18 +1439,29 @@ async function processCallEnd(ctx: PostCallContext): Promise<void> {
       tier: extraction.score.label,
       transcriptStats,
     }));
-    
+
   } catch (err: any) {
     // [FINALIZE_ERROR] - Log error with step information
-    console.error(JSON.stringify({ 
-      tag: '[FINALIZE_ERROR]', 
+    const errMsg = err?.message || String(err);
+    console.error(JSON.stringify({
+      tag: '[FINALIZE_ERROR]',
       requestId,
       callSid: maskSid(callSid),
       leadId,
       step: currentStep,
-      error: err?.message || String(err),
+      error: errMsg,
       stack: err?.stack?.split('\n').slice(0, 3).join(' | ') || null,
     }));
+    // Record failure on Call so dashboard shows it rather than "ghost"
+    if (callSid) {
+      await prisma.call.updateMany({
+        where: { twilioCallSid: callSid },
+        data: {
+          status: 'failed',
+          lastFinalizeError: `${currentStep}: ${errMsg}`.slice(0, 500),
+        },
+      }).catch(() => {});
+    }
   }
 }
 
@@ -1551,39 +1644,23 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
   const OPENAI_RECONNECT_BACKOFF = [500, 1000, 2000, 4000, 8000]; // ms — exponential to survive longer outages
   let reconnecting = false;
 
-  // Finalization scheduling with retry for lead-creation race
-  const MAX_FINALIZE_RETRIES = 10;
-  const FINALIZE_RETRY_MS = 500;
+  // Finalization scheduling — fires once after a short delay to allow
+  // in-flight OpenAI transcriptions to land. processCallEnd resolves
+  // leadId/orgId from DB if not yet set in closure (INV-2 fix).
   let finalizeTimer: NodeJS.Timeout | null = null;
-  let finalizeAttempt = 0;
   const scheduleFinalize = (source: 'twilio_stop' | 'twilio_close') => {
     if (finalizeTimer) return;
     const initialDelay = source === 'twilio_stop' ? 2000 : 3000;
-    console.log(JSON.stringify({ event: 'finalize_scheduled', requestId, source }));
+    console.log(JSON.stringify({ tag: '[FINALIZE_ENQUEUE]', requestId, source, delayMs: initialDelay }));
     const tryFinalize = () => {
-      if (!createdLeadId || !createdOrgId) {
-        finalizeAttempt++;
-        if (finalizeAttempt < MAX_FINALIZE_RETRIES) {
-          console.log(JSON.stringify({
-            tag: '[FINALIZE_RETRY]',
-            requestId,
-            attempt: finalizeAttempt,
-            maxRetries: MAX_FINALIZE_RETRIES,
-            hasLeadId: !!createdLeadId,
-            hasOrgId: !!createdOrgId,
-          }));
-          finalizeTimer = setTimeout(tryFinalize, FINALIZE_RETRY_MS);
-          return;
-        }
-        console.log(JSON.stringify({
-          tag: '[FINALIZE_RETRY_EXHAUSTED]',
-          requestId,
-          attempts: finalizeAttempt,
-          hasLeadId: !!createdLeadId,
-          hasOrgId: !!createdOrgId,
-        }));
-      }
       finalizeTimer = null;
+      console.log(JSON.stringify({
+        tag: '[FINALIZE_START]',
+        requestId,
+        source,
+        hasLeadIdInMemory: !!createdLeadId,
+        hasOrgIdInMemory: !!createdOrgId,
+      }));
       processCallEnd({
         requestId,
         callSid,
@@ -1595,7 +1672,7 @@ export function handleTwilioMediaStream(twilioWs: WebSocket, _req: IncomingMessa
         toE164: callerToE164,
         transcriptBuffer: [...transcriptBuffer],
       }).catch(err => {
-        console.error(JSON.stringify({ event: 'post_call_error', requestId, source, error: err?.message }));
+        console.error(JSON.stringify({ tag: '[FINALIZE_ERROR]', requestId, source, error: err?.message }));
       }).finally(() => {
         // Close OpenAI ONLY after finalization snapshot is taken
         if (openAiWs && openAiWs.readyState === WebSocket.OPEN) {
