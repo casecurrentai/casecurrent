@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '../../apps/api/src/generated/prisma';
 import crypto from 'crypto';
-import { normalizeE164, maskPhone, checkIdempotency, lookupFirmByNumber, extractDisplayName } from './shared';
+import { normalizeE164, maskPhone, checkIdempotency, rollbackIdempotency, lookupFirmByNumber, extractDisplayName } from './shared';
 import { recordIngestionOutcome } from './ingestion-outcome';
 
 const router = Router();
@@ -436,34 +436,68 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       const correlationResult = await findCallByCorrelation(prisma, payload);
 
       if (!correlationResult) {
+        // INV-4: Park the payload so it can be reconciled later when the
+        // Call row is created. Do NOT discard — store correlation keys for
+        // the reconciliation job.
+        const correlationKeys = {
+          conversation_id: payload.conversation_id,
+          call_sid: payload.call_sid || null,
+          client_data_interaction_id: payload.client_data?.interactionId || null,
+          client_data_call_sid: payload.client_data?.callSid || null,
+        };
+
         console.log(JSON.stringify({
-          event: 'UNLINKED_ELEVENLABS_CALL',
+          tag: '[ELEVENLABS_UNLINKED_PARKED]',
           conversation_id: payload.conversation_id,
           call_sid: payload.call_sid,
           caller_id: maskPhone(payload.caller_id || null),
           called_number: maskPhone(payload.called_number || null),
-          from_e164: maskPhone(normalizeE164(payload.caller_id)),
-          to_e164: maskPhone(normalizeE164(payload.called_number)),
-          client_data_interaction_id: payload.client_data?.interactionId,
-          client_data_call_sid: payload.client_data?.callSid,
+          correlationKeys,
         }));
+
+        try {
+          await (prisma as any).unlinkedPostCall.create({
+            data: {
+              receivedAt: new Date(),
+              provider: 'elevenlabs',
+              twilioCallSid: payload.call_sid || payload.client_data?.callSid || null,
+              elevenLabsConvId: payload.conversation_id,
+              interactionId: payload.client_data?.interactionId || null,
+              rawPayloadJson: req.body as any,
+              correlationKeysJson: correlationKeys as any,
+            },
+          });
+        } catch (parkErr: any) {
+          console.error(JSON.stringify({
+            tag: '[ELEVENLABS_UNLINKED_PARK_ERROR]',
+            conversation_id: payload.conversation_id,
+            error: parkErr?.message || String(parkErr),
+          }));
+        }
 
         await recordIngestionOutcome(prisma, {
           provider: 'elevenlabs', eventType: 'post-call', externalId: payload.conversation_id,
-          status: 'skipped', errorCode: 'unlinked',
-          errorMessage: 'No matching call found for conversation',
+          status: 'skipped', errorCode: 'unlinked_parked',
+          errorMessage: 'No matching call found; payload parked in unlinked_post_calls for reconciliation',
           payload: req.body,
         });
 
-        res.status(200).json({
-          status: 'unlinked',
+        res.status(202).json({
+          status: 'parked',
           conversation_id: payload.conversation_id,
-          message: 'Webhook stored but no matching call found',
+          message: 'No matching call found; payload stored for reconciliation',
         });
         return;
       }
 
       const { call, correlationMethod } = correlationResult;
+      console.log(JSON.stringify({
+        tag: '[ELEVENLABS_CORRELATE_OK]',
+        conversation_id: payload.conversation_id,
+        correlationMethod,
+        callId: call.id,
+        leadId: call.leadId,
+      }));
 
       const normalizedTranscript = normalizeTranscript(payload.transcript_json);
 
@@ -529,7 +563,7 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       }
 
       console.log(JSON.stringify({
-        event: 'elevenlabs_postcall_processed',
+        tag: '[ELEVENLABS_APPLY_OK]',
         callId: call.id,
         leadId: call.leadId,
         correlationMethod,
@@ -552,10 +586,13 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
       });
     } catch (err: any) {
       console.log(JSON.stringify({
-        event: 'elevenlabs_postcall_error',
+        tag: '[ELEVENLABS_APPLY_ERROR]',
         error: err?.message || String(err),
         durationMs: Date.now() - startMs,
       }));
+      // INV-3: Roll back the idempotency record so ElevenLabs can retry
+      // successfully on the next delivery attempt.
+      await rollbackIdempotency(prisma, 'elevenlabs', payload.conversation_id || 'unknown', 'post-call');
       await recordIngestionOutcome(prisma, {
         provider: 'elevenlabs', eventType: 'post-call',
         externalId: payload.conversation_id || 'unknown',
