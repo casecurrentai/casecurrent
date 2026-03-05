@@ -7,3 +7,4 @@ vite.config.ts.*
 # local artifacts
 output/
 tmp/
+.env

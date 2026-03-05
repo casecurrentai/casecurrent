@@ -7,6 +7,7 @@ import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
 import stripeRoutes from './routes/stripe';
 import { startReconciliationLoop } from './jobs/reconcileUnlinkedPostCalls';
+import { runCatchupMigration } from './db/runCatchupMigration';
 
 // Fail-fast env validation - must be imported early
 import { DATABASE_URL } from "./env";
@@ -242,6 +243,16 @@ app.use((req, res, next) => {
     await startupPrisma.$disconnect();
   } catch (err: any) {
     console.error(`[DB STARTUP] Error during DB check:`, err?.message || err);
+  }
+
+  // ── Catch-up schema migration ────────────────────────────────────────────────
+  // Runs idempotent SQL to add any columns missing from the DB that are present
+  // in the Prisma schema. Safe to run on every boot; non-fatal on failure.
+  try {
+    const { prisma: migPrisma } = await import('./db');
+    await runCatchupMigration(migPrisma);
+  } catch (err: any) {
+    console.error('[CATCHUP_MIGRATION] Failed (non-fatal):', err?.message);
   }
 
   // TELEPHONY PROVIDER BOOT LOG
