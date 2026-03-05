@@ -8,11 +8,17 @@
 
 -- ── calls: missing operational columns ───────────────────────────────────────
 ALTER TABLE "calls"
-  ADD COLUMN IF NOT EXISTS "call_outcome"   TEXT,
-  ADD COLUMN IF NOT EXISTS "resolved"       BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS "resolved_at"    TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS "resolved_by"    TEXT,
-  ADD COLUMN IF NOT EXISTS "twilio_call_sid" TEXT;
+  ADD COLUMN IF NOT EXISTS "call_outcome"        TEXT,
+  ADD COLUMN IF NOT EXISTS "resolved"            BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "resolved_at"         TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS "resolved_by"         TEXT,
+  ADD COLUMN IF NOT EXISTS "twilio_call_sid"     TEXT,
+  ADD COLUMN IF NOT EXISTS "status"              TEXT NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS "finalized_at"        TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS "last_finalize_error" TEXT,
+  ADD COLUMN IF NOT EXISTS "transcript_quality"  TEXT;
+
+CREATE INDEX IF NOT EXISTS "calls_status_idx" ON "calls"("status");
 
 -- Make provider_call_id nullable (was NOT NULL in init, nullable in schema)
 DO $$
@@ -94,3 +100,28 @@ CREATE INDEX IF NOT EXISTS "leads_retainer_signed_at_idx" ON "leads"("retainer_s
 CREATE INDEX IF NOT EXISTS "calls_org_direction_resolved_idx"
   ON "calls"("org_id", "direction", "resolved");
 CREATE INDEX IF NOT EXISTS "calls_org_id_created_at_idx" ON "calls"("org_id", "created_at");
+
+-- ── unlinked_post_calls: parking lot for unresolved provider payloads ─────────
+CREATE TABLE IF NOT EXISTS "unlinked_post_calls" (
+  "id"                    TEXT        NOT NULL,
+  "received_at"           TIMESTAMPTZ NOT NULL,
+  "provider"              TEXT        NOT NULL,
+  "twilio_call_sid"       TEXT,
+  "elevenlabs_conv_id"    TEXT,
+  "interaction_id"        TEXT,
+  "raw_payload_json"      JSONB       NOT NULL,
+  "correlation_keys_json" JSONB       NOT NULL,
+  "last_retry_at"         TIMESTAMPTZ,
+  "retry_count"           INTEGER     NOT NULL DEFAULT 0,
+  "resolved_call_id"      TEXT,
+  "resolved_at"           TIMESTAMPTZ,
+  "created_at"            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "unlinked_post_calls_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "unlinked_post_calls_provider_resolved_idx"
+  ON "unlinked_post_calls"("provider", "resolved_at");
+CREATE INDEX IF NOT EXISTS "unlinked_post_calls_twilio_call_sid_idx"
+  ON "unlinked_post_calls"("twilio_call_sid");
+CREATE INDEX IF NOT EXISTS "unlinked_post_calls_elevenlabs_conv_id_idx"
+  ON "unlinked_post_calls"("elevenlabs_conv_id");
