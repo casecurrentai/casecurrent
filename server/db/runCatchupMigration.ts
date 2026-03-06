@@ -13,10 +13,16 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import type { PrismaClient } from '../../apps/api/src/generated/prisma';
 
-const MIGRATION_FILE = path.resolve(
-  __dirname,
-  '../../apps/api/prisma/migrations/20260305000000_catchup_schema_drift/migration.sql',
-);
+const MIGRATION_FILES = [
+  path.resolve(
+    __dirname,
+    '../../apps/api/prisma/migrations/20260305000000_catchup_schema_drift/migration.sql',
+  ),
+  path.resolve(
+    __dirname,
+    '../../apps/api/prisma/migrations/20260306000000_call_artifact_cache/migration.sql',
+  ),
+];
 
 /**
  * Split a multi-statement SQL file into individual statements, stripping
@@ -68,40 +74,47 @@ export async function runCatchupMigration(prisma: PrismaClient): Promise<void> {
   const correlationId = crypto.randomUUID().slice(0, 8);
   const tag = `[CATCHUP_MIGRATION cid=${correlationId}]`;
 
-  if (!fs.existsSync(MIGRATION_FILE)) {
-    console.warn(`${tag} Migration file not found — skipping. path=${MIGRATION_FILE}`);
-    return;
-  }
+  let totalApplied = 0;
+  let totalSkipped = 0;
 
-  const sql = fs.readFileSync(MIGRATION_FILE, 'utf-8');
-  const statements = splitStatements(sql);
+  for (const MIGRATION_FILE of MIGRATION_FILES) {
+    if (!fs.existsSync(MIGRATION_FILE)) {
+      console.warn(`${tag} Migration file not found — skipping. path=${MIGRATION_FILE}`);
+      continue;
+    }
 
-  console.log(`${tag} Running catch-up migration: ${statements.length} statements`);
+    const sql = fs.readFileSync(MIGRATION_FILE, 'utf-8');
+    const statements = splitStatements(sql);
+    const fileName = path.basename(path.dirname(MIGRATION_FILE));
 
-  let applied = 0;
-  let skipped = 0;
+    console.log(`${tag} Running migration "${fileName}": ${statements.length} statements`);
 
-  for (const stmt of statements) {
-    try {
-      await prisma.$executeRawUnsafe(stmt);
-      applied++;
-    } catch (err: any) {
-      // Postgres error 42701 = duplicate_column (column already exists without IF NOT EXISTS support)
-      // Postgres error 42P07 = duplicate_table
-      // Postgres error 42710 = duplicate_object (index already exists)
-      const code = err?.code || '';
-      if (['42701', '42P07', '42710'].includes(code)) {
-        skipped++;
-        // These are safe — object already exists
-      } else {
-        // Real error — log it with sanitized statement (no values, just structure)
-        const stmtPreview = stmt.slice(0, 120).replace(/\n/g, ' ');
-        console.error(`${tag} Statement failed code=${code} stmt="${stmtPreview}" err=${err?.message}`);
-        // Re-throw so caller can decide whether to abort
-        throw err;
+    let applied = 0;
+    let skipped = 0;
+
+    for (const stmt of statements) {
+      try {
+        await prisma.$executeRawUnsafe(stmt);
+        applied++;
+      } catch (err: any) {
+        // Postgres error 42701 = duplicate_column (column already exists without IF NOT EXISTS support)
+        // Postgres error 42P07 = duplicate_table
+        // Postgres error 42710 = duplicate_object (index already exists)
+        const code = err?.code || '';
+        if (['42701', '42P07', '42710'].includes(code)) {
+          skipped++;
+        } else {
+          const stmtPreview = stmt.slice(0, 120).replace(/\n/g, ' ');
+          console.error(`${tag} Statement failed code=${code} file="${fileName}" stmt="${stmtPreview}" err=${err?.message}`);
+          throw err;
+        }
       }
     }
+
+    console.log(`${tag} Migration "${fileName}" complete: applied=${applied} skipped=${skipped}`);
+    totalApplied += applied;
+    totalSkipped += skipped;
   }
 
-  console.log(`${tag} Catch-up migration complete: applied=${applied} skipped=${skipped}`);
+  console.log(`${tag} All catch-up migrations complete: totalApplied=${totalApplied} totalSkipped=${totalSkipped}`);
 }
