@@ -869,6 +869,26 @@ model OrgSettings {
 }
 
 // ============================================
+// CALL ARTIFACT CACHE (Vapi artifacts fetched on-demand, TTL-cached)
+// ============================================
+
+model CallArtifactCache {
+  id          String   @id @default(uuid())
+  firmId      String   @map("firm_id")     // = orgId, scopes all lookups
+  vapiCallId  String   @map("vapi_call_id") // = providerCallId on Call
+  kind        String   // "full_call" — normalized Vapi call payload
+  payloadJson Json     @map("payload_json")
+  fetchedAt   DateTime @map("fetched_at")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([firmId, vapiCallId, kind])
+  @@index([firmId, vapiCallId])
+  @@index([expiresAt])
+  @@map("call_artifact_cache")
+}
+
+// ============================================
 // OUTBOUND MESSAGE QUEUE
 // ============================================
 
