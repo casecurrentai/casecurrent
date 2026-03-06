@@ -36,6 +36,7 @@ import {
   Bug,
   Menu as MenuIcon,
   Briefcase,
+  Phone,
   PanelLeft,
   BarChart3,
   ListChecks,
@@ -70,6 +71,7 @@ function useVersion(): BuildInfo | null {
 const MAIN_NAV = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/cases", label: "Cases", icon: Briefcase },
+  { href: "/calls", label: "Calls", icon: Phone },
 ];
 
 const INSIGHTS_NAV = [
@@ -92,8 +94,8 @@ const MOBILE_NAV = [
   { href: "/menu", label: "Menu", icon: MenuIcon },
 ];
 
-export function AppLayout({ children }: { children: ReactNode }) {
-  return <AppLayoutInner>{children}</AppLayoutInner>;
+export function AppLayout({ children, noPadding }: { children: ReactNode; noPadding?: boolean }) {
+  return <AppLayoutInner noPadding={noPadding}>{children}</AppLayoutInner>;
 }
 
 function MobileBottomNav() {
@@ -301,7 +303,7 @@ function UserMenu() {
   );
 }
 
-function AppLayoutInner({ children }: { children: ReactNode }) {
+function AppLayoutInner({ children, noPadding }: { children: ReactNode; noPadding?: boolean }) {
   const { user } = useAuth();
   const buildInfo = useVersion();
   const isAdmin = user?.role === "owner" || user?.role === "admin";
@@ -348,8 +350,8 @@ function AppLayoutInner({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Main content with bottom padding for mobile nav */}
-        <main className="flex-1 px-4 py-4 md:py-6 md:px-6 pb-24 md:pb-6">
+        {/* Main content — noPadding for full-height views like the Calls Inbox */}
+        <main className={noPadding ? "flex-1 overflow-hidden flex flex-col" : "flex-1 px-4 py-4 md:py-6 md:px-6 pb-24 md:pb-6"}>
           {children}
         </main>
 

@@ -22,6 +22,7 @@ import ExperimentsPage from "@/pages/experiments";
 import ExperimentDetailPage from "@/pages/experiment-detail";
 import PolicyTestsPage from "@/pages/policy-tests";
 import PIDashboardPage from "@/pages/pi-dashboard";
+import CallsInboxPage from "@/pages/calls-inbox";
 import DebugPage from "@/pages/debug";
 import MenuPage from "@/pages/menu";
 import NotFound from "@/pages/not-found";
@@ -206,6 +207,13 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <PIDashboardPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/calls">
+        <ProtectedRoute>
+          <AppLayout noPadding>
+            <CallsInboxPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>
