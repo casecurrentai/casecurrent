@@ -7,6 +7,7 @@ import { GuillocheUnderlay } from "./guilloche-pattern";
 import logoPath from "@assets/CaseCURRENT_-_2_1771296974787.png";
 
 const NAV_LINKS = [
+  { href: "/avery", label: "Avery" },
   { href: "/how-it-works", label: "Product" },
   { href: "/solutions", label: "Integrations" },
   { href: "/security", label: "Security" },
@@ -159,6 +160,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
             <div>
               <h4 className="font-semibold text-foreground mb-3">Product</h4>
               <ul className="space-y-2 text-sm">
+                <li><Link href="/avery" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-avery">Meet Avery</Link></li>
                 <li><Link href="/how-it-works" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-how-it-works">How It Works</Link></li>
                 <li><Link href="/solutions" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-solutions">Solutions</Link></li>
                 <li><Link href="/pricing" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-pricing">Pricing</Link></li>

@@ -27,6 +27,7 @@ import MenuPage from "@/pages/menu";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
+import AveryPage from "@/pages/marketing/avery";
 import HowItWorksPage from "@/pages/marketing/how-it-works";
 import SecurityPage from "@/pages/marketing/security";
 import SolutionsPage from "@/pages/marketing/solutions";
@@ -161,6 +162,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={MarketingHomePage} />
+      <Route path="/avery" component={AveryPage} />
       <Route path="/how-it-works" component={HowItWorksPage} />
       <Route path="/security" component={SecurityPage} />
       <Route path="/solutions" component={SolutionsPage} />
@@ -293,7 +295,7 @@ function Router() {
   );
 }
 
-const MARKETING_PATHS = ["/", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy"];
+const MARKETING_PATHS = ["/", "/avery", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy"];
 
 function MarketingVapiFab() {
   const [location] = useLocation();

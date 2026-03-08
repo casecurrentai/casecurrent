@@ -71,8 +71,8 @@ export const PILOT_PLANS: PlanDef[] = [
       { text: "1 firm, 1 phone number" },
     ],
     usage: {
-      callsPerMonth: 50,
-      minutesPerMonth: 300,
+      callsPerMonth: 200,
+      minutesPerMonth: 1200,
       overagePerMinute: 0.2,
     },
     cta: "Start Core Pilot",
@@ -98,8 +98,8 @@ export const PILOT_PLANS: PlanDef[] = [
       { text: "Priority support (same-day response)" },
     ],
     usage: {
-      callsPerMonth: 150,
-      minutesPerMonth: 900,
+      callsPerMonth: 500,
+      minutesPerMonth: 3000,
       overagePerMinute: 0.18,
     },
     highlighted: true,
@@ -132,8 +132,8 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "1 firm, 1 phone number" },
     ],
     usage: {
-      callsPerMonth: 75,
-      minutesPerMonth: 450,
+      callsPerMonth: 200,
+      minutesPerMonth: 1200,
       overagePerMinute: 0.2,
     },
     cta: "Get Started",
@@ -159,8 +159,8 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "Priority support (4-hour response)" },
     ],
     usage: {
-      callsPerMonth: 200,
-      minutesPerMonth: 1200,
+      callsPerMonth: 500,
+      minutesPerMonth: 3000,
       overagePerMinute: 0.18,
     },
     highlighted: true,
@@ -185,11 +185,11 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "Quarterly optimization review (conversion + scripts)" },
       { text: "Practice-area-specific configurations (scripts/question sets)" },
       { text: "Firm-branded AI voice + scripting" },
-      { text: "Optional bilingual support (add-on)" },
+      { text: "Multilingual voice support (add-on)" },
     ],
     usage: {
-      callsPerMonth: 500,
-      minutesPerMonth: 3000,
+      callsPerMonth: 1200,
+      minutesPerMonth: 7200,
       overagePerMinute: 0.15,
     },
     cta: "Get Started",
@@ -214,7 +214,7 @@ export const COMPARISON_ROWS: ComparisonRow[] = [
   { label: "SLA / incident response", core: false, pro: false, elite: true },
   { label: "Dedicated success manager", core: false, pro: false, elite: true },
   { label: "Quarterly optimization review", core: false, pro: false, elite: true },
-  { label: "Bilingual support", core: false, pro: false, elite: "Add-on" },
+  { label: "Multilingual voice support", core: false, pro: "Add-on", elite: "Add-on" },
 ];
 
 // ──────────────────────────────────────────────
