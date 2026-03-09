@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { VapiProvider } from "@/lib/vapi-context";
-import { VapiCallButton } from "@/components/ui/vapi-call-button";
+import { AveryWidget } from "@/components/ui/avery-widget";
 import { AppLayout } from "@/components/app-layout";
 import LoginPage from "@/pages/login";
 import CasesPage from "@/pages/cases";
@@ -301,11 +301,7 @@ function MarketingVapiFab() {
   const [location] = useLocation();
   const isMarketing = MARKETING_PATHS.includes(location) || location.startsWith("/blog/");
   if (!isMarketing) return null;
-  return (
-    <div className="fixed bottom-6 right-6 z-40">
-      <VapiCallButton />
-    </div>
-  );
+  return <AveryWidget />;
 }
 
 function App() {

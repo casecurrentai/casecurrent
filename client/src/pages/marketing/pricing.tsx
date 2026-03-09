@@ -259,7 +259,6 @@ export default function PricingPage() {
         headline="AI Intake that captures more qualified cases — 24/7."
         subheadline="Start with a Founding Firm Pilot. Upgrade when you're ready for full-scale intake and SLA-backed reliability."
         primaryCta={{ label: "Start Founding Firm Pilot", href: "/demo?plan=pro-pilot" }}
-        secondaryCta={{ label: "Talk to Avery (Demo Call)", href: "/demo" }}
       >
         <div className="space-y-6">
           <p className="text-sm text-muted-foreground">

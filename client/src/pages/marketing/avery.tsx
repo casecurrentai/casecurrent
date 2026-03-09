@@ -5,7 +5,6 @@ import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { GradientOrb, DecorativeScatter, GradientText, PulseBeacon } from "@/components/marketing/decorative-visuals";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
 import {
   Phone,
   Shield,
