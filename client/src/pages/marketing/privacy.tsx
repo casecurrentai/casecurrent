@@ -12,8 +12,8 @@ const SECTIONS = [
     content: "We use the information we collect to: respond to your inquiries and demo requests; provide AI-powered intake, scheduling, and case management services; send case-related updates, appointment reminders, and follow-up communications; improve our platform, train our AI models, and enhance service quality; comply with legal obligations and enforce our Terms of Service."
   },
   {
-    title: "3. SMS / Text Messaging",
-    content: "When you provide your phone number and opt in to text messaging, you may receive case-related text messages from CaseCurrent or law firms using our platform. These messages may include appointment reminders, intake follow-ups, and case status updates. Message frequency varies based on your case activity. Message and data rates may apply. You can reply STOP to any message to opt out of future text messages. Reply HELP for support information. For assistance, contact info@casecurrent.co or call (504) 900-5237. Consent to receive text messages is not a condition of purchase or legal representation."
+    title: "SMS Communications & Mobile Information",
+    content: "If you provide your mobile phone number and consent to receive text messages, we may send case-related communications including responses to inquiries, intake follow-ups, scheduling updates, and service notifications. Message frequency varies. Message and data rates may apply. You may opt out at any time by replying STOP. For assistance, reply HELP or contact us at support@casecurrent.co. NO mobile information will be shared with third parties or affiliates for marketing or promotional purposes. Information may be shared with subcontractors or service providers solely for the purpose of supporting customer service, technical operations, or message delivery. Text messaging originator opt-in data and consent will not be shared with any third parties except as required by law."
   },
   {
     title: "4. Data Sharing",

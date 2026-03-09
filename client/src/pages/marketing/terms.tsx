@@ -37,7 +37,7 @@ const SECTIONS = [
   },
   {
     title: "8a. CaseCurrent Client Messaging Program",
-    content: "When you provide your phone number and consent, you may receive case-related text messages including appointment reminders, intake follow-ups, and case status updates. Message frequency varies. Message and data rates may apply. Reply STOP to cancel messages at any time. Reply HELP for help. For support, contact info@casecurrent.co or call (504) 900-5237. Consent to receive text messages is not a condition of purchase or legal representation. We do not sell or share phone numbers or SMS consent with third parties for their marketing purposes. See our Privacy Policy at /privacy for more details."
+    content: "When you provide your phone number and consent, you may receive case-related text messages including responses to inquiries, intake follow-ups, scheduling updates, and case status updates. Message frequency varies. Message and data rates may apply. Reply STOP to cancel messages at any time. Reply HELP for help. For support, contact support@casecurrent.co or call (504) 900-5237. Consent to receive text messages is not a condition of purchase or legal representation. We do not sell or share SMS consent or mobile numbers for third-party marketing. See our Privacy Policy at casecurrent.co/privacy for more details."
   },
   {
     title: "9. Acceptable Use",

@@ -308,6 +308,11 @@ model Call {
   endedAt         DateTime? @map("ended_at")
   durationSeconds Int?      @map("duration_seconds")
   callOutcome     String?   @map("call_outcome") // connected, voicemail, no-answer, busy, failed
+  // Finalization lifecycle: active → ended → finalized | failed
+  status          String    @default("active") @map("status")
+  finalizedAt     DateTime? @map("finalized_at")
+  lastFinalizeError String? @map("last_finalize_error")
+  transcriptQuality String? @map("transcript_quality") // ok | short | empty
   resolved        Boolean   @default(false)
   resolvedAt      DateTime? @map("resolved_at")
   resolvedBy      String?   @map("resolved_by")
@@ -330,7 +335,36 @@ model Call {
   interaction  Interaction  @relation(fields: [interactionId], references: [id], onDelete: Cascade)
   phoneNumber  PhoneNumber  @relation(fields: [phoneNumberId], references: [id])
 
+  @@index([status])
   @@map("calls")
+}
+
+// ============================================
+// UNLINKED POST-CALL PAYLOADS (parking lot)
+// ============================================
+
+// Stores ElevenLabs (or other provider) post-call payloads that could not be
+// correlated to a Call row at ingestion time. A reconciliation job retries
+// periodically using the stored correlation keys.
+model UnlinkedPostCall {
+  id                  String    @id @default(uuid())
+  receivedAt          DateTime  @map("received_at")
+  provider            String    // elevenlabs | twilio
+  twilioCallSid       String?   @map("twilio_call_sid")
+  elevenLabsConvId    String?   @map("elevenlabs_conv_id")
+  interactionId       String?   @map("interaction_id")
+  rawPayloadJson      Json      @map("raw_payload_json")
+  correlationKeysJson Json      @map("correlation_keys_json")
+  lastRetryAt         DateTime? @map("last_retry_at")
+  retryCount          Int       @default(0) @map("retry_count")
+  resolvedCallId      String?   @map("resolved_call_id")
+  resolvedAt          DateTime? @map("resolved_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([provider, resolvedAt])
+  @@index([twilioCallSid])
+  @@index([elevenLabsConvId])
+  @@map("unlinked_post_calls")
 }
 
 model Message {
@@ -832,6 +866,26 @@ model OrgSettings {
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("org_settings")
+}
+
+// ============================================
+// CALL ARTIFACT CACHE (Vapi artifacts fetched on-demand, TTL-cached)
+// ============================================
+
+model CallArtifactCache {
+  id          String   @id @default(uuid())
+  firmId      String   @map("firm_id")     // = orgId, scopes all lookups
+  vapiCallId  String   @map("vapi_call_id") // = providerCallId on Call
+  kind        String   // "full_call" — normalized Vapi call payload
+  payloadJson Json     @map("payload_json")
+  fetchedAt   DateTime @map("fetched_at")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([firmId, vapiCallId, kind])
+  @@index([firmId, vapiCallId])
+  @@index([expiresAt])
+  @@map("call_artifact_cache")
 }
 
 // ============================================

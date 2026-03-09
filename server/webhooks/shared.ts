@@ -47,6 +47,34 @@ export async function checkIdempotency(
   }
 }
 
+/**
+ * Roll back an idempotency record inserted by checkIdempotency.
+ * Call this in the catch block when the subsequent DB work failed, so the
+ * next webhook delivery can be retried from scratch.
+ * Never throws — a rollback failure is non-fatal; the operation will still
+ * be recorded as failed in IngestionOutcome.
+ */
+export async function rollbackIdempotency(
+  prisma: PrismaClient,
+  provider: string,
+  externalId: string,
+  eventType: string,
+): Promise<void> {
+  try {
+    await prisma.webhookEvent.deleteMany({
+      where: { provider, externalId, eventType },
+    });
+  } catch (err: any) {
+    console.log(JSON.stringify({
+      tag: 'idempotency_rollback_error',
+      provider,
+      externalId,
+      eventType,
+      error: err?.message || String(err),
+    }));
+  }
+}
+
 export async function lookupFirmByNumber(
   prisma: PrismaClient,
   calledNumber: string

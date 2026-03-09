@@ -22,6 +22,7 @@ import ExperimentsPage from "@/pages/experiments";
 import ExperimentDetailPage from "@/pages/experiment-detail";
 import PolicyTestsPage from "@/pages/policy-tests";
 import PIDashboardPage from "@/pages/pi-dashboard";
+import CallsInboxPage from "@/pages/calls-inbox";
 import DebugPage from "@/pages/debug";
 import MenuPage from "@/pages/menu";
 import NotFound from "@/pages/not-found";
@@ -40,6 +41,8 @@ import InstallPage from "@/pages/marketing/install";
 import BlogPostPage from "@/pages/marketing/blog-post";
 import TermsPage from "@/pages/marketing/terms";
 import PrivacyPage from "@/pages/marketing/privacy";
+import SmsConsentPage from "@/pages/marketing/sms-consent";
+import AveryPage from "@/pages/marketing/avery";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -175,6 +178,8 @@ function Router() {
       <Route path="/blog/:slug" component={BlogPostPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/sms-consent" component={SmsConsentPage} />
+      <Route path="/avery" component={AveryPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />
@@ -204,6 +209,13 @@ function Router() {
         <ProtectedRoute>
           <AppLayout>
             <PIDashboardPage />
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/calls">
+        <ProtectedRoute>
+          <AppLayout noPadding>
+            <CallsInboxPage />
           </AppLayout>
         </ProtectedRoute>
       </Route>
@@ -295,7 +307,7 @@ function Router() {
   );
 }
 
-const MARKETING_PATHS = ["/", "/avery", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy"];
+const MARKETING_PATHS = ["/", "/avery", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy", "/sms-consent"];
 
 function MarketingVapiFab() {
   const [location] = useLocation();

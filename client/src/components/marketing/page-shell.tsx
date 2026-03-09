@@ -156,6 +156,19 @@ export function PageShell({ children, title, description }: PageShellProps) {
               <p className="text-sm text-muted-foreground">
                 AI-powered intake and lead capture for modern law firms.
               </p>
+              <a
+                href="https://elevenlabs.io/startup-grants"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-5"
+                data-testid="link-elevenlabs-grants-footer"
+              >
+                <img
+                  src="https://eleven-public-cdn.elevenlabs.io/payloadcms/pwsc4vchsqt-ElevenLabsGrants.webp"
+                  alt="ElevenLabs Startup Grants"
+                  className="w-40 sm:w-44 lg:w-56 h-auto"
+                />
+              </a>
             </div>
             <div>
               <h4 className="font-semibold text-foreground mb-3">Product</h4>
@@ -180,6 +193,7 @@ export function PageShell({ children, title, description }: PageShellProps) {
               <ul className="space-y-2 text-sm">
                 <li><Link href="/terms" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-terms">Terms of Service</Link></li>
                 <li><Link href="/privacy" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-privacy">Privacy Policy</Link></li>
+                <li><Link href="/sms-consent" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-sms-consent">SMS Consent</Link></li>
                 <li>
                   <a href="tel:+15049005237" className="text-muted-foreground hover:text-foreground" data-testid="link-footer-phone">(504) 900-5237</a>
                 </li>

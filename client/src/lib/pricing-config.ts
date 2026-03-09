@@ -71,7 +71,7 @@ export const PILOT_PLANS: PlanDef[] = [
       { text: "1 firm, 1 phone number" },
     ],
     usage: {
-      callsPerMonth: 200,
+callsPerMonth: 200,
       minutesPerMonth: 1200,
       overagePerMinute: 0.2,
     },
@@ -98,7 +98,7 @@ export const PILOT_PLANS: PlanDef[] = [
       { text: "Priority support (same-day response)" },
     ],
     usage: {
-      callsPerMonth: 500,
+callsPerMonth: 500,
       minutesPerMonth: 3000,
       overagePerMinute: 0.18,
     },
@@ -132,7 +132,7 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "1 firm, 1 phone number" },
     ],
     usage: {
-      callsPerMonth: 200,
+callsPerMonth: 200,
       minutesPerMonth: 1200,
       overagePerMinute: 0.2,
     },
@@ -159,7 +159,7 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "Priority support (4-hour response)" },
     ],
     usage: {
-      callsPerMonth: 500,
+callsPerMonth: 500,
       minutesPerMonth: 3000,
       overagePerMinute: 0.18,
     },
@@ -188,7 +188,7 @@ export const STANDARD_PLANS: PlanDef[] = [
       { text: "Multilingual voice support (add-on)" },
     ],
     usage: {
-      callsPerMonth: 1200,
+callsPerMonth: 1200,
       minutesPerMonth: 7200,
       overagePerMinute: 0.15,
     },

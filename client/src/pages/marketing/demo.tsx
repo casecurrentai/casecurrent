@@ -401,7 +401,7 @@ export default function DemoPage() {
                                   />
                                   <div>
                                     <Label htmlFor="smsConsent" className="text-sm leading-snug cursor-pointer">
-                                      I agree to receive case-related text messages. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.
+                                      I agree to receive case-related text messages. Message frequency varies. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help.
                                     </Label>
                                     <p className="text-xs text-muted-foreground mt-1">
                                       Consent is not a condition of purchase or representation.

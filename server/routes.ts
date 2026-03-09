@@ -2741,6 +2741,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           id: true,
           direction: true,
           provider: true,
+          status: true,
           callOutcome: true,
           endReason: true,
           startedAt: true,
@@ -2749,6 +2750,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           recordingUrl: true,
           transcriptText: true,
           transcriptJson: true,
+          transcriptQuality: true,
           aiSummary: true,
           structuredData: true,
           successEvaluation: true,
@@ -6204,7 +6206,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (isHelpWord(Body || '')) {
         res.set('Content-Type', 'text/xml');
         return res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response><Message>CaseCurrent: For support, contact info@casecurrent.co or call (504) 900-5237. Reply STOP to opt out of messages. Msg&amp;data rates may apply.</Message></Response>`);
+<Response><Message>CaseCurrent: For support email support@casecurrent.co. Reply STOP to opt out.</Message></Response>`);
       }
 
       let interaction = await prisma.interaction.findFirst({
@@ -10154,15 +10156,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
    *         description: PI dashboard data with funnel, speed, rescue queue, source ROI, and intake completeness
    */
   app.get('/v1/analytics/pi-dashboard', flexAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+    const cid = crypto.randomUUID().slice(0, 8);
+    const tag = `[PI_DASHBOARD cid=${cid}]`;
     try {
       const user = req.user!;
-      console.log(`[PI_DASHBOARD_HIT] userId=${user.userId} orgId=${user.orgId}`);
-      const days = parseInt(req.query.days as string) || 30;
+      // Log request — no PII (orgId is an internal UUID)
+      console.log(`${tag} request orgId=${user.orgId} userId=${user.userId}`);
+      const days = Math.min(90, Math.max(1, parseInt(req.query.days as string) || 30));
+      const t0 = Date.now();
       const data = await getPIDashboardData(prisma, user.orgId, days);
+      console.log(`${tag} ok elapsed=${Date.now() - t0}ms`);
       res.json(data);
-    } catch (error) {
-      console.error('PI dashboard error:', error);
-      res.status(500).json({ error: 'Failed to get PI dashboard data' });
+    } catch (error: any) {
+      // Structured error log — includes Prisma error code if available, no PII values
+      const prismaCode = error?.code || 'UNKNOWN';
+      const meta = error?.meta ? JSON.stringify(error.meta) : '';
+      console.error(`${tag} FAIL code=${prismaCode} meta=${meta} msg=${error?.message}`);
+      // Map Prisma schema-drift error (column not found) to 503 so monitors can alert
+      if (prismaCode === 'P2022' || (error?.message || '').includes('column') || (error?.message || '').includes('does not exist')) {
+        return res.status(503).json({
+          error: 'Dashboard unavailable — schema migration required',
+          code: 'SCHEMA_DRIFT',
+          correlationId: cid,
+        });
+      }
+      res.status(500).json({ error: 'Failed to get PI dashboard data', correlationId: cid });
     }
   });
 

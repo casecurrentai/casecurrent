@@ -6,6 +6,8 @@ import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
 import stripeRoutes from './routes/stripe';
+import { startReconciliationLoop } from './jobs/reconcileUnlinkedPostCalls';
+import { runCatchupMigration } from './db/runCatchupMigration';
 
 // Fail-fast env validation - must be imported early
 import { DATABASE_URL } from "./env";
@@ -243,6 +245,16 @@ app.use((req, res, next) => {
     console.error(`[DB STARTUP] Error during DB check:`, err?.message || err);
   }
 
+  // ── Catch-up schema migration ────────────────────────────────────────────────
+  // Runs idempotent SQL to add any columns missing from the DB that are present
+  // in the Prisma schema. Safe to run on every boot; non-fatal on failure.
+  try {
+    const { prisma: migPrisma } = await import('./db');
+    await runCatchupMigration(migPrisma);
+  } catch (err: any) {
+    console.error('[CATCHUP_MIGRATION] Failed (non-fatal):', err?.message);
+  }
+
   // TELEPHONY PROVIDER BOOT LOG
   const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'twilio').toLowerCase();
   const isPlivo = telephonyProvider === 'plivo';
@@ -253,6 +265,15 @@ app.use((req, res, next) => {
   console.log(`[TELEPHONY] Provider: ${isPlivo ? 'plivo' : 'twilio'} | Voice: ${voiceEnabled} | SMS: ${smsEnabled}`);
 
   await registerRoutes(httpServer, app);
+
+  // Start background reconciliation for parked ElevenLabs post-call payloads
+  try {
+    const { prisma } = await import('./db');
+    startReconciliationLoop(prisma);
+    console.log('[RECONCILE] Unlinked post-call reconciliation loop started (60s interval)');
+  } catch (err: any) {
+    console.error('[RECONCILE] Failed to start reconciliation loop (non-fatal):', err?.message);
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
