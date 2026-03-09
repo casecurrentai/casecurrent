@@ -183,6 +183,10 @@ export default {
           "0%, 100%": { transform: "scale(1)", filter: "brightness(1)" },
           "50%": { transform: "scale(1.04)", filter: "brightness(1.15)" },
         },
+        "widget-expand": {
+          "0%": { opacity: "0", transform: "scale(0.9) translateY(10px)" },
+          "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -201,6 +205,7 @@ export default {
         "check-pop": "check-pop 0.35s cubic-bezier(0.175,0.885,0.32,1.275) forwards",
         "intake-complete": "intake-complete 0.5s cubic-bezier(0.2,0,0,1) forwards",
         "core-breathe": "core-breathe 4s ease-in-out infinite",
+        "widget-expand": "widget-expand 0.25s ease-out forwards",
       },
       transitionDuration: {
         fast: "var(--duration-fast)",
