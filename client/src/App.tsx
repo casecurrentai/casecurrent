@@ -6,7 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { VapiProvider } from "@/lib/vapi-context";
-import { VapiCallButton } from "@/components/ui/vapi-call-button";
+import { ElevenLabsProvider } from "@/lib/elevenlabs-context";
+import { AveryWidget } from "@/components/ui/avery-widget";
 import { AppLayout } from "@/components/app-layout";
 import LoginPage from "@/pages/login";
 import CasesPage from "@/pages/cases";
@@ -307,15 +308,11 @@ function Router() {
 
 const MARKETING_PATHS = ["/", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy", "/sms-consent", "/avery"];
 
-function MarketingVapiFab() {
+function MarketingAveryWidget() {
   const [location] = useLocation();
   const isMarketing = MARKETING_PATHS.includes(location) || location.startsWith("/blog/");
   if (!isMarketing) return null;
-  return (
-    <div className="fixed bottom-6 right-6 z-40">
-      <VapiCallButton />
-    </div>
-  );
+  return <AveryWidget />;
 }
 
 function App() {
@@ -324,10 +321,12 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <VapiProvider>
-            <ScrollToTop />
-            <Toaster />
-            <Router />
-            <MarketingVapiFab />
+            <ElevenLabsProvider>
+              <ScrollToTop />
+              <Toaster />
+              <Router />
+              <MarketingAveryWidget />
+            </ElevenLabsProvider>
           </VapiProvider>
         </AuthProvider>
       </TooltipProvider>
