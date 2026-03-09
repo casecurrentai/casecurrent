@@ -187,6 +187,53 @@ export default {
           "0%": { opacity: "0", transform: "scale(0.9) translateY(10px)" },
           "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
         },
+        "avery-orbit": {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+        "avery-orbit-reverse": {
+          "0%": { transform: "rotate(360deg)" },
+          "100%": { transform: "rotate(0deg)" },
+        },
+        "avery-pulse-ring": {
+          "0%": { transform: "scale(1)", opacity: "0.6" },
+          "50%": { transform: "scale(1.08)", opacity: "0.3" },
+          "100%": { transform: "scale(1)", opacity: "0.6" },
+        },
+        "avery-signal-sweep": {
+          "0%": { transform: "rotate(0deg)", opacity: "0.8" },
+          "100%": { transform: "rotate(360deg)", opacity: "0.8" },
+        },
+        "avery-breathe": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.5" },
+          "50%": { transform: "scale(1.15)", opacity: "0.2" },
+        },
+        "avery-scan-line": {
+          "0%": { transform: "translateY(-100%)", opacity: "0" },
+          "10%": { opacity: "1" },
+          "90%": { opacity: "1" },
+          "100%": { transform: "translateY(100%)", opacity: "0" },
+        },
+        "avery-shimmer": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(200%)" },
+        },
+        "avery-row-reveal": {
+          "0%": { opacity: "0", transform: "translateX(-8px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        "avery-confidence-fill": {
+          "0%": { width: "0%" },
+          "100%": { width: "var(--fill-width)" },
+        },
+        "avery-dot-pulse": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.6" },
+          "50%": { transform: "scale(1.5)", opacity: "1" },
+        },
+        "avery-arc-dash": {
+          "0%": { strokeDashoffset: "200" },
+          "100%": { strokeDashoffset: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -206,6 +253,17 @@ export default {
         "intake-complete": "intake-complete 0.5s cubic-bezier(0.2,0,0,1) forwards",
         "core-breathe": "core-breathe 4s ease-in-out infinite",
         "widget-expand": "widget-expand 0.25s ease-out forwards",
+        "avery-orbit": "avery-orbit 30s linear infinite",
+        "avery-orbit-reverse": "avery-orbit-reverse 25s linear infinite",
+        "avery-pulse-ring": "avery-pulse-ring 4s ease-in-out infinite",
+        "avery-signal-sweep": "avery-signal-sweep 8s linear infinite",
+        "avery-breathe": "avery-breathe 6s ease-in-out infinite",
+        "avery-scan-line": "avery-scan-line 4s ease-in-out infinite",
+        "avery-shimmer": "avery-shimmer 3s ease-in-out infinite",
+        "avery-row-reveal": "avery-row-reveal 0.5s ease-out forwards",
+        "avery-confidence-fill": "avery-confidence-fill 1.5s ease-out forwards",
+        "avery-dot-pulse": "avery-dot-pulse 2s ease-in-out infinite",
+        "avery-arc-dash": "avery-arc-dash 3s ease-in-out infinite alternate",
       },
       transitionDuration: {
         fast: "var(--duration-fast)",
