@@ -84,7 +84,7 @@ export function VapiProvider({ children }: { children: React.ReactNode }) {
         vapiRef.current = null;
       });
 
-      await vapi.start(assistantId);
+      await vapi.start(assistantId, { maxDurationSeconds: 43200 });
     } catch (err: any) {
       console.error("[Vapi] start failed", err);
       setErrorMsg(err?.message || "Failed to start call");
