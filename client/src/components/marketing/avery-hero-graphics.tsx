@@ -1,3 +1,5 @@
+import type React from "react";
+
 /**
  * Premium animated hero graphics for the Meet Avery page.
  *
