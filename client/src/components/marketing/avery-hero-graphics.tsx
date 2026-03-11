@@ -177,8 +177,15 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Inner core circle */}
-        <circle cx="200" cy="200" r="76" fill="white" fillOpacity="0.95" stroke="#6366f1" strokeOpacity="0.12" strokeWidth="1" />
+        {/* Inner core circle — dynamic blue gradient */}
+        <defs>
+          <linearGradient id="avery-core-fill" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="50%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+        </defs>
+        <circle cx="200" cy="200" r="76" fill="url(#avery-core-fill)" stroke="#818cf8" strokeOpacity="0.3" strokeWidth="1" />
         {/* Core breathing ring */}
         <circle
           cx="200" cy="200" r="76"
@@ -196,10 +203,10 @@ export function AveryIntelligenceEmblem() {
       {/* Central "A" — HTML for crisp rendering */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative">
-          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 bg-clip-text text-transparent select-none leading-none tracking-tight">
+          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold text-white select-none leading-none tracking-tight drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]">
             A
           </span>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-gradient-to-r from-indigo-500/70 to-blue-500/70" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
         </div>
       </div>
 
