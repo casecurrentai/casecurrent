@@ -180,23 +180,23 @@ export function AveryIntelligenceEmblem() {
         {/* Inner core circle — animated rotating gradient like ElevenLabs orb */}
         <defs>
           <linearGradient id="avery-core-fill" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#2563eb">
-              <animate attributeName="stop-color" values="#2563eb;#7c3aed;#06b6d4;#3b82f6;#2563eb" dur="6s" repeatCount="indefinite" />
+            <stop offset="0%" stopColor="#1d4ed8">
+              <animate attributeName="stop-color" values="#1d4ed8;#9333ea;#0891b2;#dc2626;#1d4ed8" dur="5s" repeatCount="indefinite" />
             </stop>
-            <stop offset="33%" stopColor="#6366f1">
-              <animate attributeName="stop-color" values="#6366f1;#2563eb;#8b5cf6;#06b6d4;#6366f1" dur="6s" repeatCount="indefinite" />
+            <stop offset="33%" stopColor="#7c3aed">
+              <animate attributeName="stop-color" values="#7c3aed;#0891b2;#1d4ed8;#f59e0b;#7c3aed" dur="5s" repeatCount="indefinite" />
             </stop>
-            <stop offset="66%" stopColor="#8b5cf6">
-              <animate attributeName="stop-color" values="#8b5cf6;#06b6d4;#3b82f6;#7c3aed;#8b5cf6" dur="6s" repeatCount="indefinite" />
+            <stop offset="66%" stopColor="#0891b2">
+              <animate attributeName="stop-color" values="#0891b2;#dc2626;#9333ea;#1d4ed8;#0891b2" dur="5s" repeatCount="indefinite" />
             </stop>
-            <stop offset="100%" stopColor="#06b6d4">
-              <animate attributeName="stop-color" values="#06b6d4;#3b82f6;#7c3aed;#2563eb;#06b6d4" dur="6s" repeatCount="indefinite" />
+            <stop offset="100%" stopColor="#9333ea">
+              <animate attributeName="stop-color" values="#9333ea;#1d4ed8;#f59e0b;#0891b2;#9333ea" dur="5s" repeatCount="indefinite" />
             </stop>
-            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="8s" repeatCount="indefinite" />
+            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="4s" repeatCount="indefinite" />
           </linearGradient>
           <radialGradient id="avery-core-sheen" cx="35%" cy="30%" r="60%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.2">
-              <animate attributeName="stopOpacity" values="0.2;0.12;0.2" dur="3s" repeatCount="indefinite" />
+            <stop offset="0%" stopColor="white" stopOpacity="0.18">
+              <animate attributeName="stopOpacity" values="0.18;0.08;0.18" dur="3s" repeatCount="indefinite" />
             </stop>
             <stop offset="100%" stopColor="white" stopOpacity="0" />
           </radialGradient>
