@@ -309,10 +309,13 @@ function Router() {
 const MARKETING_PATHS = ["/", "/avery", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy", "/sms-consent"];
 
 function MarketingAveryWidget() {
-  const [location] = useLocation();
-  const isMarketing = MARKETING_PATHS.includes(location) || location.startsWith("/blog/");
-  if (!isMarketing) return null;
-  return <AveryWidget />;
+  // Custom React widget disabled — using official ElevenLabs Convai embed in index.html
+  // To restore: uncomment below and remove <elevenlabs-convai> from index.html
+  // const [location] = useLocation();
+  // const isMarketing = MARKETING_PATHS.includes(location) || location.startsWith("/blog/");
+  // if (!isMarketing) return null;
+  // return <AveryWidget />;
+  return null;
 }
 
 function App() {
