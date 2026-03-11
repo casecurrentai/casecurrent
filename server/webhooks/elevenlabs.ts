@@ -3,6 +3,9 @@ import { PrismaClient } from '../../apps/api/src/generated/prisma';
 import crypto from 'crypto';
 import { normalizeE164, maskPhone, checkIdempotency, rollbackIdempotency, lookupFirmByNumber, extractDisplayName } from './shared';
 import { recordIngestionOutcome } from './ingestion-outcome';
+import { normalizeElevenLabsPostCallPayload } from '../avery/elevenlabs/normalize-payload';
+import { runPostCallAnalysis } from '../avery/persistence/postcall-analysis';
+import { reconcileUnlinkedPostCalls } from '../avery/reconciliation/reconcile-unlinked';
 
 const router = Router();
 
@@ -212,6 +215,28 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
     next();
   };
 
+  // ── Admin: manually trigger reconciliation of parked post-calls ───────────
+  // POST /v1/webhooks/elevenlabs/reconcile
+  // Optional query param: ?maxBatch=N (default 20, max 100)
+  router.post('/reconcile', async (req: Request, res: Response) => {
+    try {
+      const maxBatch = Math.min(parseInt(String(req.query.maxBatch ?? '20'), 10) || 20, 100);
+      console.log(JSON.stringify({
+        tag: '[AVERY_RECONCILE_MANUAL_TRIGGER]',
+        maxBatch,
+        source: 'admin_endpoint',
+      }));
+      const result = await reconcileUnlinkedPostCalls(prisma, { maxBatch });
+      res.status(200).json({ status: 'ok', ...result });
+    } catch (err: any) {
+      console.error(JSON.stringify({
+        tag: '[AVERY_RECONCILE_ENDPOINT_ERROR]',
+        error: err?.message || String(err),
+      }));
+      res.status(500).json({ error: 'Reconciliation failed' });
+    }
+  });
+
   router.get('/debug/recent', async (req: Request, res: Response) => {
     try {
       const events = await prisma.webhookEvent.findMany({
@@ -391,6 +416,16 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         leadId: lead.id,
         interactionId: interaction.id,
       });
+
+      // Opportunistic reconciliation: the new Call row may unblock parked post-calls.
+      // Fire-and-forget — never delays or fails the inbound response.
+      reconcileUnlinkedPostCalls(prisma, { maxBatch: 5 }).catch((err) => {
+        console.log(JSON.stringify({
+          tag: '[AVERY_RECONCILE_INBOUND_TRIGGER_ERROR]',
+          callId: call.id,
+          error: err?.message || String(err),
+        }));
+      });
     } catch (err: any) {
       console.log(JSON.stringify({
         event: 'elevenlabs_inbound_error',
@@ -539,8 +574,9 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
         data: { endedAt: new Date(), status: 'completed' },
       });
 
+      const existingIntakeData = (call.lead.intakeData as Record<string, unknown>) || {};
+
       if (payload.extracted_data && Object.keys(payload.extracted_data).length > 0) {
-        const existingIntakeData = (call.lead.intakeData as Record<string, unknown>) || {};
         const mergedIntakeData = { ...existingIntakeData, ...payload.extracted_data };
 
         await prisma.lead.update({
@@ -561,6 +597,28 @@ export function createElevenLabsWebhookRouter(prisma: PrismaClient): Router {
           },
         });
       }
+
+      // ── Avery intelligence layer ──────────────────────────────────────────
+      // Runs extraction pipeline on the normalized payload and persists results
+      // to Call.aiFlags + Call.structuredData, then syncs Lead with enriched data.
+      // Fire-and-forget with internal error handling — never blocks the 200 response.
+      const averyNormalized = normalizeElevenLabsPostCallPayload(
+        payload as unknown as Record<string, unknown>,
+      );
+      averyNormalized.callId = call.id;
+      const leadIntakeForAvery: Record<string, unknown> = payload.extracted_data
+        ? { ...existingIntakeData, ...(payload.extracted_data as Record<string, unknown>) }
+        : existingIntakeData;
+      await runPostCallAnalysis(
+        prisma,
+        call.id,
+        call.leadId,
+        call.orgId,
+        averyNormalized,
+        updatedAiFlags,
+        leadIntakeForAvery,
+        call.lead.displayName,
+      );
 
       console.log(JSON.stringify({
         tag: '[ELEVENLABS_APPLY_OK]',

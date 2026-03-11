@@ -68,7 +68,12 @@ function computeBadges(call: {
   if (!call.durationSeconds || call.durationSeconds === 0) badges.push('missed');
   if (call.callOutcome === 'voicemail') badges.push('voicemail');
   const flags = (call.aiFlags ?? {}) as Record<string, unknown>;
-  if (flags?.urgency === 'high' || flags?.hotLead) badges.push('high-value');
+  if (
+    flags?.urgency === 'high' ||
+    flags?.hotLead ||
+    flags?.avery_urgency_level === 'high' ||
+    flags?.avery_urgency_level === 'critical'
+  ) badges.push('high-value');
   return badges;
 }
 

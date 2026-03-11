@@ -42,7 +42,6 @@ import BlogPostPage from "@/pages/marketing/blog-post";
 import TermsPage from "@/pages/marketing/terms";
 import PrivacyPage from "@/pages/marketing/privacy";
 import SmsConsentPage from "@/pages/marketing/sms-consent";
-import AveryPage from "@/pages/marketing/avery";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -179,7 +178,6 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/sms-consent" component={SmsConsentPage} />
-      <Route path="/avery" component={AveryPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />

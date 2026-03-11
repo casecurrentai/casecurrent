@@ -2,17 +2,21 @@
  * AveryWidget — multimodal floating AI widget
  *
  * Modes:
- *  - Voice: uses Vapi (existing VapiProvider). The ElevenLabs Orb reflects call state.
+ *  - Voice: ElevenLabs Conversational AI (agent_7501kf4sbgf7f4ya75emf6x4rz1y).
  *  - Chat:  streams responses from POST /v1/chat/avery (OpenAI gpt-4o-mini).
  *
  * The Orb acts as the FAB (fixed bottom-right). Clicking it opens a panel
  * that slides up above it with Voice / Chat tabs.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useConversation } from "@elevenlabs/react";
 import { Orb } from "@/components/ui/orb";
-import { useVapi } from "@/lib/vapi-context";
 import { cn } from "@/lib/utils";
-import { X, Mic, MicOff, PhoneOff, Phone, Send, Loader2 } from "lucide-react";
+import { X, PhoneOff, Phone, Send, Loader2 } from "lucide-react";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const AGENT_ID = "agent_7501kf4sbgf7f4ya75emf6x4rz1y";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +31,40 @@ const WELCOME_MESSAGE: ChatMessage = {
   role: "assistant",
   content: "Hi! I'm Avery. I can answer questions about your case, or click Voice to talk with me directly. What can I help you with?",
 };
+
+// ── Voice hook ────────────────────────────────────────────────────────────────
+
+function useAveryVoice() {
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const conversation = useConversation({
+    onError: (error) => {
+      setErrorMsg(typeof error === "string" ? error : "Voice call error. Please try again.");
+    },
+  });
+
+  const startCall = useCallback(async () => {
+    setErrorMsg(null);
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      await conversation.startSession({ agentId: AGENT_ID, connectionType: "webrtc" });
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Could not access microphone");
+    }
+  }, [conversation]);
+
+  const endCall = useCallback(async () => {
+    await conversation.endSession();
+  }, [conversation]);
+
+  return {
+    status: conversation.status as "disconnected" | "connecting" | "connected",
+    isSpeaking: conversation.isSpeaking,
+    errorMsg,
+    startCall,
+    endCall,
+  };
+}
 
 // ── Chat hook ────────────────────────────────────────────────────────────────
 
@@ -139,70 +177,54 @@ function ModeTab({
 
 function VoicePanel({
   status,
-  muted,
+  isSpeaking,
   errorMsg,
   startCall,
   endCall,
-  toggleMute,
-  enabled,
-}: ReturnType<typeof useVapi>) {
-  const isActive = status === "active";
+}: ReturnType<typeof useAveryVoice>) {
+  const isActive = status === "connected";
   const isConnecting = status === "connecting";
-  const isBusy = isConnecting || status === "ending";
+  const isBusy = isConnecting;
 
   return (
     <div className="flex flex-col items-center gap-4 py-6 px-4">
       {/* Status */}
       <p className={cn(
         "text-sm font-medium transition-colors",
-        isActive ? "text-emerald-500" : isConnecting ? "text-blue-500" : "text-muted-foreground",
+        isActive
+          ? isSpeaking ? "text-blue-500" : "text-emerald-500"
+          : isConnecting ? "text-blue-500"
+          : "text-muted-foreground",
       )}>
-        {isConnecting ? "Connecting…" : status === "ending" ? "Ending…" : isActive ? "Live" : "Ready to talk"}
+        {isConnecting
+          ? "Connecting…"
+          : isActive
+          ? isSpeaking ? "Avery is speaking…" : "Listening…"
+          : "Ready to talk"}
       </p>
 
       {/* Start / end call */}
-      {!enabled ? (
-        <p className="text-xs text-muted-foreground text-center max-w-[200px]">
-          Voice calls aren't configured yet. Use the chat tab to get help.
-        </p>
-      ) : (
-        <button
-          disabled={isBusy}
-          onClick={isActive ? endCall : startCall}
-          className={cn(
-            "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all",
-            isActive
-              ? "bg-red-500 hover:bg-red-600 text-white"
-              : "bg-primary hover:bg-primary/90 text-primary-foreground",
-            isBusy && "opacity-60 cursor-wait",
-          )}
-          data-testid="button-avery-voice-toggle"
-        >
-          {isBusy ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : isActive ? (
-            <PhoneOff className="h-4 w-4" />
-          ) : (
-            <Phone className="h-4 w-4" />
-          )}
-          {isConnecting ? "Connecting…" : status === "ending" ? "Ending…" : isActive ? "End call" : "Start voice call"}
-        </button>
-      )}
-
-      {/* Mute */}
-      {isActive && (
-        <button
-          onClick={toggleMute}
-          className={cn(
-            "flex items-center gap-1.5 text-xs transition-colors",
-            muted ? "text-red-500" : "text-muted-foreground hover:text-foreground",
-          )}
-          data-testid="button-avery-mute"
-        >
-          {muted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-          {muted ? "Unmute" : "Mute"}
-        </button>
-      )}
+      <button
+        disabled={isBusy}
+        onClick={isActive ? endCall : startCall}
+        className={cn(
+          "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all",
+          isActive
+            ? "bg-red-500 hover:bg-red-600 text-white"
+            : "bg-primary hover:bg-primary/90 text-primary-foreground",
+          isBusy && "opacity-60 cursor-wait",
+        )}
+        data-testid="button-avery-voice-toggle"
+      >
+        {isBusy ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : isActive ? (
+          <PhoneOff className="h-4 w-4" />
+        ) : (
+          <Phone className="h-4 w-4" />
+        )}
+        {isConnecting ? "Connecting…" : isActive ? "End call" : "Start voice call"}
+      </button>
 
       {errorMsg && (
         <p className="text-xs text-destructive text-center max-w-[220px]" data-testid="text-avery-error">
@@ -285,23 +307,21 @@ export function AveryWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("chat");
 
-  const vapi = useVapi();
+  const voice = useAveryVoice();
   const chat = useAveryChat();
-
-  const { status, volumeLevel } = vapi;
 
   // Auto-open panel when a call starts; switch to voice tab
   useEffect(() => {
-    if (status === "connecting" || status === "active") {
+    if (voice.status === "connecting" || voice.status === "connected") {
       setIsOpen(true);
       setMode("voice");
     }
-  }, [status]);
+  }, [voice.status]);
 
-  // Derive orb agentState from Vapi call status + volume heuristic
+  // Derive orb agentState from ElevenLabs call status
   const orbAgentState: "thinking" | "listening" | "talking" | null =
-    status === "connecting" || status === "ending" ? "thinking"
-    : status === "active" ? (volumeLevel > 0.1 ? "talking" : "listening")
+    voice.status === "connecting" ? "thinking"
+    : voice.status === "connected" ? (voice.isSpeaking ? "talking" : "listening")
     : null;
 
   return (
@@ -339,7 +359,7 @@ export function AveryWidget() {
           {/* Panel body */}
           <div className={cn("flex-1 min-h-0", mode === "chat" ? "flex flex-col" : "")}>
             {mode === "voice" ? (
-              <VoicePanel {...vapi} />
+              <VoicePanel {...voice} />
             ) : (
               <ChatPanel {...chat} />
             )}
@@ -356,9 +376,6 @@ export function AveryWidget() {
       >
         <Orb
           agentState={orbAgentState}
-          volumeMode="manual"
-          manualOutput={volumeLevel}
-          manualInput={0}
           className="w-full h-full"
         />
       </button>
