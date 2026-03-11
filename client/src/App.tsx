@@ -29,6 +29,7 @@ import MenuPage from "@/pages/menu";
 import NotFound from "@/pages/not-found";
 
 import MarketingHomePage from "@/pages/marketing/home";
+import AveryPage from "@/pages/marketing/avery";
 import HowItWorksPage from "@/pages/marketing/how-it-works";
 import SecurityPage from "@/pages/marketing/security";
 import SolutionsPage from "@/pages/marketing/solutions";
@@ -42,7 +43,6 @@ import BlogPostPage from "@/pages/marketing/blog-post";
 import TermsPage from "@/pages/marketing/terms";
 import PrivacyPage from "@/pages/marketing/privacy";
 import SmsConsentPage from "@/pages/marketing/sms-consent";
-import AveryPage from "@/pages/marketing/avery";
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -165,6 +165,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={MarketingHomePage} />
+      <Route path="/avery" component={AveryPage} />
       <Route path="/how-it-works" component={HowItWorksPage} />
       <Route path="/security" component={SecurityPage} />
       <Route path="/solutions" component={SolutionsPage} />
@@ -178,7 +179,6 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/sms-consent" component={SmsConsentPage} />
-      <Route path="/avery" component={AveryPage} />
       <Route path="/login">
         <PublicRoute>
           <LoginPage />
@@ -306,7 +306,7 @@ function Router() {
   );
 }
 
-const MARKETING_PATHS = ["/", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy", "/sms-consent", "/avery"];
+const MARKETING_PATHS = ["/", "/avery", "/how-it-works", "/security", "/solutions", "/pricing", "/resources", "/contact", "/demo", "/design-audit", "/install", "/terms", "/privacy", "/sms-consent"];
 
 function MarketingAveryWidget() {
   const [location] = useLocation();

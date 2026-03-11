@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Users,
   ChevronDown,
+  Globe,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -317,6 +318,64 @@ function OnboardingTimeline() {
   );
 }
 
+function MultilingualSection() {
+  const pillars = [
+    {
+      icon: Globe,
+      title: "Broader accessibility",
+      desc: "Serve callers who prefer to speak in their first language — a meaningful advantage in diverse metro markets.",
+      gradient: "from-blue-500 to-indigo-500",
+      bgGlow: "from-blue-500/15 to-indigo-500/15",
+    },
+    {
+      icon: Target,
+      title: "Better intake coverage",
+      desc: "Language barriers shouldn't cost you a case. Configure Avery to conduct intake in the language that works best for each caller.",
+      gradient: "from-emerald-500 to-teal-500",
+      bgGlow: "from-emerald-500/15 to-teal-500/15",
+    },
+    {
+      icon: TrendingUp,
+      title: "More opportunities captured",
+      desc: "Callers who can't communicate clearly in English often hang up before they qualify. Multilingual intake keeps them in the funnel.",
+      gradient: "from-purple-500 to-pink-500",
+      bgGlow: "from-purple-500/15 to-pink-500/15",
+    },
+  ];
+
+  return (
+    <div data-testid="section-multilingual">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+          Intake in the caller's <GradientText from="from-blue-500" to="to-emerald-500">language.</GradientText>
+        </h2>
+        <p className="text-muted-foreground max-w-2xl mx-auto">
+          CaseCurrent can be configured for multilingual voice interactions using ElevenLabs' speech technology — helping firms serve a broader range of callers and reduce language barriers during intake.
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+        {pillars.map((p, i) => (
+          <div key={i} className="relative group">
+            <div className={`absolute -inset-0.5 bg-gradient-to-br ${p.bgGlow} rounded-2xl blur-lg opacity-50 group-hover:opacity-100 transition-opacity duration-500`} aria-hidden="true" />
+            <div className="relative bg-card border border-border/50 rounded-2xl p-6 h-full">
+              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${p.gradient} flex items-center justify-center mb-4 shadow-lg`}>
+                <p.icon className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">{p.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{p.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-center text-xs text-muted-foreground mt-8 max-w-2xl mx-auto">
+        Language availability depends on the ElevenLabs model selected for your deployment. ElevenLabs' latest generation models support up to 74 languages; real-time conversational models commonly used in live deployments support a focused subset. Contact us to discuss the right configuration for your firm.
+      </p>
+    </div>
+  );
+}
+
 function DifferentiatorGrid() {
   const items = [
     {
@@ -336,7 +395,7 @@ function DifferentiatorGrid() {
     {
       icon: Users,
       title: "Firm-Specific Voice",
-      desc: "Premium voice + tone customization for your brand",
+      desc: "Premium voice + tone customization for your brand, including multilingual configurations",
       accent: "border-purple-500/20 bg-purple-500/5",
       iconBg: "from-purple-500 to-pink-500",
     },
@@ -514,8 +573,17 @@ export default function MarketingHomePage() {
         </section>
       </SectionBackground>
 
-      {/* PACKAGES */}
+      {/* MULTILINGUAL */}
       <SectionBackground variant="muted" withMesh meshVariant="ocean">
+        <section className="py-20">
+          <div className="container mx-auto px-6">
+            <MultilingualSection />
+          </div>
+        </section>
+      </SectionBackground>
+
+      {/* PACKAGES */}
+      <SectionBackground variant="deep" withMesh meshVariant="steel">
         <section className="py-20">
           <div className="container mx-auto px-6">
             <div className="text-center mb-12">
@@ -598,6 +666,10 @@ export default function MarketingHomePage() {
                 {
                   q: "How does it integrate with my CRM?",
                   a: "Via webhooks. We support custom endpoints and are building direct integrations with Clio, MyCase, and LeadDocket.",
+                },
+                {
+                  q: "Can CaseCurrent handle calls in languages other than English?",
+                  a: "Yes — CaseCurrent can be configured for multilingual voice interactions using ElevenLabs' speech technology. Language availability depends on the model selected for your deployment. Contact us to discuss the right multilingual setup for your firm and client base.",
                 },
               ].map((faq, i) => (
                 <div key={i} className="border border-border rounded-xl overflow-hidden" data-testid={`faq-item-${i}`}>

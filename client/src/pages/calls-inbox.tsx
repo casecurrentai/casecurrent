@@ -401,6 +401,180 @@ function TranscriptPanel({
   );
 }
 
+// ─── Avery Insights Panel ────────────────────────────────────────────────────
+// Renders when structuredData.avery_extraction is present (ElevenLabs/Avery calls)
+
+const URGENCY_COLORS: Record<string, string> = {
+  critical: "bg-red-500/15 text-red-700 border-red-300",
+  high: "bg-orange-500/15 text-orange-700 border-orange-300",
+  medium: "bg-yellow-500/15 text-yellow-700 border-yellow-300",
+  low: "bg-muted text-muted-foreground border-border",
+};
+
+const MATTER_LABELS: Record<string, string> = {
+  personal_injury: "Personal Injury",
+  employment: "Employment",
+  family: "Family / Divorce",
+  criminal: "Criminal Defense",
+  immigration: "Immigration",
+  estate: "Estate / Probate",
+  real_estate: "Real Estate",
+  business: "Business",
+  bankruptcy: "Bankruptcy",
+  unknown: "General Inquiry",
+};
+
+const INTENT_LABELS: Record<string, string> = {
+  new_case: "New case inquiry",
+  existing_client: "Existing client",
+  general_inquiry: "General inquiry",
+  wrong_number: "Wrong number",
+  demo: "Demo / test",
+  unknown: "Unknown intent",
+};
+
+const EMOTIONAL_LABELS: Record<string, string> = {
+  calm: "Calm",
+  anxious: "Anxious",
+  distressed: "Distressed",
+  overwhelmed: "Overwhelmed",
+  angry: "Angry",
+  hopeful: "Hopeful",
+  confused: "Confused",
+  unknown: "Neutral",
+};
+
+function AveryInsightsPanel({
+  extraction,
+  summary,
+}: {
+  extraction: Record<string, unknown>;
+  summary: string | null;
+}) {
+  const matterType = extraction.matterType as string | undefined;
+  const callerIntent = extraction.callerIntent as string | undefined;
+  const urgencyLevel = extraction.urgencyLevel as string | undefined;
+  const emotionalState = extraction.emotionalState as string | undefined;
+  const confidenceScore = extraction.confidenceScore as number | undefined;
+  const riskFlags = extraction.riskFlags as string[] | undefined;
+  const transferRecommended = extraction.transferRecommended as boolean | undefined;
+  const missingFields = extraction.missingRequiredFields as string[] | undefined;
+  const intakeSummary = extraction.intakeSummary as string | undefined;
+  const slots = extraction.slots as Record<string, { value: unknown; confidence: number }> | undefined;
+
+  const displaySummary = summary || intakeSummary || null;
+  const urgencyColor = URGENCY_COLORS[urgencyLevel ?? "low"] ?? URGENCY_COLORS.low;
+
+  const slotRows = slots
+    ? Object.entries(slots)
+        .filter(([, s]) => s.value !== null && s.value !== undefined && s.value !== "")
+        .map(([key, s]) => ({ key, value: String(s.value) }))
+    : [];
+
+  return (
+    <div className="space-y-4">
+      {/* Header row: matter + urgency badge */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-medium">
+          {MATTER_LABELS[matterType ?? "unknown"] ?? matterType ?? "Unknown"}
+        </span>
+        <span className="text-muted-foreground text-xs">·</span>
+        <span className="text-xs text-muted-foreground">
+          {INTENT_LABELS[callerIntent ?? "unknown"] ?? callerIntent}
+        </span>
+        {urgencyLevel && urgencyLevel !== "low" && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${urgencyColor}`}>
+            {urgencyLevel.toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      {/* Summary */}
+      {displaySummary && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            What happened
+          </p>
+          <p className="text-sm leading-relaxed">{displaySummary}</p>
+        </div>
+      )}
+
+      {/* Caller signals */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+          Caller Signals
+        </p>
+        <div className="space-y-1">
+          {emotionalState && emotionalState !== "unknown" && (
+            <div className="flex gap-2 text-xs">
+              <span className="text-muted-foreground min-w-[110px]">Emotional state</span>
+              <span className="font-medium">{EMOTIONAL_LABELS[emotionalState] ?? emotionalState}</span>
+            </div>
+          )}
+          {confidenceScore !== undefined && (
+            <div className="flex gap-2 text-xs">
+              <span className="text-muted-foreground min-w-[110px]">Confidence</span>
+              <span className="font-medium">{Math.round(confidenceScore * 100)}%</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Extracted slots */}
+      {slotRows.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Extracted Info
+          </p>
+          <div className="space-y-1">
+            {slotRows.map(({ key, value }) => (
+              <div key={key} className="flex gap-2 text-xs">
+                <span className="text-muted-foreground min-w-[110px]">
+                  {key.replace(/_/g, " ")}
+                </span>
+                <span className="font-medium break-words">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Risk flags */}
+      {riskFlags && riskFlags.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Risk Flags
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {riskFlags.map((f) => (
+              <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-700 border border-red-200 font-medium">
+                {f.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+          {transferRecommended && (
+            <p className="text-[11px] text-orange-700 mt-1.5 font-medium">
+              Transfer to attorney recommended
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Missing required fields */}
+      {missingFields && missingFields.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Still Needed
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {missingFields.map((f) => f.replace(/_/g, " ")).join(", ")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── AI Summary panel ─────────────────────────────────────────────────────────
 
 function AiSummaryPanel({
@@ -410,6 +584,12 @@ function AiSummaryPanel({
   summary: string | null;
   structuredData: Record<string, unknown> | null;
 }) {
+  // Avery-enriched calls: render the structured extraction view
+  const averyExtraction = structuredData?.avery_extraction as Record<string, unknown> | undefined;
+  if (averyExtraction) {
+    return <AveryInsightsPanel extraction={averyExtraction} summary={summary} />;
+  }
+
   if (!summary && !structuredData) {
     return (
       <p className="text-sm text-muted-foreground italic">
