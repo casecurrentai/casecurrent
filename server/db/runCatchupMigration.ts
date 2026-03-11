@@ -11,20 +11,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import type { PrismaClient } from '../../apps/api/src/generated/prisma';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const MIGRATION_FILES = [
   path.resolve(
-    __dirname,
-    '../../apps/api/prisma/migrations/20260305000000_catchup_schema_drift/migration.sql',
+    process.cwd(),
+    'apps/api/prisma/migrations/20260305000000_catchup_schema_drift/migration.sql',
   ),
   path.resolve(
-    __dirname,
-    '../../apps/api/prisma/migrations/20260306000000_call_artifact_cache/migration.sql',
+    process.cwd(),
+    'apps/api/prisma/migrations/20260306000000_call_artifact_cache/migration.sql',
   ),
 ];
 
