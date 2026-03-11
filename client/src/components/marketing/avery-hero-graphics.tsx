@@ -177,15 +177,32 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Inner core circle — dynamic blue gradient */}
+        {/* Inner core circle — animated rotating gradient like ElevenLabs orb */}
         <defs>
-          <linearGradient id="avery-core-fill" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="50%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#2563eb" />
+          <linearGradient id="avery-core-fill" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#2563eb">
+              <animate attributeName="stop-color" values="#2563eb;#7c3aed;#06b6d4;#3b82f6;#2563eb" dur="6s" repeatCount="indefinite" />
+            </stop>
+            <stop offset="33%" stopColor="#6366f1">
+              <animate attributeName="stop-color" values="#6366f1;#2563eb;#8b5cf6;#06b6d4;#6366f1" dur="6s" repeatCount="indefinite" />
+            </stop>
+            <stop offset="66%" stopColor="#8b5cf6">
+              <animate attributeName="stop-color" values="#8b5cf6;#06b6d4;#3b82f6;#7c3aed;#8b5cf6" dur="6s" repeatCount="indefinite" />
+            </stop>
+            <stop offset="100%" stopColor="#06b6d4">
+              <animate attributeName="stop-color" values="#06b6d4;#3b82f6;#7c3aed;#2563eb;#06b6d4" dur="6s" repeatCount="indefinite" />
+            </stop>
+            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="8s" repeatCount="indefinite" />
           </linearGradient>
+          <radialGradient id="avery-core-sheen" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stopColor="white" stopOpacity="0.2">
+              <animate attributeName="stopOpacity" values="0.2;0.12;0.2" dur="3s" repeatCount="indefinite" />
+            </stop>
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </radialGradient>
         </defs>
         <circle cx="200" cy="200" r="76" fill="url(#avery-core-fill)" stroke="#818cf8" strokeOpacity="0.3" strokeWidth="1" />
+        <circle cx="200" cy="200" r="76" fill="url(#avery-core-sheen)" />
         {/* Core breathing ring */}
         <circle
           cx="200" cy="200" r="76"
