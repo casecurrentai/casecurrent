@@ -1,391 +1,425 @@
-/**
- * AveryWidget — multimodal floating AI widget
- *
- * Modes:
- *  - Voice: ElevenLabs Conversational AI (agent_7501kf4sbgf7f4ya75emf6x4rz1y).
- *  - Chat:  streams responses from POST /v1/chat/avery (OpenAI gpt-4o-mini).
- *
- * The Orb acts as the FAB (fixed bottom-right). Clicking it opens a panel
- * that slides up above it with Voice / Chat tabs.
- */
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useConversation } from "@elevenlabs/react";
-import { Orb } from "@/components/ui/orb";
+import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Send,
+  Mic,
+  MicOff,
+  PhoneOff,
+  X,
+  Loader2,
+  MessageCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { X, PhoneOff, Phone, Send, Loader2 } from "lucide-react";
+import { useElevenLabs, type ChatMessage } from "@/lib/elevenlabs-context";
+import { Button } from "@/components/ui/button";
 
-// ── Constants ────────────────────────────────────────────────────────────────
+/* ------------------------------------------------------------------ */
+/*  Collapsed FAB — Animated Orb                                      */
+/* ------------------------------------------------------------------ */
 
-const AGENT_ID = "agent_7501kf4sbgf7f4ya75emf6x4rz1y";
+function AveryFab({ onClick }: { onClick: () => void }) {
+  const { status, isSpeaking } = useElevenLabs();
+  const isConnected = status === "connected";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type Mode = "voice" | "chat";
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-const WELCOME_MESSAGE: ChatMessage = {
-  role: "assistant",
-  content: "Hi! I'm Avery. I can answer questions about your case, or click Voice to talk with me directly. What can I help you with?",
-};
-
-// ── Voice hook ────────────────────────────────────────────────────────────────
-
-function useAveryVoice() {
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const conversation = useConversation({
-    onError: (error) => {
-      setErrorMsg(typeof error === "string" ? error : "Voice call error. Please try again.");
-    },
-  });
-
-  const startCall = useCallback(async () => {
-    setErrorMsg(null);
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      await conversation.startSession({ agentId: AGENT_ID, connectionType: "webrtc" });
-    } catch (err: any) {
-      setErrorMsg(err?.message ?? "Could not access microphone");
-    }
-  }, [conversation]);
-
-  const endCall = useCallback(async () => {
-    await conversation.endSession();
-  }, [conversation]);
-
-  return {
-    status: conversation.status as "disconnected" | "connecting" | "connected",
-    isSpeaking: conversation.isSpeaking,
-    errorMsg,
-    startCall,
-    endCall,
-  };
-}
-
-// ── Chat hook ────────────────────────────────────────────────────────────────
-
-function useAveryChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-
-    const userMsg: ChatMessage = { role: "user", content: text };
-    const history = [...messages, userMsg];
-    setMessages(history);
-    setInput("");
-    setIsStreaming(true);
-
-    // Optimistically add empty assistant message
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-    try {
-      const res = await fetch("/v1/chat/avery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      // Handle both streaming SSE and plain JSON fallback
-      const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.includes("text/event-stream")) {
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const raw = decoder.decode(value, { stream: true });
-          const lines = raw.split("\n").filter((l) => l.startsWith("data: "));
-          for (const line of lines) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-            try {
-              const { text: chunk } = JSON.parse(data);
-              accumulated += chunk;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: "assistant", content: accumulated };
-                return updated;
-              });
-            } catch {}
-          }
-        }
-      } else {
-        const json = await res.json();
-        const msg = json.message ?? "Sorry, I couldn't process that. Please try again.";
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: msg };
-          return updated;
-        });
-      }
-    } catch {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "assistant",
-          content: "I'm having trouble connecting right now. Please try the voice button or call us directly.",
-        };
-        return updated;
-      });
-    } finally {
-      setIsStreaming(false);
-    }
-  }, [input, messages, isStreaming]);
-
-  return { messages, input, setInput, isStreaming, send };
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function ModeTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
+        "group relative flex flex-col items-center gap-1.5",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 focus-visible:ring-offset-2 rounded-full",
       )}
+      aria-label="Open Avery chat"
     >
-      {children}
+      {/* Pulse rings */}
+      <span
+        className={cn(
+          "absolute inset-[-8px] rounded-full transition-all duration-300",
+          isConnected
+            ? "bg-emerald-500/15"
+            : "bg-blue-500/10 animate-[orb-ping_2.5s_ease-in-out_infinite]",
+        )}
+      />
+      <span
+        className={cn(
+          "absolute inset-[-16px] rounded-full transition-all duration-500",
+          isConnected
+            ? "bg-emerald-500/8"
+            : "bg-blue-400/6 animate-[orb-ping_2.5s_ease-in-out_0.4s_infinite]",
+        )}
+      />
+
+      {/* Rotating gradient halo */}
+      <span
+        className={cn(
+          "absolute inset-[-3px] rounded-full opacity-0 transition-opacity duration-500",
+          "bg-[conic-gradient(from_0deg,#2563eb,#06b6d4,#3b82f6,#8b5cf6,#2563eb)]",
+          "animate-[orb-spin_4s_linear_infinite]",
+          "group-hover:opacity-100",
+          isConnected &&
+            "opacity-100 bg-[conic-gradient(from_0deg,#10b981,#06b6d4,#10b981,#3b82f6,#10b981)]",
+        )}
+      />
+
+      {/* Main orb body */}
+      <span
+        className={cn(
+          "relative flex items-center justify-center",
+          "w-14 h-14 rounded-full",
+          "shadow-lg transition-all duration-300",
+          isConnected
+            ? "bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-500 shadow-emerald-500/40"
+            : "bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-500 shadow-blue-500/40",
+          "group-hover:shadow-xl group-hover:scale-105",
+        )}
+      >
+        {/* Shimmer */}
+        <span className="absolute inset-0 rounded-full overflow-hidden animate-[orb-shimmer_3s_ease-in-out_infinite]">
+          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent translate-x-[-100%] animate-[inherit]" />
+        </span>
+
+        {/* Icon */}
+        <MessageCircle className="relative z-10 h-6 w-6 text-white drop-shadow-sm" />
+      </span>
+
+      {/* Label */}
+      <span
+        className={cn(
+          "text-[11px] font-semibold tracking-wide uppercase",
+          isConnected
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-blue-600 dark:text-blue-400",
+        )}
+      >
+        Avery
+      </span>
     </button>
   );
 }
 
-function VoicePanel({
-  status,
-  isSpeaking,
-  errorMsg,
-  startCall,
-  endCall,
-}: ReturnType<typeof useAveryVoice>) {
-  const isActive = status === "connected";
-  const isConnecting = status === "connecting";
-  const isBusy = isConnecting;
+/* ------------------------------------------------------------------ */
+/*  Chat message bubble                                               */
+/* ------------------------------------------------------------------ */
 
+function ChatBubble({ message }: { message: ChatMessage }) {
+  const isUser = message.role === "user";
   return (
-    <div className="flex flex-col items-center gap-4 py-6 px-4">
-      {/* Status */}
-      <p className={cn(
-        "text-sm font-medium transition-colors",
-        isActive
-          ? isSpeaking ? "text-blue-500" : "text-emerald-500"
-          : isConnecting ? "text-blue-500"
-          : "text-muted-foreground",
-      )}>
-        {isConnecting
-          ? "Connecting…"
-          : isActive
-          ? isSpeaking ? "Avery is speaking…" : "Listening…"
-          : "Ready to talk"}
-      </p>
-
-      {/* Start / end call */}
-      <button
-        disabled={isBusy}
-        onClick={isActive ? endCall : startCall}
+    <div
+      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+    >
+      <div
         className={cn(
-          "flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all",
-          isActive
-            ? "bg-red-500 hover:bg-red-600 text-white"
-            : "bg-primary hover:bg-primary/90 text-primary-foreground",
-          isBusy && "opacity-60 cursor-wait",
+          "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+          isUser
+            ? "bg-blue-600 text-white rounded-br-md"
+            : "bg-muted text-foreground rounded-bl-md",
         )}
-        data-testid="button-avery-voice-toggle"
       >
-        {isBusy ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isActive ? (
-          <PhoneOff className="h-4 w-4" />
-        ) : (
-          <Phone className="h-4 w-4" />
-        )}
-        {isConnecting ? "Connecting…" : isActive ? "End call" : "Start voice call"}
-      </button>
-
-      {errorMsg && (
-        <p className="text-xs text-destructive text-center max-w-[220px]" data-testid="text-avery-error">
-          {errorMsg}
-        </p>
-      )}
+        {message.content}
+      </div>
     </div>
   );
 }
 
-function ChatPanel({ messages, input, setInput, isStreaming, send }: ReturnType<typeof useAveryChat>) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+/* ------------------------------------------------------------------ */
+/*  Empty state                                                       */
+/* ------------------------------------------------------------------ */
 
+function ChatEmptyState() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/30">
+        <MessageCircle className="h-6 w-6 text-white" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          Start a conversation
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Type a message or tap the mic to talk
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mini orb for header                                               */
+/* ------------------------------------------------------------------ */
+
+function MiniOrb({ active }: { active: boolean }) {
+  return (
+    <div
+      className={cn(
+        "relative h-9 w-9 rounded-full flex-shrink-0",
+        "bg-gradient-to-br shadow-md transition-all duration-300",
+        active
+          ? "from-emerald-500 via-teal-600 to-cyan-500 shadow-emerald-500/30"
+          : "from-blue-500 via-blue-600 to-cyan-500 shadow-blue-500/30",
+      )}
+    >
+      <span className="absolute inset-0 rounded-full overflow-hidden animate-[orb-shimmer_3s_ease-in-out_infinite]">
+        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] animate-[inherit]" />
+      </span>
+      <span className="absolute inset-0 flex items-center justify-center">
+        <MessageCircle className="h-4 w-4 text-white" />
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Expanded chat panel                                               */
+/* ------------------------------------------------------------------ */
+
+function AveryChatPanel({ onClose }: { onClose: () => void }) {
+  const {
+    status,
+    messages,
+    isSpeaking,
+    errorMsg,
+    connect,
+    disconnect,
+    sendMessage,
+  } = useElevenLabs();
+
+  const [textInput, setTextInput] = useState("");
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const isConnected = status === "connected";
+  const isConnecting = status === "connecting";
+  const isTransitioning = isConnecting || status === "disconnecting";
+
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages]);
 
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0">
-        {messages.map((msg, i) => (
-          <div key={i} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
-            <div
-              className={cn(
-                "max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-foreground",
-              )}
-            >
-              {msg.content || (
-                <span className="flex gap-1 items-center h-4">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "300ms" }} />
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input */}
-      <div className="flex items-center gap-2 border-t border-border px-3 py-2.5">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="Ask Avery anything…"
-          disabled={isStreaming}
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
-          data-testid="input-avery-chat"
-        />
-        <button
-          onClick={send}
-          disabled={!input.trim() || isStreaming}
-          className="flex-shrink-0 p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 transition-opacity hover:opacity-90"
-          data-testid="button-avery-chat-send"
-        >
-          {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Main export ───────────────────────────────────────────────────────────────
-
-export function AveryWidget() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState<Mode>("chat");
-
-  const voice = useAveryVoice();
-  const chat = useAveryChat();
-
-  // Auto-open panel when a call starts; switch to voice tab
+  // Focus input when panel opens
   useEffect(() => {
-    if (voice.status === "connecting" || voice.status === "connected") {
-      setIsOpen(true);
-      setMode("voice");
-    }
-  }, [voice.status]);
+    const t = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []);
 
-  // Derive orb agentState from ElevenLabs call status
-  const orbAgentState: "thinking" | "listening" | "talking" | null =
-    voice.status === "connecting" ? "thinking"
-    : voice.status === "connected" ? (voice.isSpeaking ? "talking" : "listening")
-    : null;
+  const handleSendText = useCallback(() => {
+    if (!textInput.trim() || isTransitioning) return;
+    sendMessage(textInput.trim());
+    setTextInput("");
+  }, [textInput, isTransitioning, sendMessage]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSendText();
+      }
+    },
+    [handleSendText],
+  );
+
+  const handleVoiceToggle = useCallback(async () => {
+    if (isVoiceMode && isConnected) {
+      // End voice session
+      disconnect();
+      setIsVoiceMode(false);
+    } else if (!isVoiceMode) {
+      // Start voice session
+      setIsVoiceMode(true);
+      await connect(false); // WebRTC
+    }
+  }, [isVoiceMode, isConnected, connect, disconnect]);
+
+  const handleEndCall = useCallback(() => {
+    disconnect();
+    setIsVoiceMode(false);
+  }, [disconnect]);
 
   return (
-    <>
-      {/* Expandable panel */}
-      {isOpen && (
-        <div
-          className="fixed bottom-24 right-6 z-50 w-80 rounded-2xl border border-border bg-background shadow-2xl flex flex-col overflow-hidden"
-          style={{ maxHeight: "min(480px, calc(100dvh - 120px))" }}
-          data-testid="panel-avery-widget"
-        >
-          {/* Header */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-sm font-semibold text-foreground flex-1">Avery</span>
-            {/* Mode tabs */}
-            <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
-              <ModeTab active={mode === "voice"} onClick={() => setMode("voice")}>
-                🎙 Voice
-              </ModeTab>
-              <ModeTab active={mode === "chat"} onClick={() => setMode("chat")}>
-                💬 Chat
-              </ModeTab>
-            </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="ml-1 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              aria-label="Close"
-              data-testid="button-avery-close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Panel body */}
-          <div className={cn("flex-1 min-h-0", mode === "chat" ? "flex flex-col" : "")}>
-            {mode === "voice" ? (
-              <VoicePanel {...voice} />
+    <div
+      className={cn(
+        "flex flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl",
+        "w-[370px] h-[460px]",
+        "animate-[widget-expand_0.25s_ease-out_forwards]",
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b px-4 py-3">
+        <MiniOrb active={isConnected} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold leading-none">Avery</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {isConnecting ? (
+              <span className="text-xs text-muted-foreground animate-pulse">
+                Connecting...
+              </span>
+            ) : isConnected ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  {isVoiceMode
+                    ? isSpeaking
+                      ? "Speaking"
+                      : "Listening"
+                    : "Connected"}
+                </span>
+              </>
             ) : (
-              <ChatPanel {...chat} />
+              <span className="text-xs text-muted-foreground">
+                AI Intake Agent
+              </span>
             )}
           </div>
         </div>
+
+        {/* End call button (voice mode) */}
+        {isVoiceMode && isConnected && (
+          <Button
+            size="icon"
+            variant="destructive"
+            className="h-8 w-8 rounded-full"
+            onClick={handleEndCall}
+          >
+            <PhoneOff className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          aria-label="Close chat"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Conversation body */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <ChatEmptyState />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5 p-4">
+            {messages.map((msg, i) => (
+              <ChatBubble key={i} message={msg} />
+            ))}
+
+            {/* Typing indicator when waiting for response */}
+            {isConnected &&
+              messages.length > 0 &&
+              messages[messages.length - 1].role === "user" && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-2.5">
+                    <div className="flex gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+          </div>
+        )}
+      </div>
+
+      {/* Error message */}
+      {errorMsg && (
+        <div className="mx-4 mb-2 rounded-lg bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+          {errorMsg}
+        </div>
       )}
 
-      {/* Orb FAB */}
-      <button
-        onClick={() => setIsOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
-        aria-label={isOpen ? "Close Avery" : "Chat with Avery"}
-        data-testid="button-avery-orb"
-      >
-        <Orb
-          agentState={orbAgentState}
-          className="w-full h-full"
-        />
-      </button>
+      {/* Footer */}
+      <div className="border-t px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isVoiceMode && isConnected
+                ? "Voice mode active..."
+                : "Type a message..."
+            }
+            disabled={isTransitioning || (isVoiceMode && isConnected)}
+            className={cn(
+              "flex-1 h-9 rounded-lg border bg-background px-3 text-sm",
+              "placeholder:text-muted-foreground",
+              "focus:outline-none focus:ring-1 focus:ring-blue-400",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+            )}
+          />
 
-      {/* Label — only when panel is closed */}
-      {!isOpen && (
-        <span className="fixed bottom-[5.25rem] right-6 z-50 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground text-center w-16 pointer-events-none">
-          Ask Avery
-        </span>
+          {/* Send button */}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-9 w-9 rounded-full shrink-0"
+            onClick={handleSendText}
+            disabled={
+              !textInput.trim() ||
+              isTransitioning ||
+              (isVoiceMode && isConnected)
+            }
+          >
+            <Send className="h-4 w-4" />
+            <span className="sr-only">Send message</span>
+          </Button>
+
+          {/* Voice toggle */}
+          <Button
+            size="icon"
+            variant={isVoiceMode && isConnected ? "secondary" : "ghost"}
+            className={cn(
+              "h-9 w-9 rounded-full shrink-0 transition-all",
+              isVoiceMode &&
+                isConnected &&
+                "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900",
+            )}
+            onClick={handleVoiceToggle}
+            disabled={isTransitioning}
+          >
+            {isConnecting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isVoiceMode && isConnected ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            <span className="sr-only">
+              {isVoiceMode && isConnected
+                ? "End voice call"
+                : "Start voice call"}
+            </span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Root widget — toggles between FAB and chat panel                  */
+/* ------------------------------------------------------------------ */
+
+export function AveryWidget() {
+  const [expanded, setExpanded] = useState(false);
+  const { enabled } = useElevenLabs();
+
+  if (!enabled) return null;
+
+  return (
+    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+      {expanded ? (
+        <AveryChatPanel onClose={() => setExpanded(false)} />
+      ) : (
+        <AveryFab onClick={() => setExpanded(true)} />
       )}
-    </>
+    </div>
   );
 }
