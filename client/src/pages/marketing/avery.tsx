@@ -1,8 +1,10 @@
+import { Link } from "wouter";
 import { PageShell } from "@/components/marketing/page-shell";
 import { Hero } from "@/components/marketing/hero";
 import { SectionBackground } from "@/components/marketing/section-frame";
 import { DotGridPattern } from "@/components/marketing/guilloche-pattern";
 import { GradientOrb, DecorativeScatter, GradientText, PulseBeacon } from "@/components/marketing/decorative-visuals";
+import { AveryIntelligenceEmblem, AveryAnalysisPanel } from "@/components/marketing/avery-hero-graphics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -273,32 +275,11 @@ export default function AveryPage() {
         primaryCta={{ label: "Book a Demo", href: "/demo" }}
         secondaryCta={{ label: "Talk to Avery (Demo Call)", href: "/demo" }}
       >
-        <div className="relative">
-          <GradientOrb color="primary" size="md" className="absolute -top-10 -right-10 pointer-events-none" />
-          <div className="relative">
-            <div className="absolute -inset-2 bg-gradient-to-br from-primary/10 via-blue-500/5 to-purple-500/10 rounded-3xl blur-xl" aria-hidden="true" />
-            <div className="relative bg-card/90 backdrop-blur-sm border border-border/50 rounded-2xl shadow-2xl p-5 space-y-3">
-              {[
-                { label: "Inbound Call", sub: "Avery answering...", gradient: "from-blue-500 to-indigo-500", bg: "bg-blue-500/10" },
-                { label: "Qualification", sub: "Score: 92/100", gradient: "from-indigo-500 to-purple-500", bg: "bg-indigo-500/10" },
-                { label: "Summary Delivered", sub: "Lead flagged — high priority", gradient: "from-emerald-500 to-teal-500", bg: "bg-emerald-500/10" },
-              ].map((item, i) => (
-                <div key={i} className={`flex items-center gap-3 p-3 ${item.bg} rounded-xl border border-border/30`}>
-                  <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${item.gradient} flex items-center justify-center shadow-md`}>
-                    {i === 0 && <Phone className="w-5 h-5 text-white" />}
-                    {i === 1 && <Brain className="w-5 h-5 text-white" />}
-                    {i === 2 && <CheckCircle className="w-5 h-5 text-white" />}
-                  </div>
-                  <div>
-                    <div className="font-medium text-sm">{item.label}</div>
-                    <div className="text-xs text-muted-foreground">{item.sub}</div>
-                  </div>
-                  {i < 2 && <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto" />}
-                  {i === 2 && <CheckCircle className="w-5 h-5 text-emerald-500 ml-auto" />}
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="flex flex-col items-center gap-6">
+          {/* Graphic 1 — Intelligence Emblem */}
+          <AveryIntelligenceEmblem />
+          {/* Graphic 2 — Analysis Panel */}
+          <AveryAnalysisPanel />
         </div>
       </Hero>
 
