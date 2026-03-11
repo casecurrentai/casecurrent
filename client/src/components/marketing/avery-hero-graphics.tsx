@@ -75,6 +75,17 @@ export function AveryIntelligenceEmblem() {
             <stop offset="50%" stopColor="#6366f1" stopOpacity="0.08" />
             <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
           </radialGradient>
+          <radialGradient id="avery-core-fill" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.95" />
+            <stop offset="35%" stopColor="#6366f1" stopOpacity="0.90" />
+            <stop offset="70%" stopColor="#4f46e5" stopOpacity="0.92" />
+            <stop offset="100%" stopColor="#3730a3" stopOpacity="0.95" />
+          </radialGradient>
+          <radialGradient id="avery-core-highlight" cx="30%" cy="25%" r="50%">
+            <stop offset="0%" stopColor="#c7d2fe" stopOpacity="0.5" />
+            <stop offset="60%" stopColor="#818cf8" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          </radialGradient>
           <filter id="avery-glow-sm">
             <feGaussianBlur stdDeviation="1.5" />
           </filter>
@@ -177,29 +188,31 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Inner core circle */}
-        <circle cx="200" cy="200" r="76" fill="white" fillOpacity="0.95" stroke="#6366f1" strokeOpacity="0.12" strokeWidth="1" />
+        {/* Inner core circle — dynamic blue gradient */}
+        <circle cx="200" cy="200" r="76" fill="url(#avery-core-fill)" stroke="#818cf8" strokeOpacity="0.3" strokeWidth="1" />
+        {/* Specular highlight for depth */}
+        <circle cx="200" cy="200" r="76" fill="url(#avery-core-highlight)" />
         {/* Core breathing ring */}
         <circle
           cx="200" cy="200" r="76"
           fill="none"
-          stroke="#6366f1"
-          strokeOpacity="0.1"
+          stroke="#818cf8"
+          strokeOpacity="0.25"
           strokeWidth="4"
           className="animate-avery-pulse-ring"
           style={{ transformOrigin: "200px 200px" }}
         />
         {/* Inner accent ring */}
-        <circle cx="200" cy="200" r="68" fill="none" stroke="#6366f1" strokeOpacity="0.06" strokeWidth="0.5" />
+        <circle cx="200" cy="200" r="68" fill="none" stroke="#c7d2fe" strokeOpacity="0.12" strokeWidth="0.5" />
       </svg>
 
       {/* Central "A" — HTML for crisp rendering */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative">
-          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 bg-clip-text text-transparent select-none leading-none tracking-tight">
+          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold text-white select-none leading-none tracking-tight drop-shadow-[0_2px_8px_rgba(99,102,241,0.5)]">
             A
           </span>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-gradient-to-r from-indigo-500/70 to-blue-500/70" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-gradient-to-r from-white/60 to-indigo-200/50" />
         </div>
       </div>
 
