@@ -177,48 +177,78 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Inner core circle — animated rotating gradient like ElevenLabs orb */}
+        {/* ElevenLabs-style fluid orb — dark base + drifting blobs */}
         <defs>
-          <linearGradient id="avery-core-fill" x1="0" y1="200" x2="400" y2="200" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#0a0a1a" />
-            <stop offset="45%" stopColor="#0a0a1a" />
-            <stop offset="50%" stopColor="#4f46e5">
-              <animate attributeName="stop-color" values="#4f46e5;#e11d48;#0ea5e9;#16a34a;#d97706;#4f46e5" dur="2.5s" repeatCount="indefinite" />
-            </stop>
-            <stop offset="55%" stopColor="#0a0a1a" />
-            <stop offset="100%" stopColor="#0a0a1a" />
-            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="2.5s" repeatCount="indefinite" />
-          </linearGradient>
-          <radialGradient id="avery-core-sheen" cx="35%" cy="30%" r="60%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.18">
-              <animate attributeName="stopOpacity" values="0.18;0.08;0.18" dur="3s" repeatCount="indefinite" />
-            </stop>
+          {/* Clip everything to the circle */}
+          <clipPath id="avery-orb-clip">
+            <circle cx="200" cy="200" r="75" />
+          </clipPath>
+          {/* Blob blur filter */}
+          <filter id="avery-blob-blur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="18" />
+          </filter>
+          {/* Sheen gradient */}
+          <radialGradient id="avery-orb-sheen" cx="38%" cy="28%" r="55%">
+            <stop offset="0%" stopColor="white" stopOpacity="0.22" />
             <stop offset="100%" stopColor="white" stopOpacity="0" />
           </radialGradient>
         </defs>
-        <circle cx="200" cy="200" r="76" fill="url(#avery-core-fill)" stroke="#818cf8" strokeOpacity="0.3" strokeWidth="1" />
-        <circle cx="200" cy="200" r="76" fill="url(#avery-core-sheen)" />
+
+        {/* Dark base */}
+        <circle cx="200" cy="200" r="75" fill="#060612" />
+
+        {/* Blobs clipped to circle */}
+        <g clipPath="url(#avery-orb-clip)" filter="url(#avery-blob-blur)">
+          {/* Blob 1 — cyan, large, slow */}
+          <circle r="58" fill="#0891b2" opacity="0.9">
+            <animate attributeName="cx" values="170;230;195;155;200;170" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="210;185;245;200;165;210" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Blob 2 — indigo/violet, medium */}
+          <circle r="52" fill="#6d28d9" opacity="0.85">
+            <animate attributeName="cx" values="225;165;240;200;175;225" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="175;220;200;235;190;175" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Blob 3 — blue, smaller, faster */}
+          <circle r="40" fill="#2563eb" opacity="0.8">
+            <animate attributeName="cx" values="200;240;180;215;160;200" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="195;215;175;200;225;195" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Blob 4 — teal accent, smallest */}
+          <circle r="30" fill="#0d9488" opacity="0.75">
+            <animate attributeName="cx" values="185;210;165;230;200;185" dur="6.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="220;170;205;185;240;220" dur="6.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+        </g>
+
+        {/* Glassy sheen overlay */}
+        <circle cx="200" cy="200" r="75" fill="url(#avery-orb-sheen)" />
+        {/* Border ring */}
+        <circle cx="200" cy="200" r="75" fill="none" stroke="#818cf8" strokeOpacity="0.25" strokeWidth="1" />
         {/* Core breathing ring */}
         <circle
-          cx="200" cy="200" r="76"
+          cx="200" cy="200" r="75"
           fill="none"
           stroke="#6366f1"
-          strokeOpacity="0.1"
-          strokeWidth="4"
+          strokeOpacity="0.12"
+          strokeWidth="3"
           className="animate-avery-pulse-ring"
           style={{ transformOrigin: "200px 200px" }}
         />
         {/* Inner accent ring */}
-        <circle cx="200" cy="200" r="68" fill="none" stroke="#6366f1" strokeOpacity="0.06" strokeWidth="0.5" />
+        <circle cx="200" cy="200" r="67" fill="none" stroke="#818cf8" strokeOpacity="0.08" strokeWidth="0.5" />
       </svg>
 
-      {/* Central "A" — HTML for crisp rendering */}
+      {/* Central "A" — Oxanium font for AI/tech aesthetic */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative">
-          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold text-white select-none leading-none tracking-tight drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]">
+          <span
+            className="text-[3.2rem] lg:text-[3.8rem] text-white select-none leading-none tracking-widest drop-shadow-[0_0_16px_rgba(255,255,255,0.5)]"
+            style={{ fontFamily: "'Oxanium', sans-serif", fontWeight: 800 }}
+          >
             A
           </span>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded-full bg-white/80 shadow-[0_0_10px_rgba(255,255,255,0.6)]" />
         </div>
       </div>
 
