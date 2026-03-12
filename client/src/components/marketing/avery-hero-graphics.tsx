@@ -177,52 +177,69 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Rotating gradient orb — pumped-up colours, fast spin */}
+        {/* ElevenLabs-style flowing orb — vivid contrasting blobs */}
         <defs>
-          <linearGradient id="avery-core-fill" x1="0" y1="200" x2="400" y2="200" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#0a0a1a" />
-            <stop offset="40%" stopColor="#0a0a1a" />
-            <stop offset="50%" stopColor="#1d4ed8">
-              <animate
-                attributeName="stop-color"
-                values="#1d4ed8;#9333ea;#0891b2;#dc2626;#f59e0b;#1d4ed8"
-                dur="5s"
-                repeatCount="indefinite"
-              />
-            </stop>
-            <stop offset="60%" stopColor="#0a0a1a" />
-            <stop offset="100%" stopColor="#0a0a1a" />
-            <animateTransform
-              attributeName="gradientTransform"
-              type="rotate"
-              from="0 200 200"
-              to="360 200 200"
-              dur="4s"
-              repeatCount="indefinite"
-            />
-          </linearGradient>
-          <radialGradient id="avery-core-sheen" cx="35%" cy="30%" r="60%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.18">
-              <animate attributeName="stopOpacity" values="0.18;0.08;0.18" dur="3s" repeatCount="indefinite" />
+          <clipPath id="avery-orb-clip">
+            <circle cx="200" cy="200" r="75" />
+          </clipPath>
+          <filter id="avery-blob-blur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="16" />
+          </filter>
+          <radialGradient id="avery-orb-sheen" cx="35%" cy="28%" r="55%">
+            <stop offset="0%" stopColor="white" stopOpacity="0.20">
+              <animate attributeName="stopOpacity" values="0.20;0.09;0.20" dur="3s" repeatCount="indefinite" />
             </stop>
             <stop offset="100%" stopColor="white" stopOpacity="0" />
           </radialGradient>
         </defs>
 
-        <circle cx="200" cy="200" r="76" fill="url(#avery-core-fill)" stroke="#818cf8" strokeOpacity="0.3" strokeWidth="1" />
-        <circle cx="200" cy="200" r="76" fill="url(#avery-core-sheen)" />
-        {/* Core breathing ring */}
+        {/* Near-black base */}
+        <circle cx="200" cy="200" r="75" fill="#080810" />
+
+        {/* Flowing colour blobs — pumped-up vivid palette */}
+        <g clipPath="url(#avery-orb-clip)" filter="url(#avery-blob-blur)">
+          {/* Deep blue — large, slow */}
+          <circle r="60" fill="#1d4ed8" opacity="0.95">
+            <animate attributeName="cx" values="175;228;188;152;215;175" dur="8s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="208;178;248;205;162;208" dur="8s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Rich purple — medium */}
+          <circle r="50" fill="#9333ea" opacity="0.92">
+            <animate attributeName="cx" values="222;162;242;198;170;222" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="172;225;198;240;190;172" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Bold teal — medium, different rhythm */}
+          <circle r="44" fill="#0891b2" opacity="0.88">
+            <animate attributeName="cx" values="198;242;175;220;158;198" dur="5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="192;218;170;200;230;192" dur="5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Vivid red — smaller, faster */}
+          <circle r="34" fill="#dc2626" opacity="0.82">
+            <animate attributeName="cx" values="185;215;165;232;200;185" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="222;168;210;185;245;222" dur="4s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+          {/* Amber — smallest, fastest, creates warm accents */}
+          <circle r="26" fill="#f59e0b" opacity="0.78">
+            <animate attributeName="cx" values="210;178;228;162;205;210" dur="3.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="178;215;195;228;162;178" dur="3.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          </circle>
+        </g>
+
+        {/* Glassy sheen */}
+        <circle cx="200" cy="200" r="75" fill="url(#avery-orb-sheen)" />
+        {/* Border */}
+        <circle cx="200" cy="200" r="75" fill="none" stroke="#818cf8" strokeOpacity="0.25" strokeWidth="1" />
+        {/* Breathing ring */}
         <circle
-          cx="200" cy="200" r="76"
+          cx="200" cy="200" r="75"
           fill="none"
           stroke="#6366f1"
-          strokeOpacity="0.1"
-          strokeWidth="4"
+          strokeOpacity="0.10"
+          strokeWidth="3"
           className="animate-avery-pulse-ring"
           style={{ transformOrigin: "200px 200px" }}
         />
-        {/* Inner accent ring */}
-        <circle cx="200" cy="200" r="68" fill="none" stroke="#6366f1" strokeOpacity="0.06" strokeWidth="0.5" />
+        <circle cx="200" cy="200" r="67" fill="none" stroke="#6366f1" strokeOpacity="0.06" strokeWidth="0.5" />
       </svg>
 
       {/* Central "A" */}
