@@ -177,80 +177,118 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* ElevenLabs-style fluid orb — dark base + drifting blobs */}
+        {/* Sparkling gem orb — purple/violet with shimmer */}
         <defs>
-          {/* Clip everything to the circle */}
           <clipPath id="avery-orb-clip">
             <circle cx="200" cy="200" r="75" />
           </clipPath>
-          {/* Blob blur filter */}
           <filter id="avery-blob-blur" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="18" />
+            <feGaussianBlur stdDeviation="17" />
           </filter>
-          {/* Sheen gradient */}
-          <radialGradient id="avery-orb-sheen" cx="38%" cy="28%" r="55%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.22" />
+          <filter id="avery-sparkle-glow" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="avery-a-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="avery-orb-sheen" cx="34%" cy="24%" r="52%">
+            <stop offset="0%" stopColor="white" stopOpacity="0.38" />
+            <stop offset="55%" stopColor="white" stopOpacity="0.06" />
             <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="avery-orb-depth" cx="55%" cy="88%" r="50%">
+            <stop offset="0%" stopColor="#1a0535" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#1a0535" stopOpacity="0" />
           </radialGradient>
         </defs>
 
-        {/* Dark base */}
-        <circle cx="200" cy="200" r="75" fill="#060612" />
+        {/* Deep purple base */}
+        <circle cx="200" cy="200" r="75" fill="#0e0520" />
 
-        {/* Blobs clipped to circle */}
+        {/* Drifting colour blobs — vivid purple/violet/cyan */}
         <g clipPath="url(#avery-orb-clip)" filter="url(#avery-blob-blur)">
-          {/* Blob 1 — cyan, large, slow */}
-          <circle r="58" fill="#0891b2" opacity="0.9">
-            <animate attributeName="cx" values="170;230;195;155;200;170" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
-            <animate attributeName="cy" values="210;185;245;200;165;210" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          <circle r="64" fill="#7c3aed" opacity="0.95">
+            <animate attributeName="cx" values="185;225;190;160;210;185" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="205;180;235;200;170;205" dur="9s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
           </circle>
-          {/* Blob 2 — indigo/violet, medium */}
-          <circle r="52" fill="#6d28d9" opacity="0.85">
-            <animate attributeName="cx" values="225;165;240;200;175;225" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
-            <animate attributeName="cy" values="175;220;200;235;190;175" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          <circle r="50" fill="#a855f7" opacity="0.9">
+            <animate attributeName="cx" values="220;168;238;200;172;220" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="178;222;195;238;195;178" dur="7s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
           </circle>
-          {/* Blob 3 — blue, smaller, faster */}
-          <circle r="40" fill="#2563eb" opacity="0.8">
-            <animate attributeName="cx" values="200;240;180;215;160;200" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
-            <animate attributeName="cy" values="195;215;175;200;225;195" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          <circle r="40" fill="#4f46e5" opacity="0.8">
+            <animate attributeName="cx" values="195;238;178;215;162;195" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="195;212;174;205;228;195" dur="5.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
           </circle>
-          {/* Blob 4 — teal accent, smallest */}
-          <circle r="30" fill="#0d9488" opacity="0.75">
-            <animate attributeName="cx" values="185;210;165;230;200;185" dur="6.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
-            <animate attributeName="cy" values="220;170;205;185;240;220" dur="6.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+          <circle r="28" fill="#22d3ee" opacity="0.65">
+            <animate attributeName="cx" values="190;218;168;228;200;190" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
+            <animate attributeName="cy" values="218;172;212;188;242;218" dur="6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" />
           </circle>
         </g>
 
-        {/* Glassy sheen overlay */}
+        {/* Sparkle particles — white */}
+        <g clipPath="url(#avery-orb-clip)" filter="url(#avery-sparkle-glow)">
+          <circle cx="168" cy="183" r="1.5" fill="white"><animate attributeName="opacity" values="0;1;0.2;1;0" dur="2.1s" begin="0s" repeatCount="indefinite"/></circle>
+          <circle cx="225" cy="175" r="1.2" fill="white"><animate attributeName="opacity" values="0;1;0.3;0" dur="1.8s" begin="-0.4s" repeatCount="indefinite"/></circle>
+          <circle cx="240" cy="200" r="1.8" fill="white"><animate attributeName="opacity" values="0;0.9;0;1;0" dur="2.5s" begin="-1.2s" repeatCount="indefinite"/></circle>
+          <circle cx="230" cy="222" r="1.3" fill="white"><animate attributeName="opacity" values="0;1;0.1;0" dur="1.6s" begin="-0.7s" repeatCount="indefinite"/></circle>
+          <circle cx="215" cy="240" r="1.5" fill="white"><animate attributeName="opacity" values="0;0.8;0.2;1;0" dur="2.2s" begin="-1.8s" repeatCount="indefinite"/></circle>
+          <circle cx="183" cy="243" r="1.0" fill="white"><animate attributeName="opacity" values="0;1;0;0.6;0" dur="1.9s" begin="-0.3s" repeatCount="indefinite"/></circle>
+          <circle cx="163" cy="230" r="1.6" fill="white"><animate attributeName="opacity" values="0;0.9;0.3;0" dur="2.4s" begin="-1.5s" repeatCount="indefinite"/></circle>
+          <circle cx="158" cy="207" r="1.2" fill="white"><animate attributeName="opacity" values="0;1;0.2;1;0" dur="1.7s" begin="-0.9s" repeatCount="indefinite"/></circle>
+          <circle cx="175" cy="163" r="1.4" fill="white"><animate attributeName="opacity" values="0;0.8;0;1;0" dur="2.0s" begin="-2.1s" repeatCount="indefinite"/></circle>
+          <circle cx="200" cy="158" r="1.8" fill="white"><animate attributeName="opacity" values="0;1;0.4;0" dur="1.5s" begin="-0.6s" repeatCount="indefinite"/></circle>
+          <circle cx="220" cy="163" r="1.0" fill="white"><animate attributeName="opacity" values="0;0.9;0.1;1;0" dur="2.3s" begin="-1.0s" repeatCount="indefinite"/></circle>
+          <circle cx="238" cy="183" r="1.3" fill="white"><animate attributeName="opacity" values="0;1;0.3;0" dur="1.8s" begin="-1.4s" repeatCount="indefinite"/></circle>
+          <circle cx="172" cy="218" r="1.5" fill="white"><animate attributeName="opacity" values="0;0.8;0.2;1;0" dur="2.1s" begin="-0.2s" repeatCount="indefinite"/></circle>
+          <circle cx="245" cy="195" r="1.4" fill="white"><animate attributeName="opacity" values="0;1;0;0.7;0" dur="2.0s" begin="-1.1s" repeatCount="indefinite"/></circle>
+          <circle cx="160" cy="193" r="1.0" fill="white"><animate attributeName="opacity" values="0;0.9;0.3;0" dur="1.7s" begin="-0.5s" repeatCount="indefinite"/></circle>
+          <circle cx="178" cy="243" r="1.3" fill="white"><animate attributeName="opacity" values="0;1;0.1;1;0" dur="2.2s" begin="-1.9s" repeatCount="indefinite"/></circle>
+          <circle cx="222" cy="245" r="1.5" fill="white"><animate attributeName="opacity" values="0;0.8;0;1;0" dur="1.5s" begin="-0.4s" repeatCount="indefinite"/></circle>
+          <circle cx="250" cy="210" r="1.1" fill="white"><animate attributeName="opacity" values="0;1;0.2;0" dur="2.3s" begin="-2.2s" repeatCount="indefinite"/></circle>
+          {/* Cyan sparkles */}
+          <circle cx="195" cy="166" r="1.6" fill="#67e8f9"><animate attributeName="opacity" values="0;1;0.2;1;0" dur="2.3s" begin="-1.3s" repeatCount="indefinite"/></circle>
+          <circle cx="237" cy="190" r="1.2" fill="#67e8f9"><animate attributeName="opacity" values="0;0.9;0;0.8;0" dur="1.9s" begin="-0.6s" repeatCount="indefinite"/></circle>
+          <circle cx="228" cy="237" r="1.4" fill="#67e8f9"><animate attributeName="opacity" values="0;1;0.3;0" dur="2.1s" begin="-2.0s" repeatCount="indefinite"/></circle>
+          <circle cx="165" cy="222" r="1.3" fill="#67e8f9"><animate attributeName="opacity" values="0;0.8;0.1;1;0" dur="1.7s" begin="-1.1s" repeatCount="indefinite"/></circle>
+          <circle cx="186" cy="249" r="1.1" fill="#67e8f9"><animate attributeName="opacity" values="0;1;0;0.6;0" dur="2.4s" begin="-0.3s" repeatCount="indefinite"/></circle>
+        </g>
+
+        {/* Bright lens-flare specular highlight — top-left */}
+        <circle cx="177" cy="172" r="20" fill="white" opacity="0.10" clipPath="url(#avery-orb-clip)" />
+        <circle cx="179" cy="174" r="9" fill="white" opacity="0.20" clipPath="url(#avery-orb-clip)" />
+        <circle cx="181" cy="176" r="3.5" fill="white" opacity="0.50" clipPath="url(#avery-orb-clip)" />
+
+        {/* Glassy sheen */}
         <circle cx="200" cy="200" r="75" fill="url(#avery-orb-sheen)" />
+        {/* Depth shadow at bottom */}
+        <circle cx="200" cy="200" r="75" fill="url(#avery-orb-depth)" />
         {/* Border ring */}
-        <circle cx="200" cy="200" r="75" fill="none" stroke="#818cf8" strokeOpacity="0.25" strokeWidth="1" />
+        <circle cx="200" cy="200" r="75" fill="none" stroke="#c4b5fd" strokeOpacity="0.3" strokeWidth="1" />
         {/* Core breathing ring */}
         <circle
           cx="200" cy="200" r="75"
           fill="none"
-          stroke="#6366f1"
-          strokeOpacity="0.12"
+          stroke="#8b5cf6"
+          strokeOpacity="0.14"
           strokeWidth="3"
           className="animate-avery-pulse-ring"
           style={{ transformOrigin: "200px 200px" }}
         />
         {/* Inner accent ring */}
-        <circle cx="200" cy="200" r="67" fill="none" stroke="#818cf8" strokeOpacity="0.08" strokeWidth="0.5" />
-      </svg>
+        <circle cx="200" cy="200" r="67" fill="none" stroke="#a78bfa" strokeOpacity="0.09" strokeWidth="0.5" />
 
-      {/* Central "A" — Oxanium font for AI/tech aesthetic */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative">
-          <span
-            className="text-[3.2rem] lg:text-[3.8rem] text-white select-none leading-none tracking-normal drop-shadow-[0_0_16px_rgba(255,255,255,0.5)]"
-            style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, transform: "translateY(6%)" }}
-          >
-            A
-          </span>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded-full bg-white/80 shadow-[0_0_10px_rgba(255,255,255,0.6)]" />
-        </div>
-      </div>
+        {/* Geometric "A" logo mark — two legs + crossbar + inner triangle hollow */}
+        <g filter="url(#avery-a-glow)" clipPath="url(#avery-orb-clip)">
+          <path
+            d="M 200 166 L 226 234 L 214 234 L 211 219 L 189 219 L 186 234 L 174 234 Z M 200 175 L 208 207 L 192 207 Z"
+            fill="white"
+            fillRule="evenodd"
+            opacity="0.96"
+          />
+        </g>
+      </svg>
 
       {/* Micro-particles */}
       {[
