@@ -180,19 +180,16 @@ export function AveryIntelligenceEmblem() {
         {/* Inner core circle — animated rotating gradient like ElevenLabs orb */}
         <defs>
           <linearGradient id="avery-core-fill" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#1d4ed8">
-              <animate attributeName="stop-color" values="#1d4ed8;#9333ea;#0891b2;#dc2626;#1d4ed8" dur="5s" repeatCount="indefinite" />
+            <stop offset="0%" stopColor="#1e3a8a">
+              <animate attributeName="stop-color" values="#1e3a8a;#7e22ce;#0e7490;#991b1b;#1e3a8a" dur="3s" repeatCount="indefinite" />
             </stop>
-            <stop offset="33%" stopColor="#7c3aed">
-              <animate attributeName="stop-color" values="#7c3aed;#0891b2;#1d4ed8;#f59e0b;#7c3aed" dur="5s" repeatCount="indefinite" />
+            <stop offset="50%" stopColor="#00e5ff">
+              <animate attributeName="stop-color" values="#00e5ff;#ff00ff;#00ff88;#ff6600;#00e5ff" dur="3s" repeatCount="indefinite" />
             </stop>
-            <stop offset="66%" stopColor="#0891b2">
-              <animate attributeName="stop-color" values="#0891b2;#dc2626;#9333ea;#1d4ed8;#0891b2" dur="5s" repeatCount="indefinite" />
+            <stop offset="100%" stopColor="#7e22ce">
+              <animate attributeName="stop-color" values="#7e22ce;#1e3a8a;#d97706;#0e7490;#7e22ce" dur="3s" repeatCount="indefinite" />
             </stop>
-            <stop offset="100%" stopColor="#9333ea">
-              <animate attributeName="stop-color" values="#9333ea;#1d4ed8;#f59e0b;#0891b2;#9333ea" dur="5s" repeatCount="indefinite" />
-            </stop>
-            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="4s" repeatCount="indefinite" />
+            <animateTransform attributeName="gradientTransform" type="rotate" from="0 200 200" to="360 200 200" dur="3s" repeatCount="indefinite" />
           </linearGradient>
           <radialGradient id="avery-core-sheen" cx="35%" cy="30%" r="60%">
             <stop offset="0%" stopColor="white" stopOpacity="0.18">
