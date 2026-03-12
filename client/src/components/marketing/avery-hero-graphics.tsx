@@ -243,8 +243,8 @@ export function AveryIntelligenceEmblem() {
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative">
           <span
-            className="text-[3.2rem] lg:text-[3.8rem] text-white select-none leading-none tracking-widest drop-shadow-[0_0_16px_rgba(255,255,255,0.5)]"
-            style={{ fontFamily: "'Oxanium', sans-serif", fontWeight: 800 }}
+            className="text-[3.2rem] lg:text-[3.8rem] text-white select-none leading-none tracking-normal drop-shadow-[0_0_16px_rgba(255,255,255,0.5)]"
+            style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700 }}
           >
             A
           </span>
