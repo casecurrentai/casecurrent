@@ -65,6 +65,11 @@ export function initializeConversationState(params: InitStateParams): Conversati
     lastAssistantUtterance: null,
     createdAt: now,
     updatedAt: now,
+    // 3D: derived field quality tracking
+    confirmationQueue: [],
+    lowConfidenceRequiredFields: [],
+    conflictingRequiredFields: [],
+    optionalFieldsRemaining: [],
   };
 }
 

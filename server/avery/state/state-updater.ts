@@ -7,13 +7,17 @@
  *   3. Run Prompt 1 detectors on the utterance
  *   4. Update classifications (intent, matter, emotion, urgency)
  *   5. Extract slot candidates from the utterance
- *   6. Merge slots into state
- *   7. Sync top-level callerName from slots
- *   8. Update risk flags
- *   9. Recompute missing required fields
- *  10. Recompute confidence score
- *  11. Determine next intake stage
- *  12. Select repair strategy
+ *   6. 3E: Interpret the turn (TurnInterpretation) — pre-mutation analysis
+ *   7. 3E: Apply field proposals via evidence-aware gate
+ *   8. Enrich slots with status flags
+ *   9. Sync top-level callerName from slots
+ *  10. Update risk flags
+ *  11. Recompute missing required fields
+ *  12. Recompute confidence score
+ *  13. Determine next intake stage
+ *  14. Select repair strategy
+ *  15. Compute derived field quality sets
+ *  16. Apply conversation phase transition
  *
  * recordAssistantTurn() stamps the last assistant utterance for context.
  *
@@ -31,6 +35,16 @@ import { recomputeConfidence } from './confidence';
 import { recomputeMissingFields } from './missing-fields';
 import { determineNextStage } from './state-machine';
 import { selectRepairStrategy } from './repair-strategies';
+import {
+  enrichSlotsWithStatus,
+  recomputeConfirmationQueue,
+  recomputeLowConfidenceRequiredFields,
+  recomputeConflictingRequiredFields,
+  recomputeOptionalFieldsRemaining,
+} from './field-memory';
+import { transitionConversationState } from './state-transition';
+import { interpretTurn } from './turn-interpretation';
+import { applyFieldProposalsToState } from './field-proposals';
 
 // Re-export TurnInput so callers can import from one place
 export type { TurnInput };
@@ -189,12 +203,13 @@ export function applyTurnToState(
     silenceEvents: state.silenceEvents + (turn.isSilence ? 1 : 0),
   };
 
-  // Silence events carry no utterance — skip detection, just update repair strategy
+  // Silence events carry no utterance — skip detection, just update derived fields
   if (turn.isSilence || !turn.utterance.trim()) {
     const repairStrategy = selectRepairStrategy(s);
     const missingRequiredFields = recomputeMissingFields(s);
     const confidenceScore = recomputeConfidence(s);
-    return { ...s, repairStrategy, missingRequiredFields, confidenceScore };
+    const silenceState = { ...s, repairStrategy, missingRequiredFields, confidenceScore };
+    return transitionConversationState(silenceState);
   }
 
   const utt = turn.utterance;
@@ -234,8 +249,23 @@ export function applyTurnToState(
   // 7. Extract slot candidates from this turn
   const turnSlots = extractTurnSlots(utt, state.phone);
 
-  // 8. Merge slots
-  s = { ...s, slots: mergeSlotEvidence(s.slots, turnSlots) };
+  // 7b. 3E: Interpret the turn — structured pre-mutation analysis
+  const interpretation = interpretTurn(
+    utt,
+    s.lastQuestionAsked ?? null,
+    s,
+    turnSlots,
+    s.turnCount,
+  );
+  s = { ...s, lastTurnInterpretation: interpretation };
+
+  // 7c. 3E: Apply field proposals via evidence-aware gate
+  // This handles: YES/NO affirmations, corrections (direct overwrite), direct/volunteered slots,
+  // and inferred slots (fill-if-empty only). Replaces raw mergeWithConflictDetection.
+  s = applyFieldProposalsToState(s, interpretation.detectedFields, interpretation);
+
+  // 8b. Enrich all slots with computed status flags (3D)
+  s = { ...s, slots: enrichSlotsWithStatus(s.slots) };
 
   // 9. Sync callerName from slots to top-level field
   s = syncCallerNameFromSlots(s);
@@ -259,6 +289,18 @@ export function applyTurnToState(
 
   // 14. Select repair strategy for this state
   s = { ...s, repairStrategy: selectRepairStrategy(s) };
+
+  // 15. 3D: Compute derived field quality sets
+  s = {
+    ...s,
+    confirmationQueue: recomputeConfirmationQueue(s),
+    lowConfidenceRequiredFields: recomputeLowConfidenceRequiredFields(s),
+    conflictingRequiredFields: recomputeConflictingRequiredFields(s),
+    optionalFieldsRemaining: recomputeOptionalFieldsRemaining(s),
+  };
+
+  // 16. 3D: Apply conversation phase transition
+  s = transitionConversationState(s);
 
   return s;
 }
