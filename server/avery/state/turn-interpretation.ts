@@ -72,12 +72,13 @@ function assessAnswerQuality(
   correctionSignal: boolean,
   affirmations: { yes: boolean; no: boolean; uncertain: boolean },
   lastQuestion: string | null,
+  hasActiveConfirmationTarget: boolean,
 ): TurnInterpretation['answerQuality'] {
   // Correction takes priority — explicit intent to revise
   if (correctionSignal) return 'correction';
 
-  // Confirmation — caller affirmed without correction signal
-  if (affirmations.yes && lastQuestion !== null) return 'confirmation';
+  // Confirmation — caller affirmed in the context of a pending question or confirmation target
+  if (affirmations.yes && (lastQuestion !== null || hasActiveConfirmationTarget)) return 'confirmation';
 
   // No answer to the question
   if (!answeredQuestion) return 'nonresponsive';
@@ -168,12 +169,14 @@ export function interpretTurn(
   const answeredLastQuestion = matchAnswerToLastQuestion(lastQuestion, turnSlots, utterance);
 
   // ── Answer quality ────────────────────────────────────────────
+  const hasActiveConfirmationTarget = (state.confirmationQueue?.length ?? 0) > 0;
   const answerQuality = assessAnswerQuality(
     utterance,
     answeredLastQuestion,
     correctionSignals,
     affirmations,
     lastQuestion,
+    hasActiveConfirmationTarget,
   );
 
   // ── Notes ─────────────────────────────────────────────────────

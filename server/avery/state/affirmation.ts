@@ -32,9 +32,14 @@ export interface AffirmationResult {
 /**
  * Affirmative signals — caller is agreeing or confirming.
  * Ordered from most specific to least.
+ *
+ * NOTE: "sure" and "right" are intentionally excluded as standalone alternatives.
+ * - "sure" → false-positive in "not sure" (UNCERTAIN signal)
+ * - "right" → false-positive in "not right" / "that is not right" (NO signal)
+ * Both are already covered by multi-word phrases: "that's right", "that is right".
  */
 const YES_RE =
-  /\b(yes|yeah|yep|yup|correct|that'?s right|that is right|right|confirmed|affirmative|exactly|sure|definitely|absolutely|indeed|uh-?huh|that'?s correct|that is correct|sounds good|that works|perfect|great|ok yes|okay yes|yes that'?s|yes it is|yes it'?s)\b/i;
+  /\b(yes|yeah|yep|yup|correct|that'?s right|that is right|confirmed|affirmative|exactly|definitely|absolutely|indeed|uh-?huh|that'?s correct|that is correct|sounds good|that works|perfect|great|ok yes|okay yes|yes that'?s|yes it is|yes it'?s)\b/i;
 
 /**
  * Negative signals — caller is denying, rejecting, or correcting.
