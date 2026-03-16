@@ -12,8 +12,110 @@
  * Reuses: getRequiredSlots from Prompt 1 slot-definitions.ts
  */
 
-import { ConversationState } from '../types';
+import { ConversationState, StateSlot, StateSlotStatus } from '../types';
 import { getRequiredSlots } from './slot-definitions';
+
+// ──────────────────────────────────────────────────────────────────
+// 3C: Field-level confidence helpers
+// ──────────────────────────────────────────────────────────────────
+
+/** Result of per-field confidence scoring. */
+export interface FieldConfidenceResult {
+  score: number;
+  status: StateSlotStatus;
+}
+
+/**
+ * Vague temporal phrases that indicate low confidence for date-type fields.
+ * "I think it was Tuesday... maybe Wednesday" → ambiguous.
+ */
+const VAGUE_DATE_RE =
+  /\b(a while ago|some time ago|recently|not sure|maybe|i think|probably|around|sometime|last year|few months|don't remember)\b/i;
+
+/**
+ * Score the confidence of a single extracted slot.
+ *
+ * Rules-based — does not invoke the LLM.
+ *
+ * Score thresholds:
+ *   ≥ 0.80 → confirmed  (direct, explicit answer)
+ *   ≥ 0.60 → likely     (plausible, no contradiction)
+ *   ≥ 0.35 → ambiguous  (vague, hedged, or low-signal)
+ *   <  0.35 → ambiguous (present but very uncertain)
+ *   absent  → missing
+ */
+export function scoreFieldConfidence(
+  fieldKey: string,
+  slot: StateSlot | undefined,
+): FieldConfidenceResult {
+  if (!slot || slot.value === null || slot.value === undefined) {
+    return { score: 0, status: 'missing' };
+  }
+
+  let score = slot.confidence;
+
+  // Date fields: penalize vague temporal phrases
+  const isDateField =
+    fieldKey === 'incident_date' ||
+    fieldKey === 'arrest_date' ||
+    fieldKey === 'termination_date' ||
+    fieldKey === 'court_date' ||
+    fieldKey === 'court_dates' ||
+    fieldKey.endsWith('_date');
+
+  if (isDateField && typeof slot.value === 'string' && VAGUE_DATE_RE.test(slot.value)) {
+    score = Math.max(score - 0.25, 0.15);
+  }
+
+  // Map numeric score to status
+  let status: StateSlotStatus;
+  if (score >= 0.80) {
+    status = 'confirmed';
+  } else if (score >= 0.60) {
+    status = 'likely';
+  } else {
+    status = 'ambiguous';
+  }
+
+  return { score: parseFloat(score.toFixed(2)), status };
+}
+
+/**
+ * Detect a semantic conflict between an existing slot value and an incoming candidate.
+ *
+ * Returns true only when:
+ * - both have non-null, meaningfully different values
+ * - both have confidence ≥ 0.50 (so we aren't flagging noise vs. signal)
+ */
+export function detectFieldConflict(existing: StateSlot, incoming: StateSlot): boolean {
+  if (!existing.value || !incoming.value) return false;
+  if (existing.value === incoming.value) return false;
+
+  const a = String(existing.value).toLowerCase().trim();
+  const b = String(incoming.value).toLowerCase().trim();
+  if (a === b) return false;
+
+  return existing.confidence >= 0.50 && incoming.confidence >= 0.50;
+}
+
+/**
+ * Normalize a raw extracted field value to a clean, canonical string.
+ *
+ * - Trims and collapses whitespace for all fields
+ * - Phone numbers: strips non-digit characters (preserves leading +)
+ */
+export function normalizeExtractedField(fieldKey: string, rawValue: string): string {
+  const trimmed = rawValue.trim().replace(/\s+/g, ' ');
+
+  if (fieldKey === 'callback_number' || fieldKey === 'contact_phone') {
+    // Keep leading + for E.164 numbers; strip everything else non-numeric
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    return hasPlus ? `+${digits}` : digits;
+  }
+
+  return trimmed;
+}
 
 /**
  * Recompute the overall confidence score from the current conversation state.

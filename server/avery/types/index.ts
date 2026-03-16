@@ -53,6 +53,223 @@ export type RepairStrategy =
   | "offer_examples"
   | "handoff";
 
+// ── 3C additions ──────────────────────────────────────────────────
+
+/** Per-field confidence status derived from score and context signals. */
+export type StateSlotStatus =
+  | "confirmed"    // score ≥ 0.80 — direct, unambiguous answer
+  | "likely"       // score ≥ 0.60 — plausible but not verified
+  | "ambiguous"    // score < 0.60 — vague, hedged, or uncertain
+  | "conflicting"  // contradicts a prior value with meaningful confidence
+  | "missing";     // no value extracted
+
+/**
+ * Readiness of the current intake for handoff or callback.
+ * Distinct from escalation (which is policy-driven).
+ */
+export type IntakeReadiness =
+  | "incomplete"           // required fields still missing
+  | "minimum_viable_intake" // contactable + enough to route — caller can be called back
+  | "ready_for_handoff"    // all required fields captured
+  | "completed";           // conversation wrapped up
+
+/**
+ * Structured decision from nextQuestionSelector — drives ResponsePlan generation.
+ * This is the contract between the selector and the plan builder.
+ */
+export interface NextQuestionDecision {
+  /** The high-level action type for this turn. */
+  type: "ask" | "repair" | "confirm" | "escalate" | "complete";
+  /** Slot/field being targeted, or null for stage-level actions. */
+  targetField?: string | null;
+  /** Machine-readable objective (e.g. "collect_field:caller_name"). */
+  objective: string;
+  /** Debug rationale explaining why this decision was made. */
+  rationale: string;
+  /** Active repair strategy when type is "repair". */
+  repairStrategy?: RepairStrategy | null;
+}
+
+// ── 3D additions ──────────────────────────────────────────────────
+
+/**
+ * Meta-lifecycle phase overlaying IntakeStage.
+ * Distinguishes repair and confirmation meta-states that IntakeStage doesn't capture.
+ */
+export type ConversationPhase =
+  | "greeting"
+  | "intent_detection"
+  | "active_intake"
+  | "clarification"       // repair / re-ask in progress
+  | "confirmation"        // awaiting caller confirmation of ambiguous/conflicting data
+  | "ready_for_escalation"
+  | "completed";
+
+/** Tactical repair type for question reformulation. */
+export type RepairTriggerType =
+  | "none"
+  | "rephrase"
+  | "narrow_question"
+  | "confirm_value"
+  | "split_question"
+  | "provide_example"
+  | "defer_optional_field";
+
+/** Resolution action when updating a field with a potentially conflicting value. */
+export type FieldUpdateAction =
+  | "accept_new_value"
+  | "retain_existing_value"
+  | "mark_conflict_require_confirmation"
+  | "downgrade_confidence";
+
+// ── 3G additions ──────────────────────────────────────────────────
+
+/**
+ * Phrase-bank category for repetition tracking.
+ * Used internally by response-variation.ts to cycle through variants.
+ */
+export type PhraseFamilyCategory =
+  | "acknowledgment"
+  | "empathy"
+  | "confirmation_intro"
+  | "repair_intro"
+  | "handoff_intro"
+  | "completion_intro";
+
+/**
+ * Confirmation utterance shape — per-field framing guidance for the renderer.
+ * Only populated when ResponsePolicy.mode === "confirm".
+ */
+export interface ConfirmationShape {
+  /** Whether Avery should explicitly read back the captured value before asking. */
+  requiresReadBack: boolean;
+  /** Whether conflicting values should be explicitly surfaced to the caller. */
+  requiresConflictFraming: boolean;
+  /** Human-readable field label ("your phone number", "the date of the incident"). */
+  fieldLabel: string;
+  /** Formatted value ready to read back (null if no value captured). */
+  readBackHint: string | null;
+}
+
+/**
+ * Variation context attached to ResponsePlan — controls bounded phrasing choices.
+ *
+ * Encodes pre-selected phrase choices and contextual framing for the renderer.
+ * Phrases are selected deterministically (turn-count cycling + last-utterance check)
+ * to prevent Avery from repeating the same formula every turn.
+ */
+export interface VariationContext {
+  /** Pre-selected acknowledgment phrase (null = skip acknowledgment this turn). */
+  acknowledgmentPhrase: string | null;
+  /** Pre-selected mode-appropriate intro phrase (null for plain ask turns). */
+  introPhraseHint: string | null;
+  /** Whether a brief contextual reference to prior captured data is permitted. */
+  allowContextualReference: boolean;
+  /** A pre-built contextual reference string, or null if not applicable. */
+  contextualReference: string | null;
+  /** Confirmation-specific framing guidance (null when mode ≠ confirm). */
+  confirmationShape: ConfirmationShape | null;
+  /** True when this is a handoff or completion turn — renderer must not ask new questions. */
+  isHandoffTurn: boolean;
+  /** True when emergency framing applies — renderer must be direct and action-first. */
+  isEmergencyTurn: boolean;
+}
+
+// ── 3F additions ──────────────────────────────────────────────────
+
+/**
+ * Structured response policy for a single turn — derived deterministically from state.
+ *
+ * Carries output-shape constraints from the planner to the renderer.
+ * The renderer must obey these bounds while still generating natural language.
+ */
+export interface ResponsePolicy {
+  /** Primary mode driving this response turn. */
+  mode: "ask" | "confirm" | "repair" | "handoff" | "complete" | "emergency";
+  /** Maximum number of questions allowed in this response. 0 for handoff/complete/emergency. */
+  maxQuestions: number;
+  /** Maximum number of sentences allowed in this response. */
+  maxSentences: number;
+  /** Whether an empathy-prefix opening is permitted (distress / anxiety states). */
+  allowEmpathyPrefix: boolean;
+  /** Whether an explicit acknowledgment sentence is permitted. */
+  allowAcknowledgment: boolean;
+  /** Whether this turn must target exactly one field — no multi-field asks. */
+  requireSingleTarget: boolean;
+  /** How the confirmation question should be framed. */
+  confirmationStyle: "explicit" | "gentle" | "binary";
+  /** How the repair question should be reframed. */
+  repairStyle: "rephrase" | "narrow" | "example" | "stepwise";
+  /** Overall tone character for this turn. */
+  toneProfile: "calm" | "warm" | "urgent" | "direct";
+  /** Whether to strongly bias toward shorter output. */
+  brevityBias: "high" | "medium";
+  /** Compound questions (two asks in one) are forbidden. Always true — Avery's core discipline. */
+  forbidCompoundQuestions: boolean;
+  /**
+   * Premature reassurance is forbidden ("I'm sure it'll be fine").
+   * True for confirm, repair, and critical-urgency turns.
+   */
+  forbidPrematureReassurance: boolean;
+}
+
+// ── 3E additions ──────────────────────────────────────────────────
+
+/**
+ * How a field value was derived — used to weight confidence and control merging.
+ * direct_answer  — caller explicitly answered the question asked for this field
+ * volunteered    — caller mentioned this without being asked
+ * correction     — caller explicitly correcting a prior value
+ * confirmation   — caller confirmed an existing value (yes/that's right)
+ * inferred       — deduced indirectly, low confidence
+ */
+export type EvidenceType =
+  | "direct_answer"
+  | "volunteered"
+  | "correction"
+  | "confirmation"
+  | "inferred";
+
+/** A proposed field update from a single turn — reviewed before state mutation. */
+export interface ExtractedFieldProposal {
+  fieldKey: string;
+  rawValue: unknown;
+  normalizedValue: unknown;
+  /** Turn number this proposal originated from. */
+  sourceTurn: number;
+  evidenceType: EvidenceType;
+  confidenceScore: number;
+  /** True when this proposal should be written directly to state. */
+  shouldApplyDirectly: boolean;
+  /** True when the field needs caller confirmation before being trusted. */
+  requiresConfirmation: boolean;
+}
+
+/**
+ * Structured interpretation of a single caller turn, produced BEFORE state mutation.
+ * Describes what the caller did rather than what data was extracted.
+ */
+export interface TurnInterpretation {
+  /** Whether the caller's response addressed the last question asked. */
+  answeredLastQuestion: boolean;
+  /** The field being targeted by the last question (null for stage-level). */
+  targetField: string | null;
+  /** Qualitative assessment of the answer. */
+  answerQuality: "direct" | "partial" | "ambiguous" | "nonresponsive" | "correction" | "confirmation";
+  /** Proposed field extractions from this turn. */
+  detectedFields: ExtractedFieldProposal[];
+  /** Affirmation signals detected in this turn. */
+  affirmations: { yes: boolean; no: boolean; uncertain: boolean };
+  /** True when explicit correction language was detected. */
+  correctionSignals: boolean;
+  /** True when distress signals detected. */
+  distressSignals: boolean;
+  /** True when turn appears to contain no relevant intake content. */
+  irrelevantContent: boolean;
+  /** Debug notes. */
+  notes: string[];
+}
+
 export type CallerIntent =
   | "new_case"
   | "existing_client"
@@ -73,6 +290,12 @@ export interface StateSlot<T = unknown> {
   confidence: number;
   source: "caller" | "crm" | "inferred" | "system";
   updatedAt: string; // ISO 8601
+  /** 3C: Field-level confidence status derived from score + context. */
+  status?: StateSlotStatus;
+  /** 3D: True when this field must be explicitly re-confirmed by the caller. */
+  needsConfirmation?: boolean;
+  /** 3D: True when this field contradicts a prior high-confidence value. */
+  conflictFlag?: boolean;
 }
 
 /** Full conversation state snapshot — the system of record for one call. */
@@ -106,6 +329,28 @@ export interface ConversationState {
   lastAssistantUtterance?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 3C: The slot key most recently asked about, for repair-mode detection. */
+  lastQuestionAsked?: string | null;
+  /** 3C: Intake readiness evaluated after each turn. */
+  readiness?: IntakeReadiness;
+  /** 3D: Meta-lifecycle phase (overlay on intakeStage). */
+  conversationPhase?: ConversationPhase;
+  /** 3D: Priority-ordered fields awaiting explicit caller confirmation. */
+  confirmationQueue: string[];
+  /** 3D: Required fields with a value but confidence below the handoff threshold. */
+  lowConfidenceRequiredFields: string[];
+  /** 3D: Required fields flagged as conflicting (contradictory data). */
+  conflictingRequiredFields: string[];
+  /** 3D: Optional fields from intake requirements not yet captured. */
+  optionalFieldsRemaining: string[];
+  /** 3E: Structured interpretation of the most recent caller turn. */
+  lastTurnInterpretation?: TurnInterpretation;
+  /** 4A: Decision type the assistant was in on the last turn. */
+  lastDecisionType?: NextQuestionDecision['type'] | null;
+  /** 4A: Field the assistant was asking the caller to confirm on the last turn. */
+  lastConfirmationTarget?: string | null;
+  /** 4A: Response policy mode active on the last assistant turn. */
+  lastAssistantMode?: ResponsePolicy['mode'] | null;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -167,6 +412,16 @@ export interface ResponsePlan {
   transferTarget?: string;
   /** True when this is the wrap_up / end-of-conversation turn. */
   endConversation?: boolean;
+  /** 3C: Field being confirmed when decision type is "confirm". */
+  confirmationTarget?: string;
+  /** 3C: True when intake is sufficient for handoff or completed. */
+  escalationReady?: boolean;
+  /** 3C: Human-readable notes about field confidence issues. */
+  confidenceNotes?: string[];
+  /** 3F: Structured output-shape policy — renderer must obey these bounds. */
+  responsePolicy?: ResponsePolicy;
+  /** 3G: Pre-selected phrasing choices and framing guidance for bounded variation. */
+  variationContext?: VariationContext;
 }
 
 // ──────────────────────────────────────────────────────────────────

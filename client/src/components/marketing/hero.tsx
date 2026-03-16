@@ -1,6 +1,4 @@
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
 import { GuillocheUnderlay } from "./guilloche-pattern";
 import { HeroGlow } from "./decorative-visuals";
 
@@ -40,24 +38,7 @@ export function Hero({
             <p className="text-lg lg:text-xl text-muted-foreground max-w-xl leading-relaxed">
               {subheadline}
             </p>
-            {(primaryCta || secondaryCta) && (
-              <div className="flex flex-wrap gap-4 pt-4">
-                {primaryCta && (
-                  <Link href={primaryCta.href}>
-                    <Button size="lg" data-testid="button-hero-primary-cta">
-                      {primaryCta.label}
-                    </Button>
-                  </Link>
-                )}
-                {secondaryCta && (
-                  <Link href={secondaryCta.href}>
-                    <Button size="lg" variant="outline" data-testid="button-hero-secondary-cta">
-                      {secondaryCta.label}
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            )}
+            
           </div>
           {children && <div className="relative">{children}</div>}
         </div>

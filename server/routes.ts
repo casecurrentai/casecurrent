@@ -58,6 +58,7 @@ import callDebugRouter from './routes/call-debug';
 import ingestionOutcomesRouter from './routes/ingestion-outcomes';
 import callsRouter from './routes/calls';
 import chatRouter from './routes/chat';
+import averyRouter from './routes/avery';
 import { recordIngestionOutcome } from './webhooks/ingestion-outcome';
 
 // ============================================
@@ -5257,6 +5258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(ingestionOutcomesRouter);
   app.use(callsRouter);
   app.use(chatRouter);
+  app.use(averyRouter);
 
   // ============================================
   // TELEPHONY - TWILIO WEBHOOKS

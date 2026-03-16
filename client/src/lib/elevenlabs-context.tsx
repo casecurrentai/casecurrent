@@ -31,10 +31,11 @@ export function ElevenLabsProvider({ children }: { children: React.ReactNode }) 
 
   const conversation = useConversation({
     onConnect: () => {
+      console.log("[ElevenLabs] connected");
       setErrorMsg(null);
     },
-    onDisconnect: () => {
-      // Keep messages visible after disconnect
+    onDisconnect: (details) => {
+      console.log("[ElevenLabs] disconnected", details);
     },
     onMessage: (msg) => {
       if (msg.message) {
@@ -47,9 +48,17 @@ export function ElevenLabsProvider({ children }: { children: React.ReactNode }) 
         ]);
       }
     },
-    onError: (message) => {
+    onError: (message: unknown) => {
       console.error("[ElevenLabs] error:", message);
-      setErrorMsg(typeof message === "string" ? message : "Connection error");
+      const errStr = typeof message === "string"
+        ? message
+        : message && typeof message === "object" && "message" in message
+          ? String((message as any).message)
+          : "Connection error";
+      setErrorMsg(errStr);
+    },
+    onDebug: (info: unknown) => {
+      console.log("[ElevenLabs] debug:", info);
     },
   });
 
@@ -64,16 +73,17 @@ export function ElevenLabsProvider({ children }: { children: React.ReactNode }) 
       setErrorMsg(null);
 
       try {
-        await conversation.startSession({
+        const sessionId = await conversation.startSession({
           agentId: AGENT_ID,
           connectionType: textOnly ? "websocket" : "webrtc",
           overrides: {
             conversation: { textOnly },
           },
         });
+        console.log("[ElevenLabs] session started:", sessionId);
       } catch (err: any) {
-        console.error("[ElevenLabs] start failed:", err);
-        setErrorMsg(err?.message || "Failed to connect");
+        console.error("[ElevenLabs] start failed:", JSON.stringify(err), err?.message, err?.stack);
+        setErrorMsg(err?.message || "Failed to connect to Avery");
       }
     },
     [conversation],
@@ -98,7 +108,6 @@ export function ElevenLabsProvider({ children }: { children: React.ReactNode }) 
         }
 
         try {
-          // Add user message immediately for responsiveness
           setMessages((prev) => [...prev, { role: "user", content: text }]);
 
           await conversation.startSession({
@@ -109,11 +118,10 @@ export function ElevenLabsProvider({ children }: { children: React.ReactNode }) 
             },
           });
 
-          // Send after connection established
           conversation.sendUserMessage(text);
         } catch (err: any) {
-          console.error("[ElevenLabs] auto-connect failed:", err);
-          setErrorMsg(err?.message || "Failed to connect");
+          console.error("[ElevenLabs] auto-connect failed:", JSON.stringify(err), err?.message, err?.stack);
+          setErrorMsg(err?.message || "Failed to connect to Avery");
         }
         return;
       }

@@ -11,16 +11,25 @@
  * Reuses: ResponsePlan, RepairStrategy, StyleParams from types/index.ts
  */
 
-import { ConversationState, ResponsePlan } from '../types';
+import { ConversationState, ResponsePlan, NextQuestionDecision, IntakeReadiness } from '../types';
 import type { NextQuestion } from './question-selector';
 import type { EscalationDecision } from './escalation-policy';
 import type { StyleParams } from '../types';
+import type { RepairDecision } from '../state/repair-decision';
+import { deriveResponsePolicy } from './response-policy';
+import { buildVariationContext } from './response-variation';
 
 export interface BuildResponsePlanParams {
   state: ConversationState;
   nextQuestion: NextQuestion;
   escalation: EscalationDecision;
   style: StyleParams;
+  /** 3C: Structured decision from nextQuestionToDecision(). Optional for back-compat. */
+  decision?: NextQuestionDecision;
+  /** 3C: Intake readiness from evaluateIntakeReadiness(). Optional for back-compat. */
+  readiness?: IntakeReadiness;
+  /** 3F: Semantic repair analysis — drives response policy derivation. */
+  repairDecision?: RepairDecision;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -46,7 +55,7 @@ const ACKNOWLEDGMENTS: Partial<Record<string, string>> = {
  * Pure function — no side effects.
  */
 export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan {
-  const { state, nextQuestion, escalation, style } = params;
+  const { state, nextQuestion, escalation, style, decision, readiness, repairDecision } = params;
   const { repairStrategy, emotionalState, matterType, intakeStage, urgencyLevel, callerName } =
     state;
 
@@ -129,6 +138,56 @@ export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan
   const transferTarget =
     escalation.transferTarget ?? state.transferTarget ?? undefined;
 
+  // ── 3C: confirmationTarget ────────────────────────────────────
+  const confirmationTarget =
+    decision?.type === 'confirm' ? (decision.targetField ?? undefined) : undefined;
+
+  // ── 3C: escalationReady ───────────────────────────────────────
+  const escalationReady =
+    readiness === 'ready_for_handoff' ||
+    readiness === 'completed' ||
+    escalation.shouldEscalate;
+
+  // ── 3C: confidenceNotes ───────────────────────────────────────
+  const confidenceNotes: string[] = [];
+  if (state.confidenceScore < 0.40) {
+    confidenceNotes.push(
+      `Overall confidence low (${state.confidenceScore}) — proceed carefully`,
+    );
+  }
+  if (decision?.type === 'confirm' && decision.targetField) {
+    const slot = state.slots[decision.targetField];
+    if (slot) {
+      confidenceNotes.push(
+        `Confirming "${decision.targetField}" — field confidence ${slot.confidence.toFixed(2)}`,
+      );
+    }
+  }
+  if (decision?.type === 'repair' && decision.targetField) {
+    confidenceNotes.push(
+      `Repair active on "${decision.targetField}" — strategy: ${decision.repairStrategy ?? repairStrategy}`,
+    );
+  }
+
+  // ── 3F: Derive response policy ────────────────────────────────
+  // Requires decision and repairDecision; gracefully skips if unavailable.
+  const responsePolicy =
+    decision
+      ? deriveResponsePolicy(
+          state,
+          decision,
+          repairDecision ?? { needed: false, targetField: null, repairType: 'none', triggerReason: 'none', rationale: 'no repair decision provided' },
+          readiness ?? 'incomplete',
+        )
+      : undefined;
+
+  // ── 3G: Build variation context ───────────────────────────────
+  // Pre-selects acknowledgment/intro phrases and framing guidance.
+  const variationContext =
+    decision && responsePolicy
+      ? buildVariationContext(state, responsePolicy, decision)
+      : undefined;
+
   return {
     nextObjective,
     askFor: nextQuestion.question,
@@ -141,5 +200,10 @@ export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan
     collectSlots: nextQuestion.slotKey ? [nextQuestion.slotKey] : [],
     transferTarget: transferTarget ?? undefined,
     endConversation: shouldEnd,
+    confirmationTarget,
+    escalationReady,
+    confidenceNotes: confidenceNotes.length > 0 ? confidenceNotes : undefined,
+    responsePolicy,
+    variationContext,
   };
 }

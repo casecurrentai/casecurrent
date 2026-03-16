@@ -65,6 +65,15 @@ export function initializeConversationState(params: InitStateParams): Conversati
     lastAssistantUtterance: null,
     createdAt: now,
     updatedAt: now,
+    // 3D: derived field quality tracking
+    confirmationQueue: [],
+    lowConfidenceRequiredFields: [],
+    conflictingRequiredFields: [],
+    optionalFieldsRemaining: [],
+    // 4A: assistant-turn targeting metadata
+    lastDecisionType: null,
+    lastConfirmationTarget: null,
+    lastAssistantMode: null,
   };
 }
 

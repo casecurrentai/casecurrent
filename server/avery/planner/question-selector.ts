@@ -15,7 +15,7 @@
  * Reuses: ConversationState, IntakeStage from types/index.ts
  */
 
-import { ConversationState } from '../types';
+import { ConversationState, NextQuestionDecision, IntakeReadiness } from '../types';
 
 export interface NextQuestion {
   /** The slot key being targeted, or null for stage-level questions. */
@@ -101,6 +101,17 @@ const URGENT_PRIORITY_SLOTS = new Set([
   'charges_known',
   'arrest_date',
   'urgency_notes',
+]);
+
+// ──────────────────────────────────────────────────────────────────
+// 3C: Repair strategies that indicate active repair mode
+// ──────────────────────────────────────────────────────────────────
+
+const ACTIVE_REPAIR_STRATEGIES = new Set([
+  'reassure_then_ask',
+  'summarize_and_confirm',
+  'offer_examples',
+  'slow_down',
 ]);
 
 // ──────────────────────────────────────────────────────────────────
@@ -287,5 +298,120 @@ export function selectNextQuestion(state: ConversationState): NextQuestion {
       stageQ ??
       "Is there anything else you'd like to share before I connect you with one of our attorneys?",
     rationale: `stage_fallback: ${intakeStage}`,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 3C: Structured decision converter
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a NextQuestion + conversation context into a NextQuestionDecision.
+ *
+ * The decision type is determined deterministically:
+ *   escalate → escalation policy triggered (highest priority)
+ *   complete → wrap_up stage or intake completed
+ *   repair   → active repair strategy AND same field as lastQuestionAsked
+ *   confirm  → field has a value but low confidence (< 0.60)
+ *   ask      → normal question progression
+ *
+ * This output drives ResponsePlan generation without any LLM involvement.
+ */
+export function nextQuestionToDecision(
+  nextQuestion: NextQuestion,
+  state: ConversationState,
+  readiness: IntakeReadiness,
+  escalationNeeded: boolean,
+): NextQuestionDecision {
+  // ── Escalation: highest priority override ──────────────────────
+  if (escalationNeeded) {
+    return {
+      type: 'escalate',
+      targetField: null,
+      objective: 'transfer_to_human',
+      rationale: 'escalation policy triggered',
+      repairStrategy: null,
+    };
+  }
+
+  // ── Completed ──────────────────────────────────────────────────
+  if (readiness === 'completed' || state.intakeStage === 'wrap_up') {
+    return {
+      type: 'complete',
+      targetField: null,
+      objective: 'end_conversation',
+      rationale: 'intake completed and conversation wrapped up',
+      repairStrategy: null,
+    };
+  }
+
+  // ── Repair mode: active repair strategy + same field targeted ──
+  // We are in repair when the repair strategy is non-trivial AND
+  // we are still asking about the same field that failed last turn.
+  const isRepairActive = ACTIVE_REPAIR_STRATEGIES.has(state.repairStrategy);
+  const isSameField =
+    nextQuestion.slotKey !== null &&
+    nextQuestion.slotKey === state.lastQuestionAsked;
+
+  if (isRepairActive && isSameField) {
+    return {
+      type: 'repair',
+      targetField: nextQuestion.slotKey,
+      objective: nextQuestion.slotKey
+        ? `repair_field:${nextQuestion.slotKey}`
+        : 'repair_conversation',
+      rationale: `${state.repairStrategy} on ${nextQuestion.slotKey ?? 'previous_question'}`,
+      repairStrategy: state.repairStrategy,
+    };
+  }
+
+  // ── 3D: Drain confirmation queue first ────────────────────────
+  // The confirmation queue (computed by field-memory) takes priority over normal
+  // question progression. Any field in the queue — whether conflicting or low-confidence
+  // required — must be confirmed before moving on.
+  if (state.confirmationQueue && state.confirmationQueue.length > 0) {
+    const topField = state.confirmationQueue[0];
+    const slot = state.slots[topField];
+    const conflictNote = slot?.conflictFlag
+      ? 'conflicting values detected'
+      : `low confidence (${slot?.confidence?.toFixed(2) ?? '?'})`;
+    return {
+      type: 'confirm',
+      targetField: topField,
+      objective: `confirm_field:${topField}`,
+      rationale: `confirmation queue: "${topField}" requires verification (${conflictNote})`,
+      repairStrategy: null,
+    };
+  }
+
+  // ── Fallback confirm: field has a value but confidence is low ──
+  // Do not re-ask for missing fields as confirmations.
+  if (nextQuestion.slotKey) {
+    const existingSlot = state.slots[nextQuestion.slotKey];
+    if (
+      existingSlot?.value !== null &&
+      existingSlot?.value !== undefined &&
+      existingSlot.confidence > 0 &&
+      existingSlot.confidence < 0.60
+    ) {
+      return {
+        type: 'confirm',
+        targetField: nextQuestion.slotKey,
+        objective: `confirm_field:${nextQuestion.slotKey}`,
+        rationale: `low field confidence (${existingSlot.confidence.toFixed(2)}) — verify with caller`,
+        repairStrategy: null,
+      };
+    }
+  }
+
+  // ── Normal ask ────────────────────────────────────────────────
+  return {
+    type: 'ask',
+    targetField: nextQuestion.slotKey,
+    objective: nextQuestion.slotKey
+      ? `collect_field:${nextQuestion.slotKey}`
+      : `stage_action:${state.intakeStage}`,
+    rationale: nextQuestion.rationale,
+    repairStrategy: null,
   };
 }

@@ -13,11 +13,13 @@
  * Reuses all Prompt 1 types; reuses Prompt 2 sub-modules.
  */
 
-import { ConversationState, ResponsePlan } from '../types';
+import { ConversationState, ResponsePlan, NextQuestionDecision, IntakeReadiness } from '../types';
 import { evaluateEscalation, EscalationDecision } from './escalation-policy';
 import { deriveStyle } from './style-policy';
-import { selectNextQuestion, NextQuestion } from './question-selector';
+import { selectNextQuestion, nextQuestionToDecision, NextQuestion } from './question-selector';
 import { buildResponsePlan } from './response-plan';
+import { evaluateIntakeReadiness } from './readiness';
+import { determineRepairNeed, RepairDecision } from '../state/repair-decision';
 
 export interface PlannerResult {
   /** The structured response plan for this turn. */
@@ -26,6 +28,12 @@ export interface PlannerResult {
   escalate: boolean;
   /** Transfer routing hint (on_call_attorney, staff, etc.), or null. */
   transferTarget: string | null;
+  /** 3C: Structured question decision — type, objective, rationale, repair. */
+  decision: NextQuestionDecision;
+  /** 3C: Intake readiness — how complete the current intake is. */
+  readiness: IntakeReadiness;
+  /** 3D: Semantic repair analysis for the last caller turn. */
+  repairDecision: RepairDecision;
   /** Debug information for inspectability and logging. */
   debugInfo: {
     stage: string;
@@ -38,6 +46,18 @@ export interface PlannerResult {
     confidenceScore: number;
     missingFields: string[];
     escalationUrgency: string;
+    decisionType: string;
+    readiness: string;
+    repairNeeded: boolean;
+    repairType: string;
+    confirmationQueue: string[];
+    conversationPhase: string;
+    /** 3E: Structured interpretation of the last caller turn. */
+    lastTurnInterpretation: import('../types').TurnInterpretation | null;
+    /** 3F: Structured output-shape policy for this turn. */
+    responsePolicy: import('../types').ResponsePolicy | null;
+    /** 3G: Pre-selected phrasing and framing variation context. */
+    variationContext: import('../types').VariationContext | null;
   };
 }
 
@@ -58,13 +78,34 @@ export function generateResponsePlan(state: ConversationState): PlannerResult {
   // 3. Select next question
   const nextQuestion: NextQuestion = selectNextQuestion(state);
 
-  // 4. Assemble ResponsePlan
-  const plan = buildResponsePlan({ state, nextQuestion, escalation, style });
+  // 4. 3C: Evaluate intake readiness
+  const readiness: IntakeReadiness = evaluateIntakeReadiness(state);
+
+  // 5. 3C: Convert to structured decision
+  const decision: NextQuestionDecision = nextQuestionToDecision(
+    nextQuestion,
+    state,
+    readiness,
+    escalation.shouldEscalate,
+  );
+
+  // 6. 3D: Semantic repair analysis for the last caller turn
+  const repairDecision: RepairDecision = determineRepairNeed(
+    state.lastQuestionAsked ?? null,
+    state.lastUserUtterance ?? '',
+    state,
+  );
+
+  // 7. Assemble ResponsePlan (passes decision + readiness for 3C fields, repairDecision for 3F)
+  const plan = buildResponsePlan({ state, nextQuestion, escalation, style, decision, readiness, repairDecision });
 
   return {
     plan,
     escalate: escalation.shouldEscalate,
     transferTarget: escalation.transferTarget,
+    decision,
+    readiness,
+    repairDecision,
     debugInfo: {
       stage: state.intakeStage,
       matterType: state.matterType,
@@ -76,9 +117,19 @@ export function generateResponsePlan(state: ConversationState): PlannerResult {
       confidenceScore: state.confidenceScore,
       missingFields: state.missingRequiredFields,
       escalationUrgency: escalation.urgency,
+      decisionType: decision.type,
+      readiness,
+      repairNeeded: repairDecision.needed,
+      repairType: repairDecision.repairType,
+      confirmationQueue: state.confirmationQueue ?? [],
+      conversationPhase: state.conversationPhase ?? 'unknown',
+      lastTurnInterpretation: state.lastTurnInterpretation ?? null,
+      responsePolicy: plan.responsePolicy ?? null,
+      variationContext: plan.variationContext ?? null,
     },
   };
 }
 
 // Re-export for convenient single-import usage
 export type { EscalationDecision, NextQuestion };
+export { evaluateIntakeReadiness } from './readiness';

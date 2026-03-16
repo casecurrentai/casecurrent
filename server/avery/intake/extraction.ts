@@ -27,57 +27,15 @@ import { detectIntent } from './intent-detector';
 import { detectUrgency } from './urgency-detector';
 import { detectEmotionalState } from './emotional-state-detector';
 import { getRequiredSlots } from '../state/slot-definitions';
+import {
+  extractName,
+  extractEmail,
+  extractIncidentDate,
+  extractOpposingParty,
+  detectRiskFlagsFromText,
+} from './extraction-patterns';
 
-// ──────────────────────────────────────────────────────────────────
-// Text extraction helpers
-// ──────────────────────────────────────────────────────────────────
-
-function extractNameFromTranscript(transcript: string): string | null {
-  const patterns = [
-    /(?:my name is|this is|i'm|i am|name's)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-    /(?:first name is|first name)\s+([A-Z][a-z]+)/i,
-    /(?:last name is|last name)\s+([A-Z][a-z]+)/i,
-    // "call me [Name]" pattern
-    /(?:call me|you can call me)\s+([A-Z][a-z]+)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = transcript.match(pattern);
-    if (match?.[1]) return match[1].trim();
-  }
-  return null;
-}
-
-function extractEmailFromTranscript(transcript: string): string | null {
-  const match = transcript.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return match ? match[0] : null;
-}
-
-function extractIncidentDateFromTranscript(transcript: string): string | null {
-  const patterns: RegExp[] = [
-    /(\d{1,2}\/\d{1,2}\/\d{2,4})/,
-    /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{0,4}/i,
-    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)/i,
-    /(last week|last month|yesterday|two weeks ago|a week ago|a few days ago|few days ago)/i,
-    /(this past|last)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = transcript.match(pattern);
-    if (match) return match[0];
-  }
-  return null;
-}
-
-function extractOpposingParty(transcript: string): string | null {
-  const patterns: RegExp[] = [
-    /(?:against|versus|vs\.?|suing)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:\s+(?:Inc|LLC|Corp|Company|Co)\.?)?)/i,
-    /(?:the other driver|the other party|the defendant|the plaintiff|my employer|the insurance company|the landlord)\s+(?:is|was|named)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = transcript.match(pattern);
-    if (match?.[1]) return match[1].trim();
-  }
-  return null;
-}
+// Text extraction helpers are imported from extraction-patterns.ts (shared with live-turn pipeline)
 
 // ──────────────────────────────────────────────────────────────────
 // Slot builder
@@ -91,62 +49,7 @@ function slot<T>(
   return { value, confidence, source, updatedAt: new Date().toISOString() };
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Risk flags
-// ──────────────────────────────────────────────────────────────────
-
-function detectRiskFlags(transcript: string, matterType: MatterType): string[] {
-  const lower = transcript.toLowerCase();
-  const flags: string[] = [];
-
-  // Already has representation — may be a conflict or we can't help
-  if (
-    lower.includes('already have a lawyer') ||
-    lower.includes('already have an attorney') ||
-    lower.includes('already hired') ||
-    lower.includes('i have representation')
-  ) {
-    flags.push('already_represented');
-  }
-
-  // Statute of limitations might be an issue
-  if (
-    (lower.includes('statute') && lower.includes('limit')) ||
-    lower.includes('time limit') ||
-    lower.includes('time barred')
-  ) {
-    flags.push('possible_sol_issue');
-  }
-
-  // Potential conflict of interest
-  if (
-    lower.includes('conflict of interest') ||
-    lower.includes('other side') ||
-    lower.includes('you represent')
-  ) {
-    flags.push('potential_conflict_of_interest');
-  }
-
-  // Criminal custody — time-critical for bail/bond
-  if (
-    matterType === 'criminal' &&
-    (lower.includes('in custody') || lower.includes('in jail') || lower.includes('arraignment'))
-  ) {
-    flags.push('criminal_custody_urgency');
-  }
-
-  // Caller safety concern — highest priority flag
-  if (
-    lower.includes('suicid') ||
-    lower.includes('harm myself') ||
-    lower.includes('hurt myself') ||
-    lower.includes('end my life')
-  ) {
-    flags.push('caller_safety_concern');
-  }
-
-  return flags;
-}
+// Risk flag detection is handled by detectRiskFlagsFromText from extraction-patterns.ts
 
 // ──────────────────────────────────────────────────────────────────
 // Intake summary builder
@@ -221,14 +124,14 @@ export function runExtractionPipeline(data: NormalizedPostCallData): ExtractionR
   const urgencyResult = detectUrgency(transcriptFull);
   const emotionalResult = detectEmotionalState(transcriptFull);
 
-  // Extract field values
-  const callerName = extractNameFromTranscript(transcriptFull);
-  const email = extractEmailFromTranscript(transcriptFull);
-  const incidentDate = extractIncidentDateFromTranscript(transcriptFull);
+  // Extract field values (using shared patterns from extraction-patterns.ts)
+  const callerName = extractName(transcriptFull);
+  const email = extractEmail(transcriptFull);
+  const incidentDate = extractIncidentDate(transcriptFull);
   const opposingParty = extractOpposingParty(transcriptFull);
 
-  // Risk flags
-  const riskFlags = detectRiskFlags(transcriptFull, matterResult.matterType);
+  // Risk flags (using shared patterns from extraction-patterns.ts)
+  const riskFlags = detectRiskFlagsFromText(transcriptFull, matterResult.matterType);
 
   // Build slot map
   const slots: Record<string, StateSlot> = {

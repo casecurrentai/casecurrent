@@ -7,13 +7,17 @@
  *   3. Run Prompt 1 detectors on the utterance
  *   4. Update classifications (intent, matter, emotion, urgency)
  *   5. Extract slot candidates from the utterance
- *   6. Merge slots into state
- *   7. Sync top-level callerName from slots
- *   8. Update risk flags
- *   9. Recompute missing required fields
- *  10. Recompute confidence score
- *  11. Determine next intake stage
- *  12. Select repair strategy
+ *   6. 3E: Interpret the turn (TurnInterpretation) — pre-mutation analysis
+ *   7. 3E: Apply field proposals via evidence-aware gate
+ *   8. Enrich slots with status flags
+ *   9. Sync top-level callerName from slots
+ *  10. Update risk flags
+ *  11. Recompute missing required fields
+ *  12. Recompute confidence score
+ *  13. Determine next intake stage
+ *  14. Select repair strategy
+ *  15. Compute derived field quality sets
+ *  16. Apply conversation phase transition
  *
  * recordAssistantTurn() stamps the last assistant utterance for context.
  *
@@ -21,16 +25,35 @@
  *   classifyMatter, detectIntent, detectUrgency, detectEmotionalState
  */
 
-import { ConversationState, TurnInput, StateSlot } from '../types';
+import { ConversationState, TurnInput, StateSlot, NextQuestionDecision, ResponsePolicy } from '../types';
 import { classifyMatter } from '../intake/matter-classifier';
 import { detectIntent } from '../intake/intent-detector';
 import { detectUrgency } from '../intake/urgency-detector';
 import { detectEmotionalState } from '../intake/emotional-state-detector';
 import { mergeSlotEvidence, syncCallerNameFromSlots } from './conversation-state';
+import {
+  extractName,
+  extractEmail,
+  extractPhone,
+  extractIncidentDate,
+  extractOpposingParty,
+  extractEmployer,
+  detectRiskFlagsFromText,
+} from '../intake/extraction-patterns';
 import { recomputeConfidence } from './confidence';
 import { recomputeMissingFields } from './missing-fields';
 import { determineNextStage } from './state-machine';
 import { selectRepairStrategy } from './repair-strategies';
+import {
+  enrichSlotsWithStatus,
+  recomputeConfirmationQueue,
+  recomputeLowConfidenceRequiredFields,
+  recomputeConflictingRequiredFields,
+  recomputeOptionalFieldsRemaining,
+} from './field-memory';
+import { transitionConversationState } from './state-transition';
+import { interpretTurn } from './turn-interpretation';
+import { applyFieldProposalsToState } from './field-proposals';
 
 // Re-export TurnInput so callers can import from one place
 export type { TurnInput };
@@ -61,109 +84,38 @@ function extractTurnSlots(
 ): Record<string, StateSlot> {
   const slots: Record<string, StateSlot> = {};
 
-  // ── Name ──────────────────────────────────────────────────────
-  const nameMatch = utterance.match(
-    /(?:my name is|this is|i'm|i am|name's|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-  );
-  if (nameMatch?.[1]) {
-    slots['caller_name'] = makeSlot(nameMatch[1].trim(), 0.8);
-  }
+  // ── Name (uses shared patterns from extraction-patterns.ts) ───
+  const name = extractName(utterance);
+  if (name) slots['caller_name'] = makeSlot(name, 0.8);
 
   // ── Email ─────────────────────────────────────────────────────
-  const emailMatch = utterance.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  if (emailMatch) {
-    slots['email'] = makeSlot(emailMatch[0], 0.95);
-  }
+  const email = extractEmail(utterance);
+  if (email) slots['email'] = makeSlot(email, 0.95);
 
   // ── Phone (spoken or typed) ───────────────────────────────────
-  // Match patterns like: 555-234-5678, (555) 234-5678, +1 555 234 5678
-  const phoneMatch = utterance.match(
-    /\b(\+?1?\s*[-.]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})\b/,
-  );
-  if (phoneMatch) {
-    const digits = phoneMatch[1].replace(/\D/g, '');
-    if (digits.length >= 10) {
-      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`;
-      slots['callback_number'] = makeSlot(e164, 0.9);
-    }
+  const phone = extractPhone(utterance);
+  if (phone) {
+    slots['callback_number'] = makeSlot(phone, 0.9);
   } else if (callerPhone && !slots['callback_number']) {
-    // Fall back to inbound caller ID (already in state.slots from init, but include here for safety)
     slots['callback_number'] = makeSlot(callerPhone, 0.95);
   }
 
   // ── Incident date ─────────────────────────────────────────────
-  const dateMatch = utterance.match(
-    /(\d{1,2}\/\d{1,2}\/\d{2,4})|((january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{0,4})|(last\s+(week|month|year)|yesterday|two\s+(weeks|days)\s+ago)/i,
-  );
-  if (dateMatch) {
-    slots['incident_date'] = makeSlot(dateMatch[0], 0.7);
-  }
+  const date = extractIncidentDate(utterance);
+  if (date) slots['incident_date'] = makeSlot(date, 0.7);
 
   // ── Opposing party ────────────────────────────────────────────
-  const opposingMatch = utterance.match(
-    /(?:against|versus|vs\.?|suing)\s+([A-Z][a-zA-Z\s&,\.]{1,40})/i,
-  );
-  if (opposingMatch?.[1]) {
-    slots['opposing_party'] = makeSlot(opposingMatch[1].trim(), 0.6);
-  }
+  const opposing = extractOpposingParty(utterance);
+  if (opposing) slots['opposing_party'] = makeSlot(opposing, 0.6);
 
   // ── Employer (employment matters) ─────────────────────────────
-  const employerMatch = utterance.match(
-    /(?:work(?:ed)?\s+(?:at|for)|employed\s+(?:at|by)|company\s+(?:is|was))\s+([A-Z][a-zA-Z\s&,\.]{2,40})/i,
-  );
-  if (employerMatch?.[1]) {
-    slots['employer_name'] = makeSlot(employerMatch[1].trim(), 0.65);
-  }
+  const employer = extractEmployer(utterance);
+  if (employer) slots['employer_name'] = makeSlot(employer, 0.65);
 
   return slots;
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Risk flag detection (per-turn)
-// ──────────────────────────────────────────────────────────────────
-
-function detectTurnRiskFlags(utterance: string, existing: string[]): string[] {
-  const lower = utterance.toLowerCase();
-  const flags = new Set(existing);
-
-  if (
-    lower.includes('already have a lawyer') ||
-    lower.includes('already have an attorney') ||
-    lower.includes('already hired') ||
-    lower.includes('i have representation') ||
-    lower.includes('currently represented')
-  ) {
-    flags.add('already_represented');
-  }
-
-  if (
-    lower.includes('suicid') ||
-    lower.includes('harm myself') ||
-    lower.includes('hurt myself') ||
-    lower.includes('end my life')
-  ) {
-    flags.add('caller_safety_concern');
-  }
-
-  if (
-    (lower.includes('statute') && lower.includes('limit')) ||
-    lower.includes('time barred') ||
-    lower.includes('time has run')
-  ) {
-    flags.add('possible_sol_issue');
-  }
-
-  // Criminal custody situations are always time-sensitive
-  if (
-    lower.includes('in custody') ||
-    lower.includes('in jail') ||
-    (lower.includes('arraignment') && lower.includes('arrest'))
-  ) {
-    flags.add('criminal_custody_urgency');
-  }
-
-  return Array.from(flags);
-}
+// Risk flag detection uses shared patterns from extraction-patterns.ts
 
 // ──────────────────────────────────────────────────────────────────
 // Main pipeline
@@ -189,12 +141,13 @@ export function applyTurnToState(
     silenceEvents: state.silenceEvents + (turn.isSilence ? 1 : 0),
   };
 
-  // Silence events carry no utterance — skip detection, just update repair strategy
+  // Silence events carry no utterance — skip detection, just update derived fields
   if (turn.isSilence || !turn.utterance.trim()) {
     const repairStrategy = selectRepairStrategy(s);
     const missingRequiredFields = recomputeMissingFields(s);
     const confidenceScore = recomputeConfidence(s);
-    return { ...s, repairStrategy, missingRequiredFields, confidenceScore };
+    const silenceState = { ...s, repairStrategy, missingRequiredFields, confidenceScore };
+    return transitionConversationState(silenceState);
   }
 
   const utt = turn.utterance;
@@ -234,14 +187,29 @@ export function applyTurnToState(
   // 7. Extract slot candidates from this turn
   const turnSlots = extractTurnSlots(utt, state.phone);
 
-  // 8. Merge slots
-  s = { ...s, slots: mergeSlotEvidence(s.slots, turnSlots) };
+  // 7b. 3E: Interpret the turn — structured pre-mutation analysis
+  const interpretation = interpretTurn(
+    utt,
+    s.lastQuestionAsked ?? null,
+    s,
+    turnSlots,
+    s.turnCount,
+  );
+  s = { ...s, lastTurnInterpretation: interpretation };
+
+  // 7c. 3E: Apply field proposals via evidence-aware gate
+  // This handles: YES/NO affirmations, corrections (direct overwrite), direct/volunteered slots,
+  // and inferred slots (fill-if-empty only). Replaces raw mergeWithConflictDetection.
+  s = applyFieldProposalsToState(s, interpretation.detectedFields, interpretation);
+
+  // 8b. Enrich all slots with computed status flags (3D)
+  s = { ...s, slots: enrichSlotsWithStatus(s.slots) };
 
   // 9. Sync callerName from slots to top-level field
   s = syncCallerNameFromSlots(s);
 
-  // 10. Update risk flags and transfer recommendation
-  const updatedRiskFlags = detectTurnRiskFlags(utt, s.riskFlags);
+  // 10. Update risk flags and transfer recommendation (shared patterns from extraction-patterns.ts)
+  const updatedRiskFlags = detectRiskFlagsFromText(utt, s.matterType, s.riskFlags);
   const transferRecommended =
     s.transferRecommended ||
     updatedRiskFlags.includes('caller_safety_concern') ||
@@ -260,20 +228,77 @@ export function applyTurnToState(
   // 14. Select repair strategy for this state
   s = { ...s, repairStrategy: selectRepairStrategy(s) };
 
+  // 15. 3D: Compute derived field quality sets
+  s = {
+    ...s,
+    confirmationQueue: recomputeConfirmationQueue(s),
+    lowConfidenceRequiredFields: recomputeLowConfidenceRequiredFields(s),
+    conflictingRequiredFields: recomputeConflictingRequiredFields(s),
+    optionalFieldsRemaining: recomputeOptionalFieldsRemaining(s),
+  };
+
+  // 16. 3D: Apply conversation phase transition
+  s = transitionConversationState(s);
+
   return s;
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Assistant-turn metadata (4A)
+// ──────────────────────────────────────────────────────────────────
+
 /**
- * Record Avery's last response utterance in state.
+ * Metadata about what the assistant did on the most recent turn.
+ *
+ * Used by the next applyTurnToState call to:
+ *   - match the caller's answer to the correct slot (lastQuestionAsked)
+ *   - apply confirmField() / rejectFieldValue() for YES/NO signals
+ *     even when the field is not in the confirmation queue
+ */
+export interface AssistantTurnMeta {
+  /** Avery's response text. */
+  utterance: string;
+  /** Slot key that Avery asked about (from plan.collectSlots[0] or decision.targetField). */
+  questionAsked?: string | null;
+  /** Decision type the planner issued (ask / confirm / repair / escalate / complete). */
+  decisionType?: NextQuestionDecision['type'] | null;
+  /** Field being confirmed if decisionType === 'confirm'. */
+  confirmationTarget?: string | null;
+  /** Response policy mode that was active for this turn. */
+  assistantMode?: ResponsePolicy['mode'] | null;
+}
+
+/**
+ * Record Avery's last response utterance and turn-targeting metadata in state.
  * Call this after the response is delivered, before the next caller turn.
+ *
+ * Accepts either a plain utterance string (legacy / test usage) or a full
+ * AssistantTurnMeta object.
  */
 export function recordAssistantTurn(
   state: ConversationState,
-  utterance: string,
+  metaOrUtterance: AssistantTurnMeta | string,
 ): ConversationState {
+  const meta: AssistantTurnMeta =
+    typeof metaOrUtterance === 'string'
+      ? { utterance: metaOrUtterance }
+      : metaOrUtterance;
+
   return {
     ...state,
-    lastAssistantUtterance: utterance,
+    lastAssistantUtterance: meta.utterance,
+    lastQuestionAsked: meta.questionAsked !== undefined
+      ? meta.questionAsked
+      : state.lastQuestionAsked,
+    lastDecisionType: meta.decisionType !== undefined
+      ? meta.decisionType
+      : state.lastDecisionType,
+    lastConfirmationTarget: meta.confirmationTarget !== undefined
+      ? meta.confirmationTarget
+      : state.lastConfirmationTarget,
+    lastAssistantMode: meta.assistantMode !== undefined
+      ? meta.assistantMode
+      : state.lastAssistantMode,
     updatedAt: new Date().toISOString(),
   };
 }

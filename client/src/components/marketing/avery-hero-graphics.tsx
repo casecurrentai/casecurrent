@@ -177,29 +177,67 @@ export function AveryIntelligenceEmblem() {
           );
         })}
 
-        {/* Inner core circle */}
-        <circle cx="200" cy="200" r="76" fill="white" fillOpacity="0.95" stroke="#6366f1" strokeOpacity="0.12" strokeWidth="1" />
-        {/* Core breathing ring */}
+        {/* White orb with light-blue spiraling radial arcs */}
+        <defs>
+          <clipPath id="avery-orb-clip">
+            <circle cx="200" cy="200" r="75" />
+          </clipPath>
+          <radialGradient id="avery-orb-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f0f9ff" />
+            <stop offset="100%" stopColor="#e0f2fe" />
+          </radialGradient>
+          <radialGradient id="avery-orb-centre-glow" cx="50%" cy="50%" r="40%">
+            <stop offset="0%" stopColor="white" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        {/* Light blue-white base */}
+        <circle cx="200" cy="200" r="75" fill="url(#avery-orb-bg)" />
+
+        {/* Spiraling arcs — slow clockwise rotation */}
+        <g clipPath="url(#avery-orb-clip)">
+          <g className="animate-avery-orbit" style={{ transformOrigin: "200px 200px", animationDuration: "14s" }}>
+            <path d={describeArc(200, 200, 63, 0, 295)}   fill="none" stroke="#38bdf8" strokeWidth="2"   strokeLinecap="round" opacity="0.55" />
+            <path d={describeArc(200, 200, 49, 32, 298)}  fill="none" stroke="#7dd3fc" strokeWidth="1.8" strokeLinecap="round" opacity="0.50" />
+            <path d={describeArc(200, 200, 35, 64, 294)}  fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
+            <path d={describeArc(200, 200, 20, 96, 285)}  fill="none" stroke="#7dd3fc" strokeWidth="1.2" strokeLinecap="round" opacity="0.38" />
+          </g>
+          {/* Second spiral arm — counter-rotate, slight offset */}
+          <g className="animate-avery-orbit-reverse" style={{ transformOrigin: "200px 200px", animationDuration: "20s" }}>
+            <path d={describeArc(200, 200, 56, 180, 470)} fill="none" stroke="#bae6fd" strokeWidth="1.5" strokeLinecap="round" opacity="0.35" />
+            <path d={describeArc(200, 200, 42, 210, 460)} fill="none" stroke="#93c5fd" strokeWidth="1.2" strokeLinecap="round" opacity="0.30" />
+            <path d={describeArc(200, 200, 27, 240, 450)} fill="none" stroke="#bae6fd" strokeWidth="1"   strokeLinecap="round" opacity="0.25" />
+          </g>
+        </g>
+
+        {/* Soft centre glow */}
+        <circle cx="200" cy="200" r="75" fill="url(#avery-orb-centre-glow)" />
+        {/* Border */}
+        <circle cx="200" cy="200" r="75" fill="none" stroke="#7dd3fc" strokeOpacity="0.5" strokeWidth="1" />
+        {/* Breathing ring */}
         <circle
-          cx="200" cy="200" r="76"
+          cx="200" cy="200" r="75"
           fill="none"
-          stroke="#6366f1"
-          strokeOpacity="0.1"
-          strokeWidth="4"
+          stroke="#38bdf8"
+          strokeOpacity="0.18"
+          strokeWidth="3"
           className="animate-avery-pulse-ring"
           style={{ transformOrigin: "200px 200px" }}
         />
-        {/* Inner accent ring */}
-        <circle cx="200" cy="200" r="68" fill="none" stroke="#6366f1" strokeOpacity="0.06" strokeWidth="0.5" />
+        <circle cx="200" cy="200" r="67" fill="none" stroke="#7dd3fc" strokeOpacity="0.12" strokeWidth="0.5" />
       </svg>
 
-      {/* Central "A" — HTML for crisp rendering */}
+      {/* Central "A" */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="relative">
-          <span className="text-[3.2rem] lg:text-[3.8rem] font-bold bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 bg-clip-text text-transparent select-none leading-none tracking-tight">
+          <span
+            className="text-[3.2rem] lg:text-[3.8rem] text-blue-700 select-none leading-none tracking-normal drop-shadow-[0_0_14px_rgba(29,78,216,0.35)]"
+            style={{ fontFamily: "'Inter', 'Helvetica Neue', sans-serif", fontWeight: 600, transform: "translateY(6%)" }}
+          >
             A
           </span>
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-full bg-gradient-to-r from-indigo-500/70 to-blue-500/70" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-[2px] rounded-full bg-blue-500/70 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
         </div>
       </div>
 
