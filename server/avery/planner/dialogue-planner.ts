@@ -54,6 +54,10 @@ export interface PlannerResult {
     conversationPhase: string;
     /** 3E: Structured interpretation of the last caller turn. */
     lastTurnInterpretation: import('../types').TurnInterpretation | null;
+    /** 3F: Structured output-shape policy for this turn. */
+    responsePolicy: import('../types').ResponsePolicy | null;
+    /** 3G: Pre-selected phrasing and framing variation context. */
+    variationContext: import('../types').VariationContext | null;
   };
 }
 
@@ -92,8 +96,8 @@ export function generateResponsePlan(state: ConversationState): PlannerResult {
     state,
   );
 
-  // 7. Assemble ResponsePlan (passes decision + readiness for 3C fields)
-  const plan = buildResponsePlan({ state, nextQuestion, escalation, style, decision, readiness });
+  // 7. Assemble ResponsePlan (passes decision + readiness for 3C fields, repairDecision for 3F)
+  const plan = buildResponsePlan({ state, nextQuestion, escalation, style, decision, readiness, repairDecision });
 
   return {
     plan,
@@ -120,6 +124,8 @@ export function generateResponsePlan(state: ConversationState): PlannerResult {
       confirmationQueue: state.confirmationQueue ?? [],
       conversationPhase: state.conversationPhase ?? 'unknown',
       lastTurnInterpretation: state.lastTurnInterpretation ?? null,
+      responsePolicy: plan.responsePolicy ?? null,
+      variationContext: plan.variationContext ?? null,
     },
   };
 }

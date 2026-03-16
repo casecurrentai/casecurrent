@@ -122,6 +122,97 @@ export type FieldUpdateAction =
   | "mark_conflict_require_confirmation"
   | "downgrade_confidence";
 
+// ── 3G additions ──────────────────────────────────────────────────
+
+/**
+ * Phrase-bank category for repetition tracking.
+ * Used internally by response-variation.ts to cycle through variants.
+ */
+export type PhraseFamilyCategory =
+  | "acknowledgment"
+  | "empathy"
+  | "confirmation_intro"
+  | "repair_intro"
+  | "handoff_intro"
+  | "completion_intro";
+
+/**
+ * Confirmation utterance shape — per-field framing guidance for the renderer.
+ * Only populated when ResponsePolicy.mode === "confirm".
+ */
+export interface ConfirmationShape {
+  /** Whether Avery should explicitly read back the captured value before asking. */
+  requiresReadBack: boolean;
+  /** Whether conflicting values should be explicitly surfaced to the caller. */
+  requiresConflictFraming: boolean;
+  /** Human-readable field label ("your phone number", "the date of the incident"). */
+  fieldLabel: string;
+  /** Formatted value ready to read back (null if no value captured). */
+  readBackHint: string | null;
+}
+
+/**
+ * Variation context attached to ResponsePlan — controls bounded phrasing choices.
+ *
+ * Encodes pre-selected phrase choices and contextual framing for the renderer.
+ * Phrases are selected deterministically (turn-count cycling + last-utterance check)
+ * to prevent Avery from repeating the same formula every turn.
+ */
+export interface VariationContext {
+  /** Pre-selected acknowledgment phrase (null = skip acknowledgment this turn). */
+  acknowledgmentPhrase: string | null;
+  /** Pre-selected mode-appropriate intro phrase (null for plain ask turns). */
+  introPhraseHint: string | null;
+  /** Whether a brief contextual reference to prior captured data is permitted. */
+  allowContextualReference: boolean;
+  /** A pre-built contextual reference string, or null if not applicable. */
+  contextualReference: string | null;
+  /** Confirmation-specific framing guidance (null when mode ≠ confirm). */
+  confirmationShape: ConfirmationShape | null;
+  /** True when this is a handoff or completion turn — renderer must not ask new questions. */
+  isHandoffTurn: boolean;
+  /** True when emergency framing applies — renderer must be direct and action-first. */
+  isEmergencyTurn: boolean;
+}
+
+// ── 3F additions ──────────────────────────────────────────────────
+
+/**
+ * Structured response policy for a single turn — derived deterministically from state.
+ *
+ * Carries output-shape constraints from the planner to the renderer.
+ * The renderer must obey these bounds while still generating natural language.
+ */
+export interface ResponsePolicy {
+  /** Primary mode driving this response turn. */
+  mode: "ask" | "confirm" | "repair" | "handoff" | "complete" | "emergency";
+  /** Maximum number of questions allowed in this response. 0 for handoff/complete/emergency. */
+  maxQuestions: number;
+  /** Maximum number of sentences allowed in this response. */
+  maxSentences: number;
+  /** Whether an empathy-prefix opening is permitted (distress / anxiety states). */
+  allowEmpathyPrefix: boolean;
+  /** Whether an explicit acknowledgment sentence is permitted. */
+  allowAcknowledgment: boolean;
+  /** Whether this turn must target exactly one field — no multi-field asks. */
+  requireSingleTarget: boolean;
+  /** How the confirmation question should be framed. */
+  confirmationStyle: "explicit" | "gentle" | "binary";
+  /** How the repair question should be reframed. */
+  repairStyle: "rephrase" | "narrow" | "example" | "stepwise";
+  /** Overall tone character for this turn. */
+  toneProfile: "calm" | "warm" | "urgent" | "direct";
+  /** Whether to strongly bias toward shorter output. */
+  brevityBias: "high" | "medium";
+  /** Compound questions (two asks in one) are forbidden. Always true — Avery's core discipline. */
+  forbidCompoundQuestions: boolean;
+  /**
+   * Premature reassurance is forbidden ("I'm sure it'll be fine").
+   * True for confirm, repair, and critical-urgency turns.
+   */
+  forbidPrematureReassurance: boolean;
+}
+
 // ── 3E additions ──────────────────────────────────────────────────
 
 /**
@@ -254,6 +345,12 @@ export interface ConversationState {
   optionalFieldsRemaining: string[];
   /** 3E: Structured interpretation of the most recent caller turn. */
   lastTurnInterpretation?: TurnInterpretation;
+  /** 4A: Decision type the assistant was in on the last turn. */
+  lastDecisionType?: NextQuestionDecision['type'] | null;
+  /** 4A: Field the assistant was asking the caller to confirm on the last turn. */
+  lastConfirmationTarget?: string | null;
+  /** 4A: Response policy mode active on the last assistant turn. */
+  lastAssistantMode?: ResponsePolicy['mode'] | null;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -321,6 +418,10 @@ export interface ResponsePlan {
   escalationReady?: boolean;
   /** 3C: Human-readable notes about field confidence issues. */
   confidenceNotes?: string[];
+  /** 3F: Structured output-shape policy — renderer must obey these bounds. */
+  responsePolicy?: ResponsePolicy;
+  /** 3G: Pre-selected phrasing choices and framing guidance for bounded variation. */
+  variationContext?: VariationContext;
 }
 
 // ──────────────────────────────────────────────────────────────────

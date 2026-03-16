@@ -70,6 +70,10 @@ export function initializeConversationState(params: InitStateParams): Conversati
     lowConfidenceRequiredFields: [],
     conflictingRequiredFields: [],
     optionalFieldsRemaining: [],
+    // 4A: assistant-turn targeting metadata
+    lastDecisionType: null,
+    lastConfirmationTarget: null,
+    lastAssistantMode: null,
   };
 }
 

@@ -59,7 +59,7 @@ const UNCERTAIN_RE =
  * This is semantic: caller is saying "I said X but it should be Y".
  */
 const CORRECTION_RE =
-  /\b(no actually|actually no|wait|sorry|correction|let me correct|i meant|i mean to say|not that|that was wrong|that'?s incorrect|that'?s my old|my old|i misspoke|scratch that|disregard that|let me rephrase|i meant to say|i need to correct|i was wrong about|actually it'?s|actually it is|actually the|wait no|hang on|let me fix that|that'?s not|not X but)\b/i;
+  /\b(no actually|actually no|wait|sorry|correction|let me correct|i meant|i mean to say|not that|that was wrong|that'?s incorrect|that'?s my old|my old|i misspoke|scratch that|disregard that|let me rephrase|i meant to say|i need to correct|i was wrong about|actually it'?s|actually it is|actually the|wait no|hang on|let me fix that|not X but)\b/i;
 
 // ──────────────────────────────────────────────────────────────────
 // Functions

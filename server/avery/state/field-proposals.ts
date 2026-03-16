@@ -57,6 +57,22 @@ export function applyFieldProposalsToState(
       s = rejectFieldValue(s, topField);
     }
     // If correctionSignals is also set, the correction proposal below handles it
+
+  // ── 1b. Fallback: use lastConfirmationTarget when queue is empty ─
+  // Handles fields the planner asked to confirm that didn't independently
+  // qualify for the confirmation queue (e.g. non-required optional fields,
+  // or planner-driven confirm for fields at edge-case confidence levels).
+  } else if (s.lastConfirmationTarget) {
+    const fallbackField = s.lastConfirmationTarget;
+    const slot = s.slots[fallbackField];
+    // Only apply if the slot still has a value to confirm (not already cleared)
+    if (slot?.value !== null && slot?.value !== undefined) {
+      if (interpretation.affirmations.yes) {
+        s = confirmField(s, fallbackField);
+      } else if (interpretation.affirmations.no && !interpretation.correctionSignals) {
+        s = rejectFieldValue(s, fallbackField);
+      }
+    }
   }
 
   // ── 2. Corrections: direct overwrite ──────────────────────────

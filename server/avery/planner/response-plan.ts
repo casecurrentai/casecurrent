@@ -15,6 +15,9 @@ import { ConversationState, ResponsePlan, NextQuestionDecision, IntakeReadiness 
 import type { NextQuestion } from './question-selector';
 import type { EscalationDecision } from './escalation-policy';
 import type { StyleParams } from '../types';
+import type { RepairDecision } from '../state/repair-decision';
+import { deriveResponsePolicy } from './response-policy';
+import { buildVariationContext } from './response-variation';
 
 export interface BuildResponsePlanParams {
   state: ConversationState;
@@ -25,6 +28,8 @@ export interface BuildResponsePlanParams {
   decision?: NextQuestionDecision;
   /** 3C: Intake readiness from evaluateIntakeReadiness(). Optional for back-compat. */
   readiness?: IntakeReadiness;
+  /** 3F: Semantic repair analysis — drives response policy derivation. */
+  repairDecision?: RepairDecision;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -50,7 +55,7 @@ const ACKNOWLEDGMENTS: Partial<Record<string, string>> = {
  * Pure function — no side effects.
  */
 export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan {
-  const { state, nextQuestion, escalation, style, decision, readiness } = params;
+  const { state, nextQuestion, escalation, style, decision, readiness, repairDecision } = params;
   const { repairStrategy, emotionalState, matterType, intakeStage, urgencyLevel, callerName } =
     state;
 
@@ -164,6 +169,25 @@ export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan
     );
   }
 
+  // ── 3F: Derive response policy ────────────────────────────────
+  // Requires decision and repairDecision; gracefully skips if unavailable.
+  const responsePolicy =
+    decision
+      ? deriveResponsePolicy(
+          state,
+          decision,
+          repairDecision ?? { needed: false, targetField: null, repairType: 'none', triggerReason: 'none', rationale: 'no repair decision provided' },
+          readiness ?? 'incomplete',
+        )
+      : undefined;
+
+  // ── 3G: Build variation context ───────────────────────────────
+  // Pre-selects acknowledgment/intro phrases and framing guidance.
+  const variationContext =
+    decision && responsePolicy
+      ? buildVariationContext(state, responsePolicy, decision)
+      : undefined;
+
   return {
     nextObjective,
     askFor: nextQuestion.question,
@@ -179,5 +203,7 @@ export function buildResponsePlan(params: BuildResponsePlanParams): ResponsePlan
     confirmationTarget,
     escalationReady,
     confidenceNotes: confidenceNotes.length > 0 ? confidenceNotes : undefined,
+    responsePolicy,
+    variationContext,
   };
 }
